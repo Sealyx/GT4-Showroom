@@ -47,11 +47,3 @@ Controller: View/Select opens the showroom/sidebar; D-pad/left stick navigates; 
 Written in **C++17**, with **MinHook C**, Win32/GDI, Direct3D 9 and DirectSound. Built as a standalone Win32 ASI using LLVM-MinGW/Clang and PowerShell. Python helpers, Blender/DragonFF and FFmpeg support asset preparation and previews; players do not need them installed. Bundled Michroma and Liberation Sans fonts load privately and retain their license notices.
 
 Logging hotfix: [GT4Showroom] EnableLog=0 is the default, also when absent in an older INI. Set EnableLog=1 and type GTSPAWN outside search to append diagnostics. Disable and reload to stop writes. Existing logs are preserved. Version2.2.0 passes the native build,19 regression suites and offline renderer checks; this new binary still needs an in-game/controller retest.
-
-## Download and build
-
-[Download the complete2.2.0 package](https://github.com/Sealyx/GTA-SA-Scripts/releases/download/gt4-v2.2.0/GT4Showroom-ASI-v2.2.0.zip).
-Use the update ZIP only when the full asset folder is already installed.
-See [BUILD.md](BUILD.md) for rebuilding and [TEST-RESULTS.md](TEST-RESULTS.md)
-for the exact validation scope. Bundled dependency/asset notices are retained;
-no new license is asserted for third-party game/reference material.
