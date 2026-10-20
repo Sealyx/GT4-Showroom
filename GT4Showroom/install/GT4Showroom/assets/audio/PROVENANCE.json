@@ -1,0 +1,91 @@
+{
+  "version": "1.1.0",
+  "background": {
+    "label": "GT4 Arcade Mode",
+    "page": "https://archive.org/details/gran-turismo-4-Sound-Track-Game-Rip",
+    "source_file": "Gran Turismo 4 Menu Soundtrack - Arcade Mode.mp3",
+    "source_sha256": "d2691a101e7448e9b63c0829ee15d284ec740b3c7f66569028661033da62b95b",
+    "source_encoding": "MP3; decoded to PCM, not an original lossless master",
+    "loop_start_frame": 403156,
+    "loop_end_frame": 8194805,
+    "loop_seconds": 176.68138321995465,
+    "seam_blend_ms": 10,
+    "repeat_correlation": 0.9703591465950012,
+    "reference_match": "20-second spectral comparison matches Arcade Mode over the five GT Mode candidates; waveform alignment locates the corresponding passage",
+    "volume_processing": "no normalization or pitch/speed changes; independent runtime MusicVolume",
+    "output_sha256": "0e583305b7f7c4a9a1d9a56326c8590230548c7f95944ba93227c198a220f3e5"
+  },
+  "effects": {
+    "move.wav": {
+      "source": "Move.mp3",
+      "source_sha256": "5927ab6c3645aa8edf344ed9459b363feaeb36fbd761da1d25225bd0b28640b0",
+      "trim_frames": [
+        186,
+        41472
+      ],
+      "seconds": 0.9361904761904762,
+      "edge_fades_ms": 1,
+      "output_sha256": "b0e7ad9cc11c1913b0d44ff04d8e6b8cc332d436351c7fae9d9bd6234c4acefd"
+    },
+    "accept.wav": {
+      "source": "Select.mp3",
+      "source_sha256": "0e9610e69cffe6ef58bfd06d600a7fe16d68571d9a45d04ca0d68176261df26e",
+      "trim_frames": [
+        1430,
+        77118
+      ],
+      "seconds": 1.716281179138322,
+      "edge_fades_ms": 1,
+      "output_sha256": "7b285368c845e7355ca75122eb90f1f36bec6c3f9182dd1e9101b0dba19edb3c"
+    },
+    "back.wav": {
+      "source": "Back.mp3",
+      "source_sha256": "fe91af2b72b3c9deb501d2509a4dea872a7657cba24057e41de49d5423129b8b",
+      "trim_frames": [
+        0,
+        82944
+      ],
+      "seconds": 1.8808163265306121,
+      "edge_fades_ms": 1,
+      "output_sha256": "4bfd1c95e40ff5a36b938ca3904bcdcc8f5f85c583d6329fa1e587a16494cf09"
+    },
+    "open.wav": {
+      "source": "Car catalog.mp3",
+      "source_sha256": "6fdaf8b2fcb1aeea87fdca4b8656524205b1325d7cca954da81cc62d17a61541",
+      "trim_frames": [
+        409,
+        63140
+      ],
+      "seconds": 1.4224716553287982,
+      "edge_fades_ms": 1,
+      "output_sha256": "b808a295a2c385f75ee87af5d512c14c670e7bac635f4ae54d5ab6fb0c46c4de"
+    },
+    "spawn.wav": {
+      "source": "Purchase.mp3",
+      "source_sha256": "dfd92bf76dd775d6ec316d8288b3af44adebf949d536b0ce2dd4ed1052a7d8e0",
+      "trim_frames": [
+        0,
+        125453
+      ],
+      "seconds": 2.844739229024943,
+      "edge_fades_ms": 1,
+      "output_sha256": "22fe889835ec2eff67954e35f1f32866a56f1166540bd460e8416e63126aa8c2"
+    },
+    "error.wav": {
+      "source": "Error.mp3",
+      "source_sha256": "321fabe7d2cb73015369b5da8f32a597ef95552290bcd5d0d999806eda7a01ee",
+      "trim_frames": [
+        0,
+        65960
+      ],
+      "seconds": 1.4956916099773243,
+      "edge_fades_ms": 1,
+      "output_sha256": "61206ce6c8ed38b350cbeda385057c01cfd26faa5f620f3bb95b674299914a02"
+    }
+  },
+  "uploader": "FrontiX360",
+  "pack_page": "https://www.youtube.com/watch?v=hNmuS2Uzs-c",
+  "pack_download": "https://drive.google.com/file/d/1YcsfZohZzDRB0KBx-ccNxa3VH9aKHliN/view",
+  "pack_sha256": "2327ac5207acf77b2786f0c26b6f8ca67ce1f9af16865b8df20b8fb56f6f7b1d",
+  "source_note": "Separate GT4 effect files published by uploader; raw-disc extraction method not documented, so these are not certified bit-exact original banks. No audio is cut from the supplied GT4.mp4."
+}

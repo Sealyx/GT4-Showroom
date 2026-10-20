@@ -1,0 +1,172 @@
+
+G:\SteamLibrary\steamapps\common\Grand Theft Auto San Andreas\modloader\[1. ASI]\[Junior_Djjr's ASI]\VehFuncs\VehFuncs.asi:	file format coff-i386
+
+Disassembly of section .text:
+
+1002a2d0 <SetNewHandling>:
+1002a2d0: 55                           	pushl	%ebp
+1002a2d1: 8b ec                        	movl	%esp, %ebp
+1002a2d3: a1 94 44 b7 00               	movl	0xb74494, %eax
+1002a2d8: 8b 55 08                     	movl	0x8(%ebp), %edx
+1002a2db: 8b ca                        	movl	%edx, %ecx
+1002a2dd: 53                           	pushl	%ebx
+1002a2de: 56                           	pushl	%esi
+1002a2df: 2b 08                        	subl	(%eax), %ecx
+1002a2e1: a1 38 fb 07 10               	movl	0x1007fb38, %eax
+1002a2e6: c1 f9 03                     	sarl	$0x3, %ecx
+1002a2e9: 69 c9 6b 93 42 e4            	imull	$0xe442936b, %ecx, %ecx # imm = 0xE442936B
+1002a2ef: 57                           	pushl	%edi
+1002a2f0: 8d ba 84 03 00 00            	leal	0x384(%edx), %edi
+1002a2f6: 8b 1c 88                     	movl	(%eax,%ecx,4), %ebx
+1002a2f9: f6 03 01                     	testb	$0x1, (%ebx)
+1002a2fc: 74 0f                        	je	0x1002a30d <SetNewHandling+0x3d>
+1002a2fe: 68 28 01 00 00               	pushl	$0x128                  # imm = 0x128
+1002a303: ff 37                        	pushl	(%edi)
+1002a305: e8 31 3b 01 00               	calll	0x1003de3b <SetNewHandling+0x13b6b>
+1002a30a: 83 c4 08                     	addl	$0x8, %esp
+1002a30d: 68 28 01 00 00               	pushl	$0x128                  # imm = 0x128
+1002a312: e8 f4 3a 01 00               	calll	0x1003de0b <SetNewHandling+0x13b3b>
+1002a317: 8b f0                        	movl	%eax, %esi
+1002a319: 83 c4 04                     	addl	$0x4, %esp
+1002a31c: b8 50 04 6d 00               	movl	$0x6d0450, %eax         # imm = 0x6D0450
+1002a321: 8d 4e 2c                     	leal	0x2c(%esi), %ecx
+1002a324: ff d0                        	calll	*%eax
+1002a326: 83 7d 0c 00                  	cmpl	$0x0, 0xc(%ebp)
+1002a32a: 75 65                        	jne	0x1002a391 <SetNewHandling+0xc1>
+1002a32c: ba c0 5e 07 10               	movl	$0x10075ec0, %edx       # imm = 0x10075EC0
+1002a331: b9 38 3a 0a 10               	movl	$0x100a3a38, %ecx       # imm = 0x100A3A38
+1002a336: e8 75 c1 fe ff               	calll	0x100164b0 <ignore4+0x32b0>
+1002a33b: 6a 00                        	pushl	$0x0
+1002a33d: 8b c8                        	movl	%eax, %ecx
+1002a33f: e8 8c 95 fe ff               	calll	0x100138d0 <ignore4+0x6d0>
+1002a344: ba 6c 5f 07 10               	movl	$0x10075f6c, %edx       # imm = 0x10075F6C
+1002a349: 8b c8                        	movl	%eax, %ecx
+1002a34b: e8 60 c1 fe ff               	calll	0x100164b0 <ignore4+0x32b0>
+1002a350: 8b 55 08                     	movl	0x8(%ebp), %edx
+1002a353: 8b c8                        	movl	%eax, %ecx
+1002a355: 0f b7 52 22                  	movzwl	0x22(%edx), %edx
+1002a359: 52                           	pushl	%edx
+1002a35a: e8 41 97 fe ff               	calll	0x10013aa0 <ignore4+0x8a0>
+1002a35f: ba ac 3a 07 10               	movl	$0x10073aac, %edx       # imm = 0x10073AAC
+1002a364: 8b c8                        	movl	%eax, %ecx
+1002a366: e8 45 c1 fe ff               	calll	0x100164b0 <ignore4+0x32b0>
+1002a36b: b9 38 3a 0a 10               	movl	$0x100a3a38, %ecx       # imm = 0x100A3A38
+1002a370: e8 eb b9 fe ff               	calll	0x10015d60 <ignore4+0x2b60>
+1002a375: 6a 00                        	pushl	$0x0
+1002a377: 68 78 5e 07 10               	pushl	$0x10075e78             # imm = 0x10075E78
+1002a37c: 68 e8 5e 07 10               	pushl	$0x10075ee8             # imm = 0x10075EE8
+1002a381: 6a 00                        	pushl	$0x0
+1002a383: ff 15 58 71 06 10            	calll	*0x10067158
+1002a389: 80 0b 01                     	orb	$0x1, (%ebx)
+1002a38c: 5f                           	popl	%edi
+1002a38d: 5e                           	popl	%esi
+1002a38e: 5b                           	popl	%ebx
+1002a38f: 5d                           	popl	%ebp
+1002a390: c3                           	retl
+1002a391: 68 28 01 00 00               	pushl	$0x128                  # imm = 0x128
+1002a396: 6a 00                        	pushl	$0x0
+1002a398: 56                           	pushl	%esi
+1002a399: e8 f2 59 01 00               	calll	0x1003fd90 <SetNewHandling+0x15ac0>
+1002a39e: 68 e0 00 00 00               	pushl	$0xe0
+1002a3a3: ff 75 0c                     	pushl	0xc(%ebp)
+1002a3a6: 56                           	pushl	%esi
+1002a3a7: e8 54 54 01 00               	calll	0x1003f800 <SetNewHandling+0x15530>
+1002a3ac: 80 8e e6 00 00 00 01         	orb	$0x1, 0xe6(%esi)
+1002a3b3: 83 c4 18                     	addl	$0x18, %esp
+1002a3b6: c7 86 e7 00 00 00 00 00 7f 43	movl	$0x437f0000, 0xe7(%esi) # imm = 0x437F0000
+1002a3c0: c7 86 eb 00 00 00 00 00 7f 43	movl	$0x437f0000, 0xeb(%esi) # imm = 0x437F0000
+1002a3ca: c7 86 ef 00 00 00 00 00 7f 43	movl	$0x437f0000, 0xef(%esi) # imm = 0x437F0000
+1002a3d4: c7 86 f3 00 00 00 00 00 7f 43	movl	$0x437f0000, 0xf3(%esi) # imm = 0x437F0000
+1002a3de: 89 37                        	movl	%esi, (%edi)
+1002a3e0: 80 0b 01                     	orb	$0x1, (%ebx)
+1002a3e3: 5f                           	popl	%edi
+1002a3e4: 5e                           	popl	%esi
+1002a3e5: 5b                           	popl	%ebx
+1002a3e6: 5d                           	popl	%ebp
+1002a3e7: c3                           	retl
+1002a3e8: cc                           	int3
+1002a3e9: cc                           	int3
+1002a3ea: cc                           	int3
+1002a3eb: cc                           	int3
+1002a3ec: cc                           	int3
+1002a3ed: cc                           	int3
+1002a3ee: cc                           	int3
+1002a3ef: cc                           	int3
+1002a3f0: 55                           	pushl	%ebp
+1002a3f1: 8b ec                        	movl	%esp, %ebp
+1002a3f3: a1 94 44 b7 00               	movl	0xb74494, %eax
+1002a3f8: 56                           	pushl	%esi
+1002a3f9: 8b 75 08                     	movl	0x8(%ebp), %esi
+1002a3fc: 8b d6                        	movl	%esi, %edx
+1002a3fe: 57                           	pushl	%edi
+1002a3ff: 2b 10                        	subl	(%eax), %edx
+1002a401: 8b f9                        	movl	%ecx, %edi
+1002a403: c1 fa 03                     	sarl	$0x3, %edx
+1002a406: 69 ca 6b 93 42 e4            	imull	$0xe442936b, %edx, %ecx # imm = 0xE442936B
+1002a40c: 6a 10                        	pushl	$0x10
+1002a40e: 8b 47 04                     	movl	0x4(%edi), %eax
+1002a411: ff 34 88                     	pushl	(%eax,%ecx,4)
+1002a414: e8 22 3a 01 00               	calll	0x1003de3b <SetNewHandling+0x13b6b>
+1002a419: a1 94 44 b7 00               	movl	0xb74494, %eax
+1002a41e: 83 c4 08                     	addl	$0x8, %esp
+1002a421: 2b 30                        	subl	(%eax), %esi
+1002a423: 8b 47 04                     	movl	0x4(%edi), %eax
+1002a426: c1 fe 03                     	sarl	$0x3, %esi
+1002a429: 69 ce 6b 93 42 e4            	imull	$0xe442936b, %esi, %ecx # imm = 0xE442936B
+1002a42f: 5f                           	popl	%edi
+1002a430: 5e                           	popl	%esi
+1002a431: c7 04 88 00 00 00 00         	movl	$0x0, (%eax,%ecx,4)
+1002a438: 5d                           	popl	%ebp
+1002a439: c2 04 00                     	retl	$0x4
+1002a43c: cc                           	int3
+1002a43d: cc                           	int3
+1002a43e: cc                           	int3
+1002a43f: cc                           	int3
+1002a440: 55                           	pushl	%ebp
+1002a441: 8b ec                        	movl	%esp, %ebp
+1002a443: 51                           	pushl	%ecx
+1002a444: 56                           	pushl	%esi
+1002a445: 57                           	pushl	%edi
+1002a446: 6a 10                        	pushl	$0x10
+1002a448: 8b f9                        	movl	%ecx, %edi
+1002a44a: e8 bc 39 01 00               	calll	0x1003de0b <SetNewHandling+0x13b3b>
+1002a44f: 8b 55 08                     	movl	0x8(%ebp), %edx
+1002a452: 8b f0                        	movl	%eax, %esi
+1002a454: 83 c4 04                     	addl	$0x4, %esp
+1002a457: 89 75 fc                     	movl	%esi, -0x4(%ebp)
+1002a45a: 80 26 fc                     	andb	$-0x4, (%esi)
+1002a45d: c7 46 04 00 00 00 3f         	movl	$0x3f000000, 0x4(%esi)  # imm = 0x3F000000
+1002a464: c7 46 08 00 00 00 3f         	movl	$0x3f000000, 0x8(%esi)  # imm = 0x3F000000
+1002a46b: c7 46 0c 00 00 00 00         	movl	$0x0, 0xc(%esi)
+1002a472: 8b 0d 94 44 b7 00            	movl	0xb74494, %ecx
+1002a478: 8b 47 04                     	movl	0x4(%edi), %eax
+1002a47b: 5f                           	popl	%edi
+1002a47c: 2b 11                        	subl	(%ecx), %edx
+1002a47e: c1 fa 03                     	sarl	$0x3, %edx
+1002a481: 69 ca 6b 93 42 e4            	imull	$0xe442936b, %edx, %ecx # imm = 0xE442936B
+1002a487: 89 34 88                     	movl	%esi, (%eax,%ecx,4)
+1002a48a: 5e                           	popl	%esi
+1002a48b: 8b e5                        	movl	%ebp, %esp
+1002a48d: 5d                           	popl	%ebp
+1002a48e: c2 04 00                     	retl	$0x4
+1002a491: cc                           	int3
+1002a492: cc                           	int3
+1002a493: cc                           	int3
+1002a494: cc                           	int3
+1002a495: cc                           	int3
+1002a496: cc                           	int3
+1002a497: cc                           	int3
+1002a498: cc                           	int3
+1002a499: cc                           	int3
+1002a49a: cc                           	int3
+1002a49b: cc                           	int3
+1002a49c: cc                           	int3
+1002a49d: cc                           	int3
+1002a49e: cc                           	int3
+1002a49f: cc                           	int3
+1002a4a0: a1 94 44 b7 00               	movl	0xb74494, %eax
+1002a4a5: ba 04 00 00 00               	movl	$0x4, %edx
+1002a4aa: 56                           	pushl	%esi
+1002a4ab: 8b f1                        	movl	%ecx, %esi
+1002a4ad: 33 c9                        	xorl	%ecx, %ecx
+1002a4af: 8b 40 08                     	movl	0x8(%eax), %eax

@@ -1,0 +1,144 @@
+GT4 SHOWROOM 2.2.0 - COMPLETE CONTROLLER / FINAL CLEANUP
+Date: 2026-10-20. Latest build is UNTESTED IN GTA.
+
+WHAT IT IS / DOES
+A standalone 32-bit ASI vehicle showroom/spawner for classic GTA San Andreas.
+It discovers installed vehicles, including registered add-ons, and renders
+actual static 3D model snapshots in its independent animated studio.
+
+FEATURES
+- Native paintjob selection follows colors. N registered liveries produce N+1
+  rectangles, including No Livery. Rectangles draw each actual paintjob texture;
+  the chosen paintjob is prepared on a private preview and applied when spawning.
+  Supports native add-on remap TXDs; private third-party livery systems must
+  expose the normal remap slots. SA natively provides up to four slots.
+- Empty Favorites has no gray marker and reports 0 / 0.
+- Persistent Favorites: Up adds, Down removes only an existing favorite;
+  F switches between Favorites and All Cars. Same animated studio, smooth
+  fade transitions. An empty Favorites view remains usable.
+- Right-click context sidebar: Sort by > Ascending A-Z, Descending Z-A, Class,
+  Top Speed (fastest first), Countries (filter submenu), Model ID (lowest first).
+  Countries lists only available registered countries with counts. All Countries
+  clears the filter. Country filtering also works within Favorites.
+  Favorites / All Cars and Cinematic appear in the same sidebar.
+  Sort selection persists in GT4Showroom/favorites.ini [View] SortMode.
+  Legacy main-INI SortBy / SortOrder are ignored and removed from the example.
+- Cinematic hides the normal interface and thumbnails, with a slight zoom
+  transition. Car auto-spins until Space/A or a click on the actual car.
+  Drag the car or use the right stick to orbit; wheel/triggers zoom.
+  Backspace/B returns to the current catalogue. RMB only opens/closes sidebar.
+- XInput plus the game's mapped native controller fallback. The controller can
+  open, browse, paint, spawn, favorite/remove, sort, search via the new on-screen
+  keyboard, navigate cinematic and claim REALBIG. Start retains native pause.
+- Yellow cursor eases back to the selected car/color after keyboard/wheel/pad
+  browsing changes selection. Idling never starts cursor docking. Disabled during modal
+  entry, scrollbar drag and cinematic interaction so it does not fight input.
+- Brazil, Indonesia and Malaysia country badges and add-on assignment keys.
+  Rumpo (440) uses USA as requested. Vanilla origins ignore INI overrides.
+- Native model snapshots now read RenderWare's authoritative mesh/material
+  batches rather than stale geometry triangle material indices. This fixes
+  the supplied Camaro's dark door in the offline production-renderer preview.
+  List/strip topology, texture addressing, front faces, damage/LOD filtering
+  and maximum texture detail are preserved. Low-detail frames are never drawn
+  by this preview, including low-detail ancestors and known native callbacks.
+- Existing prepared VehFuncs wheels, static IVF materials, color names,
+  name/ID search/exclusions, scrollbar, close side-facing/seat spawn, ENTHUSIA,
+  REALBIG prize scene and independent modkit/paintjob/one-ability settings remain.
+  No new handling memory ownership or game-camera/HUD changes in this update.
+
+KEYBOARD / MOUSE CONTROLS
+F1                    Open/close (OpenKey is configurable). On foot only;
+                      cutscenes, loading, death and menu states gate opening.
+Left/Right / wheel    Browse cars, colors or liveries.
+Mouse                 Click thumbnails/colors; drag the lower scrollbar.
+Enter / Space         Cars -> colors -> liveries (if available) -> spawn;
+                      confirm revealed REALBIG prize.
+Backspace             Liveries -> colors -> cars; Cars -> exit. Favorites -> All Cars;
+                      cinematic -> catalogue; sidebar -> close sidebar.
+Right mouse / Menu key Open/close context sidebar. It NEVER acts as Backspace.
+Up / Down             Add / remove the selected favorite (car page).
+F                     Toggle Favorites / All Cars.
+Escape                Native game pause; resume retains the showroom.
+Backtick (`)          Search model ID, internal name or display name.
+ENTHUSIA / GT4        Enter in search to change/reset main preview motion.
+REALBIG               Enter in search to offer configured SecretUnlocks vehicle.
+GTSPAWN               Type outside search to reload settings/metadata.
+Cinematic             Space toggles spin; click/drag CAR to pause/orbit;
+                      wheel zooms; arrows also orbit; Backspace returns.
+
+CONTROLLER (XINPUT LABELS; NATIVE EQUIVALENTS USE THE GAME'S MAPPING)
+View / Select         Open showroom; while open, open/close context sidebar.
+D-pad / left stick    Browse; navigate context menu or on-screen keyboard.
+A / Cross             Confirm/paint/spawn; cinematic spin toggle; prize OK.
+B / Circle            Back. Close controller search/sidebar or return/exit.
+X / Square            Add favorite; Delete in controller search.
+Y / Triangle          Toggle Favorites; Find in controller search.
+D-pad Down            Remove favorite on car page. Up adds.
+Left stick click      Open/close model search with on-screen keyboard.
+Right stick           Cinematic orbit. LT/RT zoom; LB/RB fallback zoom.
+Start / Options       Native pause through the existing frontend Escape path.
+Reload settings       Sidebar row; controller alternative to GTSPAWN.
+Controller hardware was NOT exercised; mapping/interaction fixtures passed.
+XInput comes from Windows System32. No new controller DLL is bundled.
+
+SETTINGS / DATA
+Keep GT4Showroom.ini and GT4Showroom/vehicles.ini custom values. Countries and
+exclusions accept comma-separated IDs or exact names. Unassigned add-ons have
+white country badges; vanilla entries cannot be overridden. Add Brazil=,
+Indonesia= and Malaysia= to your existing [Countries] section if needed.
+MusicVolume / EffectsVolume are independent; StudioZoom and MouseSensitivity
+remain configurable. SecretUnlocks keeps Model, EnableModkit, EnablePaintjob,
+EnableAbilities. Each enabled reward receives ONE random ability.
+Persistent favorites and chosen sort order live in GT4Showroom/favorites.ini;
+this release does not include a replacement of that personal file.
+
+ACTUAL CREATION TOOLS / DEPENDENCIES / LANGUAGES
+C++17 and MinHook C, LLVM-MinGW 20261006 UCRT Win32 Clang, Win32/GDI,
+Direct3D9/DirectSound, PowerShell, Python 3.12/Pillow, FFmpeg; Blender/DragonFF for earlier private mesh fixture exports
+(no new mesh conversion in2.2.0). Dear ImGui's official DX9/
+Win32/gamepad backends were researched; the existing native renderer implements
+this small sidebar and keyboard, so ImGui is not used or required.
+Michroma and Liberation Sans Bold 2.1.5 load privately from assets; no font
+installation is required. Creation tools are not required to play the mod.
+
+BASIC RUNTIME REQUIREMENTS
+Classic 32-bit GTA SA PC 1.0 US Hoodlum/Compact-compatible executable, a working
+32-bit ASI loader and the full GT4Showroom/assets folder. Mod Loader recommended.
+No CLEO/MoonLoader companion. Optional add-on cars and tuning frameworks must be
+installed/registered correctly. VehFuncs/IVF remain optional vehicle dependencies.
+Not for Definitive Edition, mobile or unverified executable editions.
+
+INSTALL / UPDATE / REMOVE
+Quit GTA before replacing the ASI. For a complete existing 1.9.3 or 2.0.0 install, use
+the update ZIP: replace GT4Showroom.asi and read/merge GT4Showroom.example.ini.
+Do not rename that example over your customized INI unless you intend to reset
+settings. Existing assets, vehicles.ini and favorites.ini stay in place.
+For a fresh install, copy install/GT4Showroom.asi, install/GT4Showroom.ini and
+the install/GT4Showroom folder together into your Mod Loader mod directory.
+Remove/disable this mod's directory while GTA is closed to uninstall.
+No installed game files were changed during development of this release.
+
+VALIDATION / LIMITS
+Warnings-as-errors Win32 build; 17 executable suites and separate-DLL render
+chains passed. Real D3D9 production-renderer checks: hostile/clean state images
+match, state restored, device reset, 2x MSAA and 800x600/1280x720/1920x1080/
+2560x1080/5120x1440 layouts. Fresh 20-second 1280x720 animated preview reuses the
+actual production input/state/renderer code with private local mesh fixtures.
+It is an offline showcase, not GTA gameplay. Fixture stats/colors are authored
+preview data, not a readout of your live installed handling or palette.
+The Camaro was re-exported using its authoritative material splits. Its asset
+and other vehicle originals are not redistributed. The unequal wheel fixture
+assemblies reflect authored data; native VehFuncs wheel preparation is retained.
+No physical controller, native plugin integration, game FPS or whole mod-list
+stability claim. Please retest the supplied Camaro and your controller in GTA.
+The predecessor 1.9.3 was user-confirmed tested; 2.1.1 starts Untested.
+
+Logging hotfix: [GT4Showroom] EnableLog=0 is the default, also when absent in an older INI. Set EnableLog=1 and type GTSPAWN outside search to append diagnostics. Disable and reload to stop writes. Existing logs are preserved. New 2.1.1 is untested in GTA.
+
+2.2.0 FINAL CHANGES
+All player actions have controller routes, including opening/sidebar/search/reload.
+An idle XInput pad no longer masks a native mapped controller. Held open input is
+quarantined on exit. Sort/country/Favorites switches use cached catalogue data;
+country counts refresh only on changes. Diagnostic accumulation is opt-in.
+Sidebar displays South Korea; compatible SouthKorea INI key is unchanged.
+New binary is Untested in GTA; prior accepted baseline is2.1.1.

@@ -1,0 +1,5 @@
+#include "../source/Showroom.hpp"
+#include <filesystem>
+#include <fstream>
+#include <cstdio>
+int main(int argc,char**argv){if(argc!=4)return 2;gt4::Entry car;car.id=15183;car.modelKey=gt4::modelNameKey("calica");car.name="Calico GTS";car.paints.resize(8);std::mt19937 random{0x5245414c};auto plan=gt4::rollPrize(std::vector<gt4::Entry>{car},random,gt4::readSecretUnlocks(std::filesystem::path(argv[1]).wstring()));if(!plan)return 3;std::ifstream in(argv[2]);std::vector<gt4::TuningOption> options;gt4::TuningOption o;while(in>>o.id>>o.slot)options.push_back(o);plan.upgrades=gt4::chooseTuning(options,plan.serial,plan.style);for(int id:plan.upgrades)for(const auto& option:options)if(option.id==id&&option.slot==34)plan.wheel=id;std::printf("[{\"id\":%d,\"model\":\"calica\",\"style\":%d,\"paintjob\":%d,\"paintjob_enabled\":%s,\"wheel\":%d,\"paint\":%d,\"ability\":%d,\"serial\":%u,\"modkit\":true,\"parts\":[",plan.id,plan.style,plan.paintjob,plan.enablePaintjob?"true":"false",plan.wheel,plan.paint,int(plan.ability),plan.serial);bool comma=false;for(int id:plan.upgrades){std::printf("%s%d",comma?",":"",id);comma=true;}std::puts("]}]");(void)argv[3];}

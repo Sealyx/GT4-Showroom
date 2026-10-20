@@ -1,0 +1,15 @@
+Standalone GT4Showroom.asi compiled.
+REALBIG1.9: actual live add-on carmods discovery; one compatible option per slot; independent kit/paint/ability INI; zero-flag TXD discard regression; per-car handling copy and maintained proof/mass, pool recycling/restore/32-car bound; all-angle four-resolution framing passed. No GTA session.
+SecretUnlocks: mixed IDs/names/add-ons/empty list, actual Win32 reload/defaults, optional compatible modkits, 10,000 single abilities and disabled no-op, native load-state probe vs render pointers, relocated TXD stage, bounded paused completion passes and ordinary bonus vehicles passed.
+REALBIG: five eligible tuners, 10,000 randomized single abilities/bodykits, filtered identities, reveal/claim/back/search locks, isolated physics/proof bits, smooth return fades and relocated TXD pool guards passed (sample model 561).
+0.22s entry / 0.16s spawn/exit, black-frame acknowledgement, input lock/pause/recovery, ENTHUSIA continuous two-turn sequence, all compact vehicle IDs, projected thumbnail bounds, fourteen badge artworks, 212 fixed SA origins and add-on-only assignments, full paint names/add-ons/live RGB and inherited Mod Loader filtering/priority passed.
+F-key native layout, both Backspace paths, no Spawn click target, confirmation latches, opening gates; palette relocation/135 colours, legitimate black, 49 default exclusions, add-on IDs, 588-car layouts/mouse hits, pause lease, input quarantine and existing logic fixtures passed.
+Search/name+ID exclusions: CRC/native-name/display matches, no hidden-model bypass, query editing/held keys, found/missing flow, 48-char cap; close spawn width and attached VehFuncs visibility signature/frame bits/native wheel-helper ABI passed.
+QoL: visible edge cells/stream range at seven resolutions, bar drag to both ends, footer bounds, all sort keys/orders, GTSPAWN edges/timeouts/pause, side-on heading, IVF marker ranges and Win32 driver-task ABI passed.
+Native preview: material dedup/refcount and volatile-state restoration, invalid references, target-only draw suppression and deterministic model seeds passed. No GTA engine was run.
+Frontend address regression passed: mouse-X bytes 192/201/209 cannot block opening; actual menu/loading flags block; request separate; nonzero flags normalized; unreadable memory fails closed.
+Win32 INI: exclusions, defaults, key/sort/spawn settings, add-on country IDs/names, ignored Unknown and immutable vanilla origins passed.
+Win32 binary loads, loader callback is idempotent and unsupported host is rejected.
+Full music, standalone prize cue + six separate SFX loaded; prize switching/resume/cleanup; bounded overlapping voices, duplicate-buffer mute, focus, tails, cleanup and malformed/oversized WAV rejection passed (silent checks).
+Private font test passed: before=Arial; during=Michroma; after unload=Arial.
+Separate-DLL MinHook render chains passed in both load orders: normal draws exactly once, private target suppressed, pass-through peer retained, original bytes restored. Mirrors the paused Quantum Break forwarding path; no GTA run.

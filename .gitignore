@@ -1,0 +1,5 @@
+**/build/
+**/*.log
+**/favorites.ini
+**/__pycache__/
+**/ui-fixture/

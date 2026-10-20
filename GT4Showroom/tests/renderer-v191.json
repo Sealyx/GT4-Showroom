@@ -1,0 +1,43 @@
+{
+  "version": "1.9.1",
+  "game_tested": false,
+  "frames": 1080,
+  "fps": 30,
+  "black_commit_frames": [
+    994,
+    1054
+  ],
+  "framing": {
+    "calico_width_ratio_min": 1.458611344197242,
+    "calico_width_ratio_max": 1.5921410640493134,
+    "calico_width_ratio_median": 1.4741352507538616,
+    "calico_all_angle_min_top": 0.36365187892314677,
+    "calico_all_angle_max_bottom": 0.7953870994306103,
+    "title_band_mean_absolute_pixel_error": 0.0,
+    "raised_floor_samples": [
+      {
+        "screen_y": 0.71,
+        "source_y": 0.7739999999999999,
+        "max_rgb_error": 0.0
+      },
+      {
+        "screen_y": 0.74,
+        "source_y": 0.7944,
+        "max_rgb_error": 0.0
+      },
+      {
+        "screen_y": 0.77,
+        "source_y": 0.8148,
+        "max_rgb_error": 0.0
+      }
+    ],
+    "floor_source_y": 0.74,
+    "floor_screen_y": 0.66
+  },
+  "backdrop_sha256": "fb868ac18fea8312b3cb790a585ff420fa65ea398b55fec049e7709f9433c597",
+  "prize-motion": "Clean and contaminated HUD state produce pixel-identical images; state fully restored.\nPrize scene: clean/contaminated state pixel identical; full viewport curtain reaches both edges without pillarboxes.\nRendered frame 0, 41820 real studio/car triangles\nRendered frame 60, 0 real studio/car triangles\nRendered frame 120, 0 real studio/car triangles\nRendered frame 180, 0 real studio/car triangles\nRendered frame 240, 0 real studio/car triangles\nRendered frame 300, 29613 real studio/car triangles\nRendered frame 360, 29613 real studio/car triangles\nRendered frame 420, 29613 real studio/car triangles\nRendered frame 480, 29613 real studio/car triangles\nRendered frame 540, 29613 real studio/car triangles\nRendered frame 600, 29613 real studio/car triangles\nRendered frame 660, 29613 real studio/car triangles\nRendered frame 720, 29613 real studio/car triangles\nRendered frame 780, 29613 real studio/car triangles\nRendered frame 840, 29613 real studio/car triangles\nRendered frame 900, 29613 real studio/car triangles\nRendered frame 960, 29613 real studio/car triangles\nRendered frame 1020, 41820 real studio/car triangles\n2x MSAA host render target passed.\nRenderer state restoration and 800x600 reset passed.\n",
+  "calica-still": "Clean and contaminated HUD state produce pixel-identical images; state fully restored.\nPrize scene: clean/contaminated state pixel identical; full viewport curtain reaches both edges without pillarboxes.\nRendered frame 0, 29613 real studio/car triangles\n2x MSAA host render target passed.\nRenderer state restoration and 800x600 reset passed.\n",
+  "calica-4x3": "Clean and contaminated HUD state produce pixel-identical images; state fully restored.\nPrize scene: clean/contaminated state pixel identical; full viewport curtain reaches both edges without pillarboxes.\nRendered frame 0, 29613 real studio/car triangles\n2x MSAA host render target passed.\nRenderer state restoration and 800x600 reset passed.\n",
+  "calica-wide": "Clean and contaminated HUD state produce pixel-identical images; state fully restored.\nPrize scene: clean/contaminated state pixel identical; full viewport curtain reaches both edges without pillarboxes.\nRendered frame 0, 29613 real studio/car triangles\n2x MSAA host render target passed.\nRenderer state restoration and 800x600 reset passed.\n",
+  "prize-loading": "Clean and contaminated HUD state produce pixel-identical images; state fully restored.\nPrize scene: clean/contaminated state pixel identical; full viewport curtain reaches both edges without pillarboxes.\nRendered frame 0, 0 real studio/car triangles\n2x MSAA host render target passed.\nRenderer state restoration and 800x600 reset passed.\n"
+}

@@ -1,0 +1,4 @@
+#include "../source/Showroom.hpp"
+#include <cstdio>
+#include <set>
+int main(){std::vector<gt4::Entry> entries;for(const auto&t:gt4::prizeTuners){gt4::Entry e;e.id=t.id;e.modelKey=gt4::modelNameKey(t.model);e.paints.resize(8);entries.push_back(e);}std::mt19937 random{0x5245414c};std::set<int> emitted;std::puts("[");for(int i=0;i<1000&&emitted.size()<5;++i){const auto plan=gt4::rollPrize(entries,random);if(!emitted.insert(plan.id).second)continue;const char* model="";for(const auto&t:gt4::prizeTuners)if(t.id==plan.id)model=t.model;std::printf("{\"id\":%d,\"model\":\"%s\",\"style\":%d,\"paintjob\":%d,\"wheel\":%d,\"paint\":%d,\"ability\":%d,\"serial\":%u,\"parts\":[",plan.id,model,plan.style,plan.paintjob,plan.wheel,plan.paint,int(plan.ability),plan.serial);bool comma=false;for(int id:gt4::prizeParts(plan)){std::printf("%s%d",comma?",":"",id);comma=true;}std::printf("]}%s\n",emitted.size()<5?",":"");}std::puts("]");return emitted.size()==5?0:1;}

@@ -1,0 +1,179 @@
+#include "Game.hpp"
+#include "DiagnosticLog.hpp"
+#include "Audio.hpp"
+#include "InstallLock.hpp"
+#include "FilterConfig.hpp"
+#include "HotkeyConfig.hpp"
+#include "KeyboardInput.hpp"
+#include "StudioConfig.hpp"
+#include "NativePreview.hpp"
+#include "NativePrize.hpp"
+#include "NativeLiveries.hpp"
+#include "SearchInput.hpp"
+#include "Controller.hpp"
+#include "PaintSources.hpp"
+#include "MinHook.h"
+#include <cstdio>
+#include <map>
+#include <atomic>
+#include <set>
+#include <filesystem>
+namespace gt4 {
+HMODULE module=nullptr;std::wstring base,logFile,ini;Model state;ReturnFade returnFade;std::unique_ptr<Mesh> prizeMesh;uint32_t prizeSerial=0;bool prizePlayed=false,prizeCaptureTried=false;int prizeModel=-1;std::string prizeProgress;Renderer renderer;Audio audio;game::PauseLease pause;std::vector<Entry> entries,catalog;std::set<int> excluded;ExclusionConfig exclusionConfig;CountryConfig countryConfig;SearchInput searchInput;float mouseSensitivity=1;bool suspended=true;uint64_t frameSerial=0,updatedFrame=UINT64_MAX;StudioConfig studioConfig;TypedReload typedReload;MoveCueGate moveCue;uint64_t statusUntil=0;OpenIntent openIntent;FunctionKeyClaim functionKey;ControllerInput joystick;Controller controller;PadActions sampledPad;Key pauseButton;bool controllerPauseRequested=false;ExitButtons exitButtons;
+struct Cached{std::unique_ptr<Mesh> mesh;double touched=0;};std::map<int,Cached> cache;std::vector<int> failed;std::map<int,uint64_t> pending;uint64_t lastRenderLog=0;double drawTotal=0,drawWorst=0;uint64_t drawSamples=0;
+std::set<int> known;uint64_t lastScan=0;uint32_t scan=0;bool catalogueWarm=false;uintptr_t registryTable=0;uint64_t prev=0;int hotkey=VK_F1;bool ctrl=false;bool initialized=false;std::atomic<bool> scheduled=false;INIT_ONCE init=INIT_ONCE_STATIC_INIT;int result=0;
+DiagnosticLog diagnostics;
+void blockOpenInput();
+void log(const char*s){diagnostics.write(logFile,s);}
+
+void favorites(bool save){const std::wstring file=base+L"GT4Showroom\\favorites.ini";for(auto&e:entries){const auto key=std::to_wstring(e.id);if(save)WritePrivateProfileStringW(L"Favorites",key.c_str(),e.favorite?L"1":L"0",file.c_str());else e.favorite=GetPrivateProfileIntW(L"Favorites",key.c_str(),0,file.c_str())!=0;}}
+void refreshCountryMenu(){
+ std::array<int,countryCount>counts{};
+ for(const auto&e:catalog)if(!excluded.count(e.id)&&(!state.ui.favoritesOnly||e.favorite))++counts[size_t(e.country)];
+ state.ui.menu.setCountries(counts);
+}
+void rebuildCatalogueView(){
+ buildCatalogueView(state,entries,catalog,studioConfig.sort,[&](const Entry&e){return excluded.count(e.id)!=0;},[](const Entry&e){return e.favorite;});
+ pending.clear();refreshCountryMenu();
+}
+void reloadExclusions(){
+ const auto config=readExclusions(ini);exclusionConfig=config;excluded=config.ids;for(const auto&e:catalog)if(config.hides(e))excluded.insert(e.id);const size_t invalid=config.invalid;
+ const auto favoritesFile=base+L"GT4Showroom\\favorites.ini";for(auto&e:catalog)e.favorite=GetPrivateProfileIntW(L"Favorites",std::to_wstring(e.id).c_str(),0,favoritesFile.c_str())!=0;
+ rebuildCatalogueView();char b[160];std::snprintf(b,sizeof(b),"Model filter: %zu excluded IDs, %zu visible registered vehicles, %zu invalid tokens ignored.",excluded.size(),entries.size(),invalid);log(b);
+}
+void reloadSettings(){diagnostics.reload(ini,L"GT4Showroom");state.secretUnlocks=readSecretUnlocks(ini);char secretReport[200];std::snprintf(secretReport,sizeof(secretReport),"SecretUnlocks: %zu IDs, %zu names, %zu invalid tokens; modkit=%d paintjob=%d abilities=%d.",state.secretUnlocks.models.ids.size(),state.secretUnlocks.models.names.size(),state.secretUnlocks.models.invalid,state.secretUnlocks.enableModkit,state.secretUnlocks.enablePaintjob,state.secretUnlocks.enableAbilities);log(secretReport);countryConfig=readCountries(ini);wchar_t exe[32768]{};GetModuleFileNameW(nullptr,exe,32768);const auto names=reloadPaintNames(std::filesystem::path(exe).parent_path());char paintReport[240];std::snprintf(paintReport,sizeof(paintReport),"Paint names: %zu eligible carcols files, %zu named rows; Mod Loader profile %s. Country tokens rejected: %zu.",names.files,names.rows,names.profile.c_str(),countryConfig.invalid);log(paintReport);for(auto&e:catalog)e.country=countryConfig.resolve(e);for(auto&e:entries)e.country=countryConfig.resolve(e);wchar_t text[40]{};GetPrivateProfileStringW(L"GT4Showroom",L"MouseSensitivity",L"1.0",text,40,ini.c_str());const float sensitivity=float(_wtof(text));mouseSensitivity=std::isfinite(sensitivity)?std::clamp(sensitivity,.25f,4.f):1.f;audio.bedVolume=unsigned(std::clamp(int(GetPrivateProfileIntW(L"GT4Showroom",L"MusicVolume",45,ini.c_str())),0,100));audio.cueVolume=unsigned(std::clamp(int(GetPrivateProfileIntW(L"GT4Showroom",L"EffectsVolume",80,ini.c_str())),0,100));audio.enabled=GetPrivateProfileIntW(L"GT4Showroom",L"Sound",1,ini.c_str())!=0;if(!audio.enabled)audio.close();wchar_t zoomText[40]{};GetPrivateProfileStringW(L"GT4Showroom",L"StudioZoom",L"1.15",zoomText,40,ini.c_str());const float zoom=float(_wtof(zoomText));renderer.studioZoom=std::isfinite(zoom)?std::clamp(zoom,.65f,1.75f):1.15f;}
+void close(bool reveal=false){liveryNative::clear(state);prizeNative::release();const bool wasOpen=state.open||pause.owned;if(reveal&&wasOpen)returnFade.begin();else if(!reveal)returnFade.reset();prizeMesh.reset();prizeSerial=0;prizePlayed=false;prizeCaptureTried=false;prizeModel=-1;prizeProgress.clear();if(pause.owned&&!game::menu()&&!game::loading()){if(void*p=game::pad())exitButtons.arm(static_cast<int16_t*>(p));}openIntent.clear();blockOpenInput();suspended=true;state.open=false;state.spawn=false;state.fade.reset();state.searching=false;state.ui.resetTransient();state.ui.favoritesOnly=false;state.ui.countryFilter=-1;audio.stopBed();pause.end();favorites(true);pending.clear();}
+void metadata(Entry& e){e.country=countryConfig.resolve(e);const auto section=std::to_wstring(e.id);const std::wstring file=base+L"GT4Showroom/vehicles.ini";auto get=[&](const wchar_t* key,std::string&value){char out[256]{};const auto k=std::string(key,key+wcslen(key));const auto id=std::to_string(e.id);GetPrivateProfileStringA(id.c_str(),k.c_str(),"",out,256,std::string(file.begin(),file.end()).c_str());if(*out)value=out;};get(L"Name",e.name);get(L"Title",e.title);get(L"Brand",e.brand);get(L"Year",e.year);get(L"Power",e.power);get(L"Torque",e.torque);get(L"Information",e.information);for(size_t i=0;i<e.paints.size();++i){const auto key=L"Paint"+std::to_wstring(i+1);get(key.c_str(),e.paints[i].name);e.paints[i].name=properPaintName(e.paints[i].name);}}
+void discover(){const auto r=gta::registry();if(!r.table)return;if(r.table!=registryTable){if(state.open)close();entries.clear();catalog.clear();known.clear();cache.clear();failed.clear();pending.clear();renderer.reset();scan=0;catalogueWarm=false;registryTable=r.table;}if(scan>=r.count){if(GetTickCount64()-lastScan<3000)return;scan=0;lastScan=GetTickCount64();}const size_t previousCatalog=catalog.size(),previousCount=entries.size();const int selectedId=entries.empty()?-1:entries[std::min(state.selected,entries.size()-1)].id;const uint32_t stop=std::min(r.count,scan+384);for(;scan<stop;++scan){void*mi=gta::modelInfo(int(scan));if(!game::vehicleInfo(mi)||known.count(int(scan)))continue;Entry e=game::entry(int(scan),mi);metadata(e);if(e.kind<0||e.kind>11)continue;const auto key=std::to_wstring(e.id);e.favorite=GetPrivateProfileIntW(L"Favorites",key.c_str(),0,(base+L"GT4Showroom\\favorites.ini").c_str())!=0;known.insert(e.id);catalog.push_back(e);if(exclusionConfig.hides(e))excluded.insert(e.id);else if((!state.ui.favoritesOnly||e.favorite)&&(state.ui.countryFilter<0||int(e.country)==state.ui.countryFilter))entries.push_back(std::move(e));}if(entries.size()!=previousCount){sortCatalogue(entries,studioConfig.sort);for(size_t i=0;i<entries.size();++i)if(entries[i].id==selectedId)state.selected=i;state.scroll=state.scrollTarget();}state.count=entries.size();if(scan>=r.count)catalogueWarm=true;if(catalog.size()!=previousCatalog)refreshCountryMenu(); }
+const Mesh* lookup(int id){if(state.page==Page::Prize&&state.prize.id==id)return prizeMesh.get();if(state.page==Page::Livery&&state.selected<entries.size()&&entries[state.selected].id==id&&state.livery>0&&liveryNative::preview)return liveryNative::preview.get();auto it=cache.find(id);return it!=cache.end()?it->second.mesh.get():nullptr;}
+void refreshSelected(){if(entries.empty()||state.selected>=entries.size())return;auto&e=entries[state.selected];void*mi=gta::modelInfo(e.id);if(!game::vehicleInfo(mi))return;e.classId=game::field<int8_t>(mi,0x4D);e.category=classLabel(e.classId);e.paints=game::paints(mi);const auto h=handling(game::field<uint16_t>(mi,0x4A));e.topSpeed=h.valid?h.limit:-1;e.information=stats(h);metadata(e);liveryNative::scan(state,e.id);}
+void fillCache(){if(entries.empty()){liveryNative::clear(state);return;}
+ if(state.page==Page::Prize){
+  if(!renderer.prizeAssetReady()){state.status="Prize backdrop unavailable. BACKSPACE returns to cars.";return;}
+  if(prizeSerial!=state.prize.serial||prizeModel!=state.prize.id){prizeNative::release();prizeNative::loadGate={};prizeMesh.reset();prizeSerial=state.prize.serial;prizeModel=state.prize.id;prizePlayed=false;prizeCaptureTried=false;prizeProgress.clear();state.status="Loading bonus car...";char info[220];std::snprintf(info,sizeof(info),"Secret unlock selected: model=%d modkit=%d ability=%s serial=%u.",prizeModel,state.prize.modkit,*abilityName(state.prize.ability)?abilityName(state.prize.ability):"NONE",prizeSerial);log(info);}
+  if(!prizeMesh&&!prizeCaptureTried&&state.clock-state.prizeBegan<20){
+   bool ready=prizeNative::stream(state.prize);if(!ready&&state.prize.enablePaintjob&&prizeNative::report.stage==PrizeStage::Paint&&state.clock-state.prizeBegan>8){log("Optional paintjob did not finish in8s; retaining the compatible tuned car with its original paint.");state.prize.enablePaintjob=false;state.prize.remapTxd=-1;ready=prizeNative::stream(state.prize);}const auto& progress=prizeNative::report;char report[240];std::snprintf(report,sizeof(report),"Secret unlock load: model=%d stage=%s missing=%d upgrades=%d/%d paintTxd=%d.",state.prize.id,prizeStageName(progress.stage),progress.missing,progress.loaded,progress.total,progress.txd);if(prizeProgress!=report){prizeProgress=report;log(report);}
+   if(ready){
+    {char kit[220];std::snprintf(kit,sizeof(kit),"Resolved prize: model=%d native-compatible parts=%zu paintjob=%d paintTxd=%d; standalone streaming flags=%d.",state.prize.id,state.prize.upgrades.size(),state.prize.enablePaintjob?state.prize.paintjob:-1,state.prize.remapTxd,prizeStreamingFlags);log(kit);}
+    prizeCaptureTried=true;std::unique_ptr<Mesh> mesh;
+    if(state.prize.modkit||state.prize.enablePaintjob){prizeNative::preparing=&state.prize;const auto& paints=entries[state.selected].paints;prizeNative::preparingPaint=paints.empty()?nullptr:&paints[std::min(size_t(state.prize.paint),paints.size()-1)];prizeNative::prepared=false;mesh=nativePreview::snapshot(state.prize.id,prizeNative::preparePreview);prizeNative::preparing=nullptr;prizeNative::preparingPaint=nullptr;if(!prizeNative::prepared)mesh.reset();}
+    else mesh=nativePreview::snapshot(state.prize.id);
+    if(mesh){{char detail[160];std::snprintf(detail,sizeof(detail),"Prize capture: %d/%d selected visual upgrades observed on the private native vehicle.",prizeNative::installedVisuals,prizeNative::expectedVisuals);log(detail);}prizeMesh=std::move(mesh);state.prizeReady=true;state.prizeBegan=state.clock;state.status.clear();prizeNative::loadGate={};audio.startPrize();prizePlayed=true;log("Secret unlock preview ready; confirmation available after the reveal.");}
+    else{state.status="Vehicle preview unavailable. BACKSPACE returns to cars.";log("Secret unlock capture failed after native loading completed; private preview preparation or geometry unavailable.");state.cue=Cue::Error;}
+   }
+   if(pause.owned)game::pumpStreaming();
+  }
+  if(!state.prizeReady&&!prizeCaptureTried&&state.clock-state.prizeBegan>=20){prizeCaptureTried=true;state.status=prizeNative::report.stage==PrizeStage::Model?"Vehicle assets unavailable. BACKSPACE returns to cars.":"Tuning assets unavailable. BACKSPACE returns to cars.";log(("Secret unlock timed out: "+prizeProgress).c_str());state.cue=Cue::Error;}
+  return;
+ }
+ if(prizePlayed){prizeNative::release();audio.endPrize(true);prizePlayed=false;prizeMesh.reset();prizeSerial=0;}
+liveryNative::update(state,entries[state.selected]);
+D3DVIEWPORT9 vp{0,0,1280,720,0,1};if(auto*d=game::device())d->GetViewport(&vp);const Carousel layout(float(vp.Width),float(vp.Height),state,entries.size());const int start=layout.first,end=layout.last;std::vector<int>want{entries[state.selected].id};for(int i=start;!state.ui.cinematic.active&&i<end;++i)if(entries[i].id!=want[0])want.push_back(entries[i].id);for(int i=std::max(0,start-2);!state.ui.cinematic.active&&i<std::min(int(entries.size()),end+2);++i)if(std::find(want.begin(),want.end(),entries[i].id)==want.end())want.push_back(entries[i].id);for(auto it=pending.begin();it!=pending.end();){if(std::find(want.begin(),want.end(),it->first)==want.end())it=pending.erase(it);else ++it;}const auto tick=GetTickCount64();bool extracted=false;for(int id:want){auto it=cache.find(id);if(it!=cache.end()){it->second.touched=state.clock;continue;}if(std::find(failed.begin(),failed.end(),id)!=failed.end())continue;if(!gta::modelReady(id)){auto pendingIt=pending.emplace(id,tick).first;if(tick-pendingIt->second>20000){failed.push_back(id);pending.erase(id);char b[160];std::snprintf(b,sizeof(b),"Preview streaming timed out for model %d after 20 seconds.",id);log(b);}else game::queue(id);continue;}if(extracted)continue;extracted=true;pending.erase(id);auto mesh=nativePreview::snapshot(id);static std::set<int> wheelReports;if(nativePreview::lastModel==id&&wheelReports.size()<1000&&wheelReports.insert(id).second&&(nativePreview::lastSources||id==554)){char report[256];std::snprintf(report,sizeof(report),"VehFuncs preview model %d: wheel source groups %d -> %d; wheel matrix helper=%d; verified frame visibility=%d; native captures=%llu.",id,nativePreview::lastSources,nativePreview::lastRemaining,nativePreview::wheelMatrices,nativePreview::visibility.verified,static_cast<unsigned long long>(nativePreview::prepared));log(report);}static bool nativeFailureLogged=false;if(nativePreview::failedPath&&!nativeFailureLogged){nativeFailureLogged=true;log("Native vehicle preview callback was not reached; raw-model fallback active. Check other render hooks / keep this log.");}if(mesh)cache.emplace(id,Cached{std::move(mesh),state.clock});else{failed.push_back(id);char b[160];std::snprintf(b,sizeof(b),"Preview unavailable for loaded model %d (native-only or invalid geometry).",id);log(b);}}while(cache.size()>24){auto old=std::min_element(cache.begin(),cache.end(),[](const auto&a,const auto&b){return a.second.touched<b.second.touched;});cache.erase(old);}if(pause.owned)game::pumpStreaming();}
+Key openKey,left,right,up,down,enter,backspace,back,favorite,addFavorite,mouseLeft,mouseRight,searchKey;
+void blockOpenInput(){openKey.blockUntilRelease();}
+bool key(int v){return (GetAsyncKeyState(v)&0x8000)!=0||nativeKeyDown(reinterpret_cast<void*>(0xB73190),v);}
+game::OpenState openState(bool focus){return game::openState(focus);}
+void logOpenState(const char* event,bool focus){const auto g=openState(focus);char b[480];std::snprintf(b,sizeof(b),"%s: key=%d ctrl=%d focus=%d gameState=%d loadingData=%d startLoadRequest=%d menu=%d codePause=%d userPause=%d alive=%d cutscene=%d enex=%d catalogue=%zu padFrames=%llu frontendRead=%d rawMenu=%u rawLoading=%u inVehicle=%d.",event,hotkey,ctrl,g.focus,g.gameState,g.loadingData,g.frontend.startLoadRequested(),g.menu,g.codePause,g.userPause,g.alive,g.cutscene,g.enex,catalog.size(),static_cast<unsigned long long>(frameSerial),g.frontend.valid,unsigned(g.frontend.menuByte),unsigned(g.frontend.loadingByte),g.inVehicle);log(b);}
+HWND gameWindow(){auto*d=game::device();D3DDEVICE_CREATION_PARAMETERS cp{};if(d&&SUCCEEDED(d->GetCreationParameters(&cp))&&IsWindow(cp.hFocusWindow))return cp.hFocusWindow;return nullptr;}
+bool focused(){DWORD pid=0;HWND window=GetForegroundWindow();return window&&GetWindowThreadProcessId(window,&pid)&&pid==GetCurrentProcessId();}
+void blockActions(){searchInput.quarantine();searchKey.blockUntilRelease();state.dragging=false;for(Key*k:{&left,&right,&up,&down,&enter,&backspace,&back,&favorite,&addFavorite,&mouseLeft,&mouseRight})k->blockUntilRelease();}
+void reloadAll(){
+ if(state.page==Page::Prize){prizeNative::release();state.fade.reset();state.spawn=false;state.leavePrize();}
+ // Flush the Windows profile cache so an external editor's latest file is read.
+ WritePrivateProfileStringW(nullptr,nullptr,nullptr,ini.c_str());
+ const auto keys=readHotkey(ini);hotkey=keys.vk;ctrl=keys.ctrl;openKey.blockUntilRelease();
+ studioConfig=readStudioConfig(ini);studioConfig.sort=menuSort(state.ui.sortMode);reloadSettings();
+ for(auto&e:catalog){void*mi=gta::modelInfo(e.id);if(!game::vehicleInfo(mi))continue;const bool favorite=e.favorite;e=game::entry(e.id,mi);e.favorite=favorite;metadata(e);}
+ reloadExclusions();refreshSelected();
+ if(state.open){if(entries.empty()&&!state.ui.favoritesOnly)close();else if(!entries.empty()){state.paint=std::min(state.paint,entries[state.selected].paints.empty()?size_t(0):entries[state.selected].paints.size()-1);if(audio.enabled&&!audio.ready()){audio.init(gameWindow(),base+L"GT4Showroom/assets/audio/");audio.start();}state.status="Settings reloaded";statusUntil=GetTickCount64()+2000;}}
+ char message[160];std::snprintf(message,sizeof(message),"GTSPAWN settings reloaded: key=%d ctrl=%d active menu order=%d descending=%d SpawnInside=%d; selected model preserved.",hotkey,ctrl,int(studioConfig.sort.by),studioConfig.sort.descending,studioConfig.enterVehicle);log(message);
+ if(keys.invalid||studioConfig.invalidSort)log("Invalid opening key used its documented fallback.");
+}
+using Void=void(__cdecl*)();Void originalProcess=nullptr,originalReset=nullptr,originalVideo=nullptr;using EndCamera=void*(__cdecl*)(void*);EndCamera originalRender=nullptr;using EntityRender=void(__thiscall*)(void*);EntityRender originalEntityRender=nullptr;
+void __fastcall entityRender(void*self,void*){if(!nativePreview::onEntityRender(self))originalEntityRender(self);}
+using Frontend=void(__thiscall*)(void*);Frontend originalFrontend=nullptr;using PadUpdate=void(__thiscall*)(void*,int);PadUpdate originalPadUpdate=nullptr;
+void __fastcall padUpdate(void*self,void*,int index){
+ bool claimView=false;
+ if(index==0){
+  ++frameSerial;const auto tick=GetTickCount64();
+  joystick.capture(static_cast<uint8_t*>(self)+0xA8);
+  sampledPad=controller.poll(joystick,tick);
+  const bool focus=focused();
+  if(pauseButton.poll(sampledPad.pause,tick)&&state.open&&focus&&!game::loading())controllerPauseRequested=true;
+  claimView=sampledPad.view&&(state.open||openIntent.pending(tick)||openState(focus).ready());
+ }
+ originalPadUpdate(self,index);
+ // Claim only accepted View/Select input, before native world camera controls.
+ if(index==0&&claimView)game::field<int16_t>(self,0x1A)=0;
+}
+
+#include "StudioControls.inl"
+void updateStudio(){
+ if(updatedFrame==frameSerial)return;updatedFrame=frameSerial;
+ const uint64_t tick=GetTickCount64();const double dt=prev&&tick-prev<=250?double(tick-prev)/1000:0;prev=tick;const bool focus=focused();
+ const auto pad=sampledPad;const auto gate=openState(focus);const bool blocked=gate.blocked();if(!state.open&&returnFade.active()){if(game::loading()||!gate.alive)returnFade.reset();else if(focus&&!gate.menu&&!gate.codePause&&!gate.userPause)returnFade.step(dt);}
+ if(!state.busy()&&typedReload.poll([](int v){return key(v);},tick,!state.searching&&focus&&!gate.menu&&!gate.codePause&&gate.gameState==9&&!gate.loadingData&&!gate.cutscene&&!key(VK_CONTROL)&&!key(VK_MENU)))reloadAll();
+ if(statusUntil&&tick>=statusUntil){state.status.clear();statusUntil=0;}
+ // Sample releases even while ineligible. A blocked press is logged and discarded,
+ // never silently swallowed or carried forward out of menus/loading.
+ const bool physicalOpen=studioOpenInput(key(hotkey),state.open,pad);const bool pressed=openKey.poll(physicalOpen&&(!state.searching||(hotkey>=VK_F1&&hotkey<=VK_F24)),tick);
+ if(blocked){blockActions();openIntent.clear();}
+ static bool first=true,readyLogged=false,catalogueLogged=false;
+ if(first){first=false;logOpenState("First studio update",focus);}
+ if(gate.gameState==9&&!gate.loadingData&&gate.alive&&(state.open||!catalogueWarm||openIntent.pending(tick))){discover();if(!catalogueLogged&&!catalog.empty()){catalogueLogged=true;logOpenState("Vehicle catalogue available",focus);}}
+ if(gate.ready()&&!readyLogged){readyLogged=true;logOpenState("Opening input ready",focus);}
+ if(pressed){logOpenState(blocked?"Open key rejected while suspended":"Open key detected",focus);if(!blocked){if(state.open){state.exit();}else openIntent.request(tick);}}
+ if(!state.open&&!returnFade.active()&&openIntent.pending(tick)&&gate.ready()&&!catalog.empty()){
+  reloadSettings();reloadExclusions();openIntent.clear();
+  if(!entries.empty()){
+   for(auto&e:entries){void*mi=gta::modelInfo(e.id);if(game::vehicleInfo(mi))e.paints=game::paints(mi);}
+   state.begin(entries.size());refreshSelected();failed.clear();pending.clear();lastRenderLog=tick;drawTotal=drawWorst=0;drawSamples=0;pause.begin();suspended=true;blockActions();
+   audio.init(gameWindow(),base+L"GT4Showroom/assets/audio/");audio.start();if(audio.enabled&&!audio.ready())log("One or more audio clips could not be loaded; check asset folder / DirectSound availability.");
+   char b[192];std::snprintf(b,sizeof(b),"Opened studio with %zu visible / %zu registered vehicles; palette 0x%08lX; runtime scan %lu.",entries.size(),catalog.size(),static_cast<unsigned long>(gta::vehiclePalette()),static_cast<unsigned long>(scan));log(b);
+  }else log("No visible vehicle models; check [ExcludedModels] in GT4Showroom.ini.");
+ }
+ if(openIntent.until&&!openIntent.pending(tick)){char b[192];std::snprintf(b,sizeof(b),"Open request expired: userPause=%d codePause=%d menu=%d loading=%d enex=%d catalogue=%zu.",game::userPaused(),game::codePaused(),game::menu(),game::loading(),game::at<int>(0x96A7CC),catalog.size());log(b);openIntent.clear();}
+ if(state.open){
+  if(game::loading()||!game::player()||game::field<float>(game::player(),0x540)<=0||gate.inVehicle||gate.cutscene)close();
+  else{
+   pause.maintain();const bool active=focus&&!game::menu()&&!game::codePaused();
+   if(active&&!suspended){
+    state.step(dt);D3DVIEWPORT9 vp{0,0,1280,720,0,1};if(auto*d=game::device())d->GetViewport(&vp);
+    const auto oldSelected=state.selected;const auto oldPrize=state.prize.serial;
+    interaction(pad,float(vp.Width),float(vp.Height),dt,tick);
+    if(state.page!=Page::Prize&&(!prizeNative::heldTxds.empty()||!prizeNative::heldModels.empty()))prizeNative::release();if(state.selected!=oldSelected||state.prize.serial!=oldPrize)refreshSelected();if(state.page==Page::Prize)state.paint=size_t(state.prize.paint);
+    fillCache();
+    if(state.fade.ready(state.clock)&&state.fade.action==CloseAction::Exit){close(true);}
+    if(state.open&&state.fade.ready(state.clock)&&state.fade.action==CloseAction::Spawn){state.spawn=false;std::string error;const Mesh*m=lookup(entries[state.selected].id);float clearance=m?sideSpawnDistance(m->low.x,m->high.x):2.6f;void*mi=gta::modelInfo(entries[state.selected].id);void*col=mi?game::field<void*>(mi,0x14):nullptr;if(col){const V3 low=game::field<V3>(col,0),high=game::field<V3>(col,0xC);clearance=sideSpawnDistance(low.x,high.x);}
+     const bool assetsReady=state.page==Page::Prize?prizeNative::stream(state.prize):liveryNative::ready(state);if(!assetsReady){if(pause.owned)game::pumpStreaming();if(state.clock-state.fade.began>10){state.recovered();blockActions();state.status=state.page==Page::Prize?"Prize tuning assets could not be loaded. Try REALBIG again.":"Livery texture could not be loaded. Choose No Livery or try again.";state.cue=Cue::Error;}}else{void* spawned=nullptr;if(!excluded.count(entries[state.selected].id)&&(spawned=game::spawn(entries[state.selected],state.paint,error,clearance,studioConfig.enterVehicle))){if(state.page!=Page::Prize)liveryNative::apply(spawned,state);if(state.page==Page::Prize){
+ const bool tuned=prizeNative::tune(spawned,state.prize);char detail[260];std::snprintf(detail,sizeof(detail),"Prize claim tuning: model=%d visual upgrades=%d/%d preparation=%d; ability is independent of kit/paintjob.",state.prize.id,prizeNative::installedVisuals,prizeNative::expectedVisuals,tuned);log(detail);
+ const bool applied=prizeNative::ability(spawned,state.prize);std::snprintf(detail,sizeof(detail),"Prize ability: %s tracked=%d reference=%d flags=0x%08X mass=%.1f turnMass=%.1f handling=%p active=%zu.",*abilityName(state.prize.ability)?abilityName(state.prize.ability):"NONE",applied,prizeNative::abilityBackend.reference(uintptr_t(spawned)),game::field<uint32_t>(spawned,0x40),game::field<float>(spawned,0x8C),game::field<float>(spawned,0x90),game::field<void*>(spawned,0x384),prizeNative::abilities.size());log(detail);
+ }log("Vehicle spawned; leaving studio.");if(!error.empty())log(error.c_str());state.open=false;}
+     else{if(error.empty())error="Spawn unavailable for this model";state.recovered();blockActions();state.status=error;log(error.c_str());state.cue=Cue::Error;}}}
+    if(state.cue!=Cue::None){if(state.cue!=Cue::Move||moveCue.allow(tick))audio.cue(state.cue);state.cue=Cue::None;}if(!state.open&&pause.owned)close(true);
+   }else blockActions();
+   suspended=!active;audio.focus(active);
+  }
+ }else audio.focus(focus&&!game::menu());
+ if(pressed&&!blocked)functionKey.claim(hotkey);functionKey.apply(reinterpret_cast<void*>(0xB73190),[](int vk){return key(vk);});
+ if(exitButtons.mask){if(void*p=game::pad())exitButtons.filter(static_cast<int16_t*>(p));}
+ audio.update();
+}
+void __cdecl process(){static bool first=true;if(first){first=false;log("Native game-process callback reached.");}if(!game::loading())prizeNative::abilities.maintain(prizeNative::abilityBackend);originalProcess();if(!game::loading())prizeNative::abilities.maintain(prizeNative::abilityBackend);updateStudio();}
+void __fastcall frontend(void*self,void*){
+ // Native pause owns Esc. Run it first, then preserve the showroom's pause lease.
+ static bool first=true;if(first){first=false;log("Native frontend callback reached.");}{const bool pulse=controllerPauseRequested&&state.open&&focused()&&!game::loading();controllerPauseRequested=false;ScopedEscapePulse escape(reinterpret_cast<void*>(0xB73190),reinterpret_cast<void*>(0xB72F20),pulse);originalFrontend(self);}updateStudio();if(state.open)pause.maintain();
+}
+void* __cdecl render(void*camera){if(state.open&&!game::menu()&&!game::codePaused()&&focused()&&camera==game::at<void*>(0xC1703C)){auto*d=game::device();if(d){D3DVIEWPORT9 vp{};d->GetViewport(&vp);if(renderer.draw(d,vp.Width,vp.Height,state,entries,lookup)){state.presented();if(diagnostics.enabled.load(std::memory_order_relaxed)){drawTotal+=renderer.cpuMs;drawWorst=std::max(drawWorst,renderer.cpuMs);++drawSamples;}}if(diagnostics.enabled.load(std::memory_order_relaxed)&&GetTickCount64()-lastRenderLog>=5000){char b[240];std::snprintf(b,sizeof(b),"Renderer: %llu draws, %llu triangles, %llu new GPU uploads; submission avg %.2f ms / max %.2f ms, %zu cached meshes, %zu pending (CPU submission only).",static_cast<unsigned long long>(renderer.drawCalls),static_cast<unsigned long long>(renderer.triangles),static_cast<unsigned long long>(renderer.uploads),drawSamples?drawTotal/drawSamples:0,drawWorst,cache.size(),pending.size());log(b);lastRenderLog=GetTickCount64();drawTotal=drawWorst=0;drawSamples=0;}}}if(!state.open&&returnFade.active()&&!game::menu()&&!game::codePaused()&&focused()&&camera==game::at<void*>(0xC1703C)){if(auto*d=game::device())renderer.veil(d,returnFade.opacity());}return originalRender(camera);}
+void __cdecl reset(){prizeNative::abilities.clear(prizeNative::abilityBackend);close();entries.clear();catalog.clear();known.clear();cache.clear();failed.clear();pending.clear();scan=0;catalogueWarm=false;registryTable=0;renderer.reset();audio.close();originalReset();}
+void __cdecl video(){liveryNative::clear(state);renderer.reset();cache.clear();failed.clear();pending.clear();originalVideo();}
+std::vector<void*> hooks;
+template<class F,class O> bool add(uintptr_t address,F fn,O&original){uintptr_t end=0;if(!qb::readableCode(address,5))return false;const uint8_t first=game::at<uint8_t>(address);if((first==0xE9&&!qb::validateEntryJump(address,end))||first==0xEB||first==0xCC)return false;const auto r=MH_CreateHook(reinterpret_cast<void*>(address),reinterpret_cast<void*>(fn),reinterpret_cast<void**>(&original));if(r!=MH_OK)return false;hooks.push_back(reinterpret_cast<void*>(address));return true;}
+int initialize(){wchar_t path[MAX_PATH]{};GetModuleFileNameW(module,path,MAX_PATH);base=path;base.resize(base.find_last_of(L"\\/")+1);logFile=base+L"GT4Showroom.log";ini=base+L"GT4Showroom.ini";diagnostics.reload(ini,L"GT4Showroom");if(!game::supported()){log("Unsupported executable. Requires classic SA 1.0 US Hoodlum/Compact Win32. No hooks installed.");return 0;}HMODULE pin;GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_PIN,reinterpret_cast<LPCWSTR>(&initialize),&pin);studioConfig=readStudioConfig(ini);state.ui.sortMode=std::clamp(int(GetPrivateProfileIntW(L"View",L"SortMode",0,(base+L"GT4Showroom\\favorites.ini").c_str())),0,5);studioConfig.sort=menuSort(state.ui.sortMode);const auto keys=readHotkey(ini);hotkey=keys.vk;ctrl=keys.ctrl;if(keys.migrated)log("Legacy shipped Ctrl+G binding upgraded to F1 without modifying the INI. Set OpenKey explicitly to override.");if(keys.invalid)log("Invalid opening key; using F1 without Ctrl.");reloadSettings();reloadExclusions();const std::filesystem::path fontPath=std::filesystem::path(base)/L"GT4Showroom/assets/fonts/Michroma-Regular.ttf";state.random.seed(uint32_t(GetTickCount64())^GetCurrentProcessId());if(!renderer.loadPrize((std::filesystem::path(base)/L"GT4Showroom/assets/prize/congratulations.rgba").wstring()))log("Static prize backdrop unavailable; check the complete packaged asset folder.");if(!renderer.loadFont(fontPath.wstring(),L"Michroma"))log("Bundled font unavailable; using fallback. Check the asset folder.");else log("Bundled font loaded privately; no Windows installation needed.");if(!renderer.loadPrizeNameFont((fontPath.parent_path()/L"LiberationSans-Bold.ttf").wstring()))log("Bundled bold prize-name font unavailable; using Arial Bold fallback.");modding::InstallLock lock;if(!lock.acquired||MH_Initialize()!=MH_OK){log("Hook initialization unavailable.");return 0;}bool ok=add(0x53BEE0,process,originalProcess)&&add(0x541C40,padUpdate,originalPadUpdate)&&add(0x7EE180,render,originalRender)&&add(0x57B440,frontend,originalFrontend)&&add(0x53BCF0,reset,originalReset)&&add(0x7F7F70,video,originalVideo)&&add(0x534310,entityRender,originalEntityRender);if(ok){for(auto*h:hooks)if(MH_QueueEnableHook(h)!=MH_OK)ok=false;if(ok&&MH_ApplyQueued()!=MH_OK)ok=false;}if(!ok){for(auto*h:hooks){MH_DisableHook(h);MH_RemoveHook(h);}hooks.clear();log("Hook transaction refused; owned hooks rolled back.");return 0;}initialized=true;log("GT4Showroom 2.2.0 initialized. Complete controller routes, native Start pause pulse, Reload settings sidebar, cached country availability and South Korea label. EnableLog is opt-in; GTSPAWN reloads it. Available-country filter submenu, model ID sort, actual livery texture selection after color, empty marker/count fix, browse-only pointer docking. Favorites, in-game context sorting, cinematic orbit/zoom, controller keyboard, pointer docking and high-detail preview policy.  Redesigned gold pointer; broad silver thumbnail peak pulses smoothly and is hidden on paint selection. REALBIG: live add-on modkits, independent EnablePaintjob, retained TXD requests, pooled per-car physical abilities without handling-pointer replacement; idle catalogue scans stop after warmup; restored close-frontal prize reveal and static raised-floor studio.  SecretUnlocks model IDs/names, optional kits/abilities and native upgrade/TXD readiness; loading backdrop stays visible. Smooth 0.22s entry / 0.16s exit + 0.12s game reveal, REALBIG tuned prize scene, ENTHUSIA motion command, fitted thumbnails, country badges and full carcols names. Backtick model search, unified ID/name exclusions including trains, close side-on spawns, native wheel matrix/visibility preparation. Default F1; OpenKey configurable. Enter/Space confirm; Backspace paint-to-cars / cars-to-exit; Esc native pause. Corrected frontend base 0xBA6748; menu 0xBA67A4 / loading 0xBA67A8.");return 1;}
+BOOL CALLBACK once(PINIT_ONCE,PVOID,PVOID*){result=initialize();return TRUE;}
+DWORD WINAPI worker(LPVOID){InitOnceExecuteOnce(&init,once,nullptr,nullptr);return 0;}
+void schedule(){if(scheduled.exchange(true))return;HANDLE t=CreateThread(nullptr,0,worker,nullptr,0,nullptr);if(t)CloseHandle(t);else scheduled=false;}
+}
+extern "C" __declspec(dllexport) void __stdcall InitializeASI(){gt4::schedule();}
+extern "C" __declspec(dllexport) int __stdcall GT4_Init(){InitOnceExecuteOnce(&gt4::init,gt4::once,nullptr,nullptr);return gt4::result;}
+BOOL WINAPI DllMain(HINSTANCE h,DWORD reason,LPVOID){if(reason==DLL_PROCESS_ATTACH){gt4::module=h;DisableThreadLibraryCalls(h);gt4::schedule();}return TRUE;}

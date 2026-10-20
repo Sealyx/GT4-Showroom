@@ -1,0 +1,12 @@
+Rendered 0, mode favorite=0 cinematic=0 menu=0 search=0
+Rendered 60, mode favorite=0 cinematic=0 menu=1 search=0
+Rendered 120, mode favorite=0 cinematic=0 menu=1 search=0
+Rendered 180, mode favorite=0 cinematic=0 menu=1 search=0
+Rendered 240, mode favorite=0 cinematic=0 menu=0 search=1
+Rendered 300, mode favorite=0 cinematic=0 menu=0 search=0
+Rendered 360, mode favorite=0 cinematic=0 menu=0 search=0
+Rendered 420, mode favorite=0 cinematic=1 menu=0 search=0
+Rendered 480, mode favorite=0 cinematic=0 menu=0 search=0
+Rendered 540, mode favorite=0 cinematic=0 menu=0 search=0
+Rendered 600, mode favorite=0 cinematic=0 menu=0 search=0
+PASS: shared production UI/renderer preview; 660 frames, CPU submission 1.973 mean / 522.029 max ms. Native GTA/model plugins and physical controller hardware are not executed.

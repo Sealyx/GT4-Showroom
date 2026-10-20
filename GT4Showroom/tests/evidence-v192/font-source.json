@@ -1,0 +1,9 @@
+{
+  "release": "Liberation Fonts 2.1.5",
+  "url": "https://github.com/liberationfonts/liberation-fonts/releases/tag/2.1.5",
+  "download": "https://github.com/liberationfonts/liberation-fonts/files/7261482/liberation-fonts-ttf-2.1.5.tar.gz",
+  "files": {
+    "LiberationSans-Bold.ttf": "788abee4c806d660e8aee46689dd8540cd4bb98da03dcc9d171ce3efd99a9173",
+    "LiberationSans-OFL.txt": "93fed46019c38bbe566b479d22148e2e8a1e85ada614accb0211c37b2c61c19b"
+  }
+}
