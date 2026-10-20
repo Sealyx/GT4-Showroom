@@ -1,5 +1,7 @@
 # GT4 Showroom
 
+![GT4 Showroom Preview](previews/preview.gif)
+
 Gran Turismo 4 inspired vehicle showroom and spawner for classic GTA San Andreas.
 
 ## Features
