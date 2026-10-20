@@ -109,7 +109,7 @@ installed/registered correctly. VehFuncs/IVF remain optional vehicle dependencie
 Not for Definitive Edition, mobile or unverified executable editions.
 
 INSTALL / UPDATE / REMOVE
-Quit GTA before replacing the ASI. For a complete existing 1.9.3 or 2.0.0 install, use
+Quit GTA before replacing the ASI. For a complete existing2.1.1 install, use
 the update ZIP: replace GT4Showroom.asi and read/merge GT4Showroom.example.ini.
 Do not rename that example over your customized INI unless you intend to reset
 settings. Existing assets, vehicles.ini and favorites.ini stay in place.
@@ -119,10 +119,10 @@ Remove/disable this mod's directory while GTA is closed to uninstall.
 No installed game files were changed during development of this release.
 
 VALIDATION / LIMITS
-Warnings-as-errors Win32 build; 17 executable suites and separate-DLL render
+Warnings-as-errors Win32 build;19 executable suites and separate-DLL render
 chains passed. Real D3D9 production-renderer checks: hostile/clean state images
 match, state restored, device reset, 2x MSAA and 800x600/1280x720/1920x1080/
-2560x1080/5120x1440 layouts. Fresh 20-second 1280x720 animated preview reuses the
+2560x1080/5120x1440 layouts. Fresh22-second 1280x720 animated preview reuses the
 actual production input/state/renderer code with private local mesh fixtures.
 It is an offline showcase, not GTA gameplay. Fixture stats/colors are authored
 preview data, not a readout of your live installed handling or palette.
@@ -131,9 +131,9 @@ and other vehicle originals are not redistributed. The unequal wheel fixture
 assemblies reflect authored data; native VehFuncs wheel preparation is retained.
 No physical controller, native plugin integration, game FPS or whole mod-list
 stability claim. Please retest the supplied Camaro and your controller in GTA.
-The predecessor 1.9.3 was user-confirmed tested; 2.1.1 starts Untested.
+The prior2.1.1 baseline was accepted as Finished; new2.2.0 starts Untested.
 
-Logging hotfix: [GT4Showroom] EnableLog=0 is the default, also when absent in an older INI. Set EnableLog=1 and type GTSPAWN outside search to append diagnostics. Disable and reload to stop writes. Existing logs are preserved. New 2.1.1 is untested in GTA.
+Logging hotfix: [GT4Showroom] EnableLog=0 is the default, also when absent in an older INI. Set EnableLog=1 and type GTSPAWN outside search to append diagnostics. Disable and reload to stop writes. Existing logs are preserved. New2.2.0 is untested in GTA.
 
 2.2.0 FINAL CHANGES
 All player actions have controller routes, including opening/sidebar/search/reload.
