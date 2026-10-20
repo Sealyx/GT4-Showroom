@@ -1,7 +1,0 @@
-Prize audio: Gran Turismo 4 Menu Soundtrack - Win A Car.mp3
-Source: https://archive.org/details/gran-turismo-4-Sound-Track-Game-Rip
-MP3 SHA-256: ea5b078a4c7410abf2c78fe0f2df6809f8806cf343bee278a58791486cc38f45
-Converted with FFmpeg to 44.1kHz stereo PCM16, plus 280ms leading alignment silence.
-Separate clean game-rip cue, not audio extracted from the supplied video.
-MusicVolume controls it. The audio remains the property of its respective owners.
-Research and signal-comparison details: tools/prize-assets.json/prize-research.md.
