@@ -20,7 +20,7 @@ Gran Turismo 4 inspired vehicle showroom and spawner for classic GTA San Andreas
 
 Requires **classic GTA San Andreas PC 1.0 US Hoodlum/Compact, 32-bit**, Windows, DirectX 9 and a working **32-bit ASI loader**. Mod Loader is recommended. Other executable editions, mobile and Definitive Edition are unsupported.
 
-Close GTA. Copy the contents of `install` into one Mod Loader folder, such as `modloader/GT4 Showroom`. Keep `GT4Showroom.asi`, `GT4Showroom.ini` and the `GT4Showroom` asset folder together. With a loader that scans the game root, the same three items can be placed together there instead.
+Close GTA. Copy the contents of `install` or download it from `Releases` into one Mod Loader folder, like `modloader/GT4 Showroom`. Always keep `GT4Showroom.asi`, `GT4Showroom.ini` and the `GT4Showroom` asset folder together, now you're good.
 
 When updating, replace the ASI and retain your customized INI, `vehicles.ini`, assets and personal `favorites.ini`. The update ZIP includes an example INI to merge. Disable the mod folder while GTA is closed to uninstall.
 
