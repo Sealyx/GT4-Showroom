@@ -6,6 +6,8 @@
 
 Gran Turismo 4 inspired vehicle showroom and spawner for classic GTA San Andreas.
 
+[![Video Demonstration](https://img.youtube.com/vi/VIDEO_ID/hqdefault.jpg)](https://www.youtube.com/watch?v=9CMLVn978-E)
+
 ## Features
 
 - Animated 3D showroom with installed and add-on vehicles, full paint names and native livery texture previews.
