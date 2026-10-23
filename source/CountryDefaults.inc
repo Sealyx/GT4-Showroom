@@ -185,8 +185,8 @@ inline constexpr CountryDefault countryDefaults[]={
  {582,"newsvan",Country::USA},
  {583,"tug",Country::USA},
  {584,"petrotr",Country::USA},
- {585,"emperor		emperor",Country::Japan},
- {586,"wayfarer	wayfarer",Country::Japan},
+ {585,"emperor",Country::Japan},
+ {586,"wayfarer",Country::Japan},
  {587,"euros",Country::Japan},
  {588,"hotdog",Country::USA},
  {589,"club",Country::Germany},
@@ -214,3 +214,4 @@ inline constexpr CountryDefault countryDefaults[]={
  {611,"utiltr1",Country::USA},
 };
 static_assert(sizeof(countryDefaults)/sizeof(countryDefaults[0])==212);
+

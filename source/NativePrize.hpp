@@ -48,7 +48,7 @@ inline bool tune(void* vehicle,const PrizePlan& plan,bool preview=false){
  const auto parts=prizeParts(plan);for(int id:dependencies(plan))if(!upgradeReady(id))return false;
  expectedVisuals=installedVisuals=0;
  for(int id:parts){uint16_t flags=0;void* mi=gta::modelInfo(id);if(!mi||!gta::read(uintptr_t(mi)+0x12,flags))continue;const bool effect=tuningEffect(tuningSlot(flags));if(!effect)++expectedVisuals;if(!preview||!effect)reinterpret_cast<void(__thiscall*)(void*,int)>(0x6E3290)(vehicle,id);}
- if(plan.enablePaintjob&&paintTxd(plan)>=0&&txdReady(paintTxd(plan)))reinterpret_cast<void(__thiscall*)(void*,int)>(0x6D0C00)(vehicle,plan.paintjob);
+ if(plan.enablePaintjob&&paintTxd(plan)>=0&&txdReady(paintTxd(plan))){game::preserveRemapColors(vehicle);reinterpret_cast<void(__thiscall*)(void*,int)>(0x6D0C00)(vehicle,plan.paintjob);}
  observed.clear();if(void* clump=game::field<void*>(vehicle,0x18))reinterpret_cast<void*(__cdecl*)(void*,void*(__cdecl*)(void*,void*),void*)>(0x749B70)(clump,observeAtomic,nullptr);
  for(int id:parts){uint16_t flags=0;void* info=gta::modelInfo(id);if(info&&gta::read(uintptr_t(info)+0x12,flags)&&!tuningEffect(tuningSlot(flags))&&observed.count(info))++installedVisuals;}
  return !expectedVisuals||installedVisuals>0;
@@ -64,5 +64,5 @@ struct AbilityBackend {
 inline AbilityBackend abilityBackend;inline PrizeAbilities<AbilityBackend> abilities;
 inline bool ability(void* vehicle,const PrizePlan& plan){return abilities.add(uintptr_t(vehicle),plan.id,plan.ability,abilityBackend);}
 inline const PrizePlan* preparing=nullptr;inline const Paint* preparingPaint=nullptr;inline bool prepared=false;
-inline void preparePreview(void* vehicle){prepared=preparing&&tune(vehicle,*preparing,true);if(prepared&&preparingPaint&&!(preparing->enablePaintjob&&paintTxd(*preparing)>=0))for(int i=0;i<4;++i)game::field<uint8_t>(vehicle,0x434+size_t(i))=preparingPaint->ids[i];}
+inline void preparePreview(void* vehicle){prepared=preparing&&tune(vehicle,*preparing,true);if(prepared&&preparingPaint){if(preparing->enablePaintjob&&paintTxd(*preparing)>=0)game::preserveRemapColors(vehicle);game::writePaint(vehicle,*preparingPaint);}}
 }

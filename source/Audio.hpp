@@ -42,7 +42,8 @@ inline bool readPcm(const std::filesystem::path& name,size_t limit,PcmClip& clip
 class Audio {
  struct Voice {IDirectSoundBuffer* buffer=nullptr;uint64_t serial=0;};
  IDirectSound8* ds=nullptr;IDirectSoundBuffer* bed=nullptr;IDirectSoundBuffer* prize=nullptr;bool prizeActive=false,prizePlaying=false,prizeResume=false;float prizeGain=0;
- std::array<IDirectSoundBuffer*,6> clips{};std::array<Voice,16> voices{};
+ IDirectSoundBuffer* failure=nullptr;bool failureActive=false,failurePlaying=false,failureResume=false;float failureGain=0;
+ std::array<IDirectSoundBuffer*,7> clips{};std::array<Voice,16> voices{};
  uint64_t serial=0,previous=0;bool musicStarted=false,bedPlaying=false;float musicGain=0;
  void releaseVoices(){for(auto&v:voices)if(v.buffer){v.buffer->Stop();v.buffer->Release();v={};}}
  IDirectSoundBuffer* load(const std::wstring& name,size_t limit){
@@ -60,15 +61,18 @@ public:
  ~Audio(){close();}Audio()=default;Audio(const Audio&)=delete;Audio& operator=(const Audio&)=delete;
  bool enabled=true,running=false,focused=true;unsigned bedVolume=45,cueVolume=80;
  static LONG volume(float percent){percent=std::clamp(percent,0.f,100.f);return percent>0?LONG(std::max(-10000.,2000*std::log10(double(percent)/100))):DSBVOLUME_MIN;}
- void init(HWND window,const std::wstring& folder){
-  if(ds||!enabled)return;if(FAILED(DirectSoundCreate8(nullptr,&ds,nullptr)))return;
-  if(FAILED(ds->SetCooperativeLevel(window,DSSCL_NORMAL))){close();return;}
-  bed=load(folder+L"music.wav",64*1024*1024);prize=load(folder+L"prize.wav",64*1024*1024);
-  const wchar_t* names[]={L"move.wav",L"accept.wav",L"back.wav",L"open.wav",L"spawn.wav",L"error.wav"};
-  for(size_t i=0;i<clips.size();++i)clips[i]=load(folder+names[i],2*1024*1024);
+ void init(HWND window,const std::wstring& folder,bool studio=true){
+  if(!enabled)return;if(!ds){if(FAILED(DirectSoundCreate8(nullptr,&ds,nullptr)))return;if(FAILED(ds->SetCooperativeLevel(window,DSSCL_NORMAL))){close();return;}}
+  if(studio){if(!bed)bed=load(folder+L"music.wav",64*1024*1024);if(!prize)prize=load(folder+L"prize.wav",64*1024*1024);}
+  const wchar_t* names[]={L"move.wav",L"accept.wav",L"back.wav",L"open.wav",L"spawn.wav",L"error.wav",L"slider.wav"};
+  for(size_t i=0;i<clips.size();++i)if(!clips[i])clips[i]=load(folder+names[i],2*1024*1024);
   previous=GetTickCount64();
  }
- void start(){if(!enabled)return;running=true;focused=true;playBed();}
+ void initFailure(HWND window,const std::wstring& folder){init(window,folder,false);if(ds&&!failure)failure=load(folder+L"failure.wav",64*1024*1024);}
+ void startFailure(){if(!enabled||!failure)return;running=false;prizeActive=false;if(bed)bed->Stop();bedPlaying=false;if(prize)prize->Stop();prizePlaying=false;releaseVoices();failureActive=true;failureResume=false;failureGain=0;failure->Stop();failure->SetCurrentPosition(0);failure->SetVolume(DSBVOLUME_MIN);failurePlaying=focused&&SUCCEEDED(failure->Play(0,0,DSBPLAY_LOOPING));}
+ void endFailure(){failureActive=failurePlaying=failureResume=false;failureGain=0;if(failure)failure->Stop();}
+ bool failureReady()const{return failure!=nullptr;}
+ void start(){if(!enabled)return;endFailure();running=true;focused=true;playBed();}
  // Fade the background over 150 ms; closing does not truncate an exit cue.
  void stopBed(){running=false;prizeActive=false;}
  void startPrize(){running=false;if(bed)bed->Stop();bedPlaying=false;musicGain=0;releaseVoices();prizeActive=true;prizeGain=0;prizeResume=false;if(prize){prize->Stop();prize->SetCurrentPosition(0);prize->SetVolume(DSBVOLUME_MIN);prizePlaying=enabled&&focused&&SUCCEEDED(prize->Play(0,0,0));}}
@@ -80,9 +84,10 @@ public:
   musicGain+=std::clamp(target-musicGain,-dt/.15f,dt/.15f);
   if(bed&&bedPlaying){bed->SetVolume(volume(float(bedVolume)*musicGain));if(musicGain<=0&&target==0){bed->Stop();bedPlaying=false;}}
   const float prizeTarget=prizeActive&&focused&&enabled?1.f:0.f;prizeGain+=std::clamp(prizeTarget-prizeGain,-dt/.12f,dt/.22f);if(prize&&prizePlaying){prize->SetVolume(volume(float(bedVolume)*prizeGain));DWORD flags=0;if(FAILED(prize->GetStatus(&flags))||!(flags&DSBSTATUS_PLAYING))prizePlaying=false;else if(prizeGain<=0&&prizeTarget==0){prize->Stop();prizePlaying=false;}}
+  const float failTarget=failureActive&&focused&&enabled?1.f:0.f;failureGain+=std::clamp(failTarget-failureGain,-dt/.15f,dt/.08f);if(failure&&failurePlaying)failure->SetVolume(volume(float(bedVolume)*failureGain));
   for(auto&v:voices)if(v.buffer){DWORD flags=0;if(FAILED(v.buffer->GetStatus(&flags))||!(flags&DSBSTATUS_PLAYING)){v.buffer->Release();v={};}}
  }
- void focus(bool on){if(focused==on)return;focused=on;if(!on){if(bed)bed->Stop();bedPlaying=false;musicGain=0;prizeResume=prizePlaying;if(prize)prize->Stop();prizePlaying=false;prizeGain=0;releaseVoices();}else if(prizeActive&&prizeResume&&enabled&&prize){prizePlaying=SUCCEEDED(prize->Play(0,0,0));prizeResume=false;}else if(running&&enabled)playBed();}
+ void focus(bool on){if(focused==on)return;focused=on;if(!on){if(bed)bed->Stop();bedPlaying=false;musicGain=0;prizeResume=prizePlaying;if(prize)prize->Stop();prizePlaying=false;prizeGain=0;failureResume=failurePlaying;if(failure)failure->Stop();failurePlaying=false;failureGain=0;releaseVoices();}else if(failureActive&&failureResume&&enabled&&failure){failurePlaying=SUCCEEDED(failure->Play(0,0,DSBPLAY_LOOPING));failureResume=false;}else if(prizeActive&&prizeResume&&enabled&&prize){prizePlaying=SUCCEEDED(prize->Play(0,0,0));prizeResume=false;}else if(running&&enabled)playBed();}
  bool musicReady()const{return bed!=nullptr;}
  bool effectsReady()const{return std::all_of(clips.begin(),clips.end(),[](auto*b){return b!=nullptr;});}
  bool ready()const{return musicReady()&&effectsReady();}
@@ -90,7 +95,7 @@ public:
  bool voicesMuted()const{for(const auto&v:voices)if(v.buffer){LONG level=0;if(FAILED(v.buffer->GetVolume(&level))||level!=DSBVOLUME_MIN)return false;}return true;}
  bool cue(Cue cue){
   if(!enabled||!focused||!ds||cue==Cue::None)return false;update();
-  size_t index=1;switch(cue){case Cue::Move:index=0;break;case Cue::Back:index=2;break;case Cue::Open:index=3;break;case Cue::Spawn:index=4;break;case Cue::Error:index=5;break;default:break;}
+  size_t index=1;switch(cue){case Cue::Move:index=0;break;case Cue::Slider:index=6;break;case Cue::Back:index=2;break;case Cue::Open:index=3;break;case Cue::Spawn:index=4;break;case Cue::Error:index=5;break;default:break;}
   if(!clips[index])return false;IDirectSoundBuffer* b=nullptr;if(FAILED(ds->DuplicateSoundBuffer(clips[index],&b)))return false;
   // Microsoft documents duplicate-buffer volume caching: set a DIFFERENT
   // attenuation first, then the desired level, including the zero-volume case.
@@ -100,7 +105,7 @@ public:
   if(it==voices.end()){it=std::min_element(voices.begin(),voices.end(),[](const Voice&a,const Voice&b){return a.serial<b.serial;});it->buffer->Stop();it->buffer->Release();}
   *it={b,++serial};return true;
  }
- void stop(){prizeActive=false;prizeResume=false;prizePlaying=false;prizeGain=0;if(prize)prize->Stop();running=false;if(bed)bed->Stop();bedPlaying=false;musicGain=0;releaseVoices();}
- void close(){stop();if(bed)bed->Release();bed=nullptr;if(prize)prize->Release();prize=nullptr;for(auto*&b:clips){if(b)b->Release();b=nullptr;}if(ds)ds->Release();ds=nullptr;musicStarted=false;previous=0;}
+ void stop(){endFailure();prizeActive=false;prizeResume=false;prizePlaying=false;prizeGain=0;if(prize)prize->Stop();running=false;if(bed)bed->Stop();bedPlaying=false;musicGain=0;releaseVoices();}
+ void close(){stop();if(failure)failure->Release();failure=nullptr;if(bed)bed->Release();bed=nullptr;if(prize)prize->Release();prize=nullptr;for(auto*&b:clips){if(b)b->Release();b=nullptr;}if(ds)ds->Release();ds=nullptr;musicStarted=false;previous=0;}
 };
 }

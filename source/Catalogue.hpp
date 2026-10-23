@@ -19,7 +19,7 @@ inline void sortCatalogue(std::vector<Entry>& cars,SortSettings order){
 }
 template<class Hidden,class IsFavorite>void buildCatalogueView(Model&state,std::vector<Entry>&out,const std::vector<Entry>&all,SortSettings order,Hidden hidden,IsFavorite favorite){
  const size_t previous=state.selected;const int id=out.empty()?-1:out[std::min(previous,out.size()-1)].id;
- std::array<int,countryCount> countryTotals{};out.clear();for(auto e:all){if(hidden(e))continue;e.favorite=favorite(e);if(state.ui.favoritesOnly&&!e.favorite)continue;++countryTotals[size_t(e.country)];if(state.ui.countryFilter<0||int(e.country)==state.ui.countryFilter)out.push_back(std::move(e));}state.ui.menu.setCountries(countryTotals);
+ std::array<int,countryCount> countryTotals{};std::array<int,classCount> classTotals{};out.clear();for(auto e:all){if(hidden(e))continue;e.favorite=favorite(e);if(state.ui.favoritesOnly&&!e.favorite)continue;++countryTotals[size_t(e.country)];++classTotals[size_t(classIndex(e.classId))];if((state.ui.countryFilter<0||int(e.country)==state.ui.countryFilter)&&(state.ui.classFilter<0||classIndex(e.classId)==state.ui.classFilter))out.push_back(std::move(e));}state.ui.menu.setCountries(countryTotals);state.ui.menu.setClasses(classTotals);
  sortCatalogue(out,order);state.selected=out.empty()?0:std::min(previous,out.size()-1);bool retained=false;for(size_t i=0;i<out.size();++i)if(out[i].id==id){state.selected=i;retained=true;break;}
  if(id>=0&&!retained){state.page=Page::Cars;state.paint=0;state.spawn=false;state.changed=state.clock;}state.count=out.size();state.scroll=state.scrollTarget();
 }
