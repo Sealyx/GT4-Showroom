@@ -42,14 +42,15 @@ struct ContextMenu{
    case MenuBranch::Logos:return {{"Manufacturer",StudioAction::None,-1,MenuBranch::BrandLogo,brandLogo},{"Car name",StudioAction::None,-1,MenuBranch::CarLogo,carLogo}};
    case MenuBranch::BrandLogo:return {{"On",StudioAction::BrandLogo,1,MenuBranch::None,brandLogo},{"Off",StudioAction::BrandLogo,0,MenuBranch::None,!brandLogo}};
    case MenuBranch::CarLogo:return {{"On",StudioAction::CarLogo,1,MenuBranch::None,carLogo},{"Off",StudioAction::CarLogo,0,MenuBranch::None,!carLogo}};
-   case MenuBranch::Extras:{std::vector<MenuItem> r;if(!extras[0].empty())r.push_back({"Extras 1",StudioAction::None,-1,MenuBranch::Extra1});if(!extras[1].empty())r.push_back({"Extras 2",StudioAction::None,-1,MenuBranch::Extra2});return r;}
+   case MenuBranch::Extras:{std::vector<MenuItem> r;if(!extras[0].empty())r.push_back({"Vanilla",StudioAction::None,-1,MenuBranch::Extra1});if(!extras[1].empty())r.push_back({"VehFuncs",StudioAction::None,-1,MenuBranch::Extra2});return r;}
    case MenuBranch::Extra1:case MenuBranch::Extra2:{const int group=branch==MenuBranch::Extra1?0:1;std::vector<MenuItem> r;for(size_t i=0;i<extras[size_t(group)].size();++i)r.push_back({extras[size_t(group)][i],group?StudioAction::Extra2:StudioAction::Extra1,int(i),MenuBranch::None,extraChoice[size_t(group)]==int(i)});return r;}
    default:return {};
   }
  }
  MenuBranch childBranch()const{const auto r=rootItems();return row>=0&&size_t(row)<r.size()?r[size_t(row)].child:MenuBranch::None;}
- MenuBranch thirdBranch()const{if(!sub)return MenuBranch::None;const auto r=branchItems(childBranch());return sortRow>=0&&size_t(sortRow)<r.size()?r[size_t(sortRow)].child:MenuBranch::None;}
+ MenuBranch thirdBranch()const{if(!sub)return MenuBranch::None;const auto branch=childBranch();if((branch==MenuBranch::Logos||branch==MenuBranch::Extras)&&focus()==0)return MenuBranch::None;const auto r=branchItems(branch);return sortRow>=0&&size_t(sortRow)<r.size()?r[size_t(sortRow)].child:MenuBranch::None;}
  std::vector<MenuItem> items(int level)const{return level==0?rootItems():branchItems(level==1?childBranch():thirdBranch());}
+ std::array<int,2> previewExtras()const{auto selected=extraChoice;if(open&&focus()==2){const auto branch=thirdBranch();if(branch==MenuBranch::Extra1||branch==MenuBranch::Extra2){const size_t group=branch==MenuBranch::Extra2?1:0;if(countryRow>=0&&size_t(countryRow)<extras[group].size())selected[group]=countryRow;}}return selected;}
  int current(int level)const{return level==0?row:level==1?sortRow:countryRow;}
  int depth()const{return !open?0:!sub?1:thirdBranch()==MenuBranch::None?2:3;}
  int focus()const{return countryFocus?2:focusLevel;}

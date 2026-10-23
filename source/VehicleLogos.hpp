@@ -20,10 +20,10 @@ class VehicleLogos {
   IWICImagingFactory* factory=nullptr;IWICBitmapDecoder* decoder=nullptr;IWICBitmapFrameDecode* frame=nullptr;IWICBitmapScaler* scaler=nullptr;IWICFormatConverter* convert=nullptr;
   if(SUCCEEDED(CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&factory)))&&SUCCEEDED(factory->CreateDecoderFromFilename(file.c_str(),nullptr,GENERIC_READ,WICDecodeMetadataCacheOnDemand,&decoder))&&SUCCEEDED(decoder->GetFrame(0,&frame))){
    UINT w=0,h=0;if(SUCCEEDED(frame->GetSize(&w,&h))&&w&&h&&w<=16384&&h<=16384&&uint64_t(w)*h<=100000000){
-    const double ratio=std::min(1.,1024./double(std::max(w,h)));const UINT ow=std::max(1u,UINT(w*ratio)),oh=std::max(1u,UINT(h*ratio));IWICBitmapSource*source=frame;
+    const double ratio=std::min(1.,512./double(std::max(w,h)));const UINT ow=std::max(1u,UINT(w*ratio)),oh=std::max(1u,UINT(h*ratio));IWICBitmapSource*source=frame;
     if((ow!=w||oh!=h)&&SUCCEEDED(factory->CreateBitmapScaler(&scaler))&&SUCCEEDED(scaler->Initialize(frame,ow,oh,WICBitmapInterpolationModeFant)))source=scaler;
     if(SUCCEEDED(factory->CreateFormatConverter(&convert))&&SUCCEEDED(convert->Initialize(source,GUID_WICPixelFormat32bppBGRA,WICBitmapDitherTypeNone,nullptr,0,WICBitmapPaletteTypeCustom))){
-     UINT cw=0,ch=0;convert->GetSize(&cw,&ch);if(cw&&ch&&cw<=1024&&ch<=1024){std::vector<BYTE> pixels(size_t(cw)*ch*4);if(SUCCEEDED(convert->CopyPixels(nullptr,cw*4,UINT(pixels.size()),pixels.data()))&&SUCCEEDED(d->CreateTexture(cw,ch,1,0,D3DFMT_A8R8G8B8,D3DPOOL_MANAGED,&out.texture,nullptr))){D3DLOCKED_RECT locked{};if(SUCCEEDED(out.texture->LockRect(0,&locked,nullptr,0))){for(UINT y=0;y<ch;++y)std::memcpy(static_cast<BYTE*>(locked.pBits)+size_t(y)*locked.Pitch,pixels.data()+size_t(y)*cw*4,size_t(cw)*4);out.texture->UnlockRect(0);out.width=cw;out.height=ch;}else release(out.texture);}}
+     UINT cw=0,ch=0;convert->GetSize(&cw,&ch);if(cw&&ch&&cw<=512&&ch<=512){std::vector<BYTE> pixels(size_t(cw)*ch*4);if(SUCCEEDED(convert->CopyPixels(nullptr,cw*4,UINT(pixels.size()),pixels.data()))&&SUCCEEDED(d->CreateTexture(cw,ch,1,0,D3DFMT_A8R8G8B8,D3DPOOL_MANAGED,&out.texture,nullptr))){D3DLOCKED_RECT locked{};if(SUCCEEDED(out.texture->LockRect(0,&locked,nullptr,0))){for(UINT y=0;y<ch;++y)std::memcpy(static_cast<BYTE*>(locked.pBits)+size_t(y)*locked.Pitch,pixels.data()+size_t(y)*cw*4,size_t(cw)*4);out.texture->UnlockRect(0);out.width=cw;out.height=ch;}else release(out.texture);}}
     }
    }
   }

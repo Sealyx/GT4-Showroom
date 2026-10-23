@@ -10,7 +10,7 @@ struct InstallLock {
     bool acquired=false;
     InstallLock() {
         wchar_t name[80];
-        std::swprintf(name,80,L"Local\\GTA-SA-Codex-Hook-Install-%lu",GetCurrentProcessId());
+        std::swprintf(name,80,L"Local\\GTA-SA-Native-Hook-Install-%lu",GetCurrentProcessId());
         mutex=CreateMutexW(nullptr,FALSE,name);
         if(mutex) {
             const DWORD result=WaitForSingleObject(mutex,5000);
