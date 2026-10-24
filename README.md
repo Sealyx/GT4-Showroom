@@ -16,7 +16,7 @@ Gran Turismo 4 inspired vehicle showroom and spawner for classic GTA San Andreas
 - Model name/ID search, configurable exclusions and country badges.
 - Keyboard, mouse and controller navigation, including an on-screen search keyboard.
 
-## Runtime requirements
+## Requirements
 
 - Classic **GTA San Andreas PC 1.0 US, 32-bit**, using a supported Hoodlum/Compact-compatible executable.
 - Windows with working **Direct3D 9, DirectSound and Windows Imaging Component** support. The Windows system libraries used for PNG decoding are not separately bundled.
@@ -26,7 +26,7 @@ Gran Turismo 4 inspired vehicle showroom and spawner for classic GTA San Andreas
 - For add-on vehicles: their correctly registered models, textures and any loader/limit-adjuster configuration they already require.
 - **VehFuncs and IVF are optional**; install them when the particular vehicle requires their features. They are not included in this package.
 
-**CLEO, MoonLoader and Dear ImGui are not required.** No font installation or build toolchain is needed to play. Mobile, Definitive Edition and unverified executable editions are unsupported.
+**CLEO and MoonLoader** No font installation or build toolchain is needed to play. Mobile, Definitive Edition and unverified executable editions are unsupported.
 
 ## Installation
 
