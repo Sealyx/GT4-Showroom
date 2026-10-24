@@ -1,8 +1,0 @@
-{
-  "version": "1.9.2",
-  "game_tested": false,
-  "asi_sha256": "ea7241a5bc32546e1c49f5b13eb5fce4528c92a48d92bc316270983764a9261c",
-  "native_audit_sha256": "9f0d552cc9680755380db8d0368a9063c99faccea9db58c877cd6527d9f314fd",
-  "renderer_sha256": "af1753122cf1a6093d44726d4d5dffeae8804e65d14501c2113019dae1bd259a",
-  "checks": "14 suites, separate-DLL render chains, current native/ownership audit,10k physical updates, four-resolution graphics/reset/MSAA, fresh36s first-appearance movie, private bold font, draw/hit button geometry."
-}

@@ -1,8 +1,0 @@
-PASS: shared production UI/renderer preview; -1 frames, CPU submission 0.000 mean / 0.000 max ms. Native GTA/model plugins and physical controller hardware are not executed.
-PASS: clean/hostile-state output pixel-identical; caller state restored.
-Warm renderer submission: mean 1.1769 max 1.9780 ms /120 samples, 52365 triangles, 294 draw calls, 0 uploads. Not a game FPS benchmark.
-PASS: menu, cinematic, controller keyboard and reset 800x600.
-PASS: menu, cinematic, controller keyboard and reset 1920x1080.
-PASS: menu, cinematic, controller keyboard and reset 2560x1080.
-PASS: menu, cinematic, controller keyboard and reset 5120x1440.
-PASS: 2x MSAA host target.

@@ -1,1 +1,0 @@
-Eligible tables=3, named rows=398, profile=Default, name3=Cherry Red, scan=62 ms
