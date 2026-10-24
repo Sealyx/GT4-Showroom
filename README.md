@@ -51,6 +51,8 @@ No font installation or build toolchain is needed to play. Mobile, Definitive Ed
 | Backtick | Search an ID or internal/display model name |
 | GTSPAWN | Type outside search to reload settings |
 
+Right mouse opens the sidebar and never substitutes for Backspace. The pointer eases toward the highlighted control after keyboard, wheel or controller navigation, including prize/search/sidebar controls. Mouse movement takes control back; leaving the mouse idle does not start a timed snap-back. The lower vehicle scrollbar can also be dragged.
+
 ### Controller
 | Input | Action |
 | --- | --- |
@@ -72,8 +74,6 @@ No font installation or build toolchain is needed to play. Mobile, Definitive Ed
 | Circle / L3 ? CLOSE + Cross | Close search without submitting |
 | Cross | Pause / resume the Cinematic car rotation |
 | R2 / L2; R1 / L1 | Zoom in / out in Cinematic |
-
-Right mouse opens the sidebar and never substitutes for Backspace. The pointer eases toward the highlighted control after keyboard, wheel or controller navigation, including prize/search/sidebar controls. Mouse movement takes control back; leaving the mouse idle does not start a timed snap-back. The lower vehicle scrollbar can also be dragged.
 
 ## Configuration
 
