@@ -34,7 +34,7 @@ No font installation or build toolchain is needed to play. Mobile, Definitive Ed
 
 1. Copy the **contents** of `install/` into one Mod Loader folder, for example `modloader/GT4 Showroom/`.
 2. Keep `GT4Showroom.asi`, `GT4Showroom.ini`, the `GT4Showroom/` asset folder together. Avoid leaving another active copy of this ASI elsewhere.
-3. Start GTA, load ordinary gameplay and press Select on the controller or F1 on the keyboard while on foot.
+3. Start GTA, load ordinary gameplay and press Select on the controller or F4 on the keyboard while on foot.
 
 ## Controls
 
