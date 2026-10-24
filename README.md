@@ -79,7 +79,7 @@ Right mouse opens the sidebar and never substitutes for Backspace. The pointer e
 
 - `GT4Showroom.ini`: opening key, volumes, zoom, exclusions, country assignments, logo switches, shadows, license-failure presentation and bonus options. Reopen the showroom, type `GTSPAWN` outside search or choose **Reload settings** in the sidebar to reload. Reloading is deferred while a license result is active.
 - `[VanillaCountries]`: move an internal model name to another country, or remove it for a white badge. These assignments are independent of exclusions and `[Countries]`.
-- `[Countries]`: add-on model IDs or names; an unassigned add-on has a white badge. Country keys such as `SouthKorea` retain their INI spelling while the menu displays **South Korea**.
+- `[Countries]`: add-on model IDs or names; an unassigned add-on has a white badge.
 - `[Logos] Car=0` and `Manufacturer=0`: independent switches, both off by default. Put `car.png` and/or `brand.png` in `logos/<internal model name>/`. Each missing/invalid image falls back to its own text. All 212 vanilla folders are provided, including non-car vehicles; `cheetah` contains the sample images.
 - `[GT4Showroom] Shadows=1`: showroom shadows; the sidebar saves this switch. Cinematic freezes the light phase and shadow-caster orientation/scale on entry; the car and background continue animating.
 - `[SecretUnlocks]`: `Model`, `EnableModkit`, `EnablePaintjob` and `EnableAbilities` configure REALBIG. Eligible vehicles must be visible and installed; tuning/paintjobs must exist for that vehicle. Each enabled reward gets one random heavy-ramming or bullet/explosion-proof ability.
