@@ -82,7 +82,6 @@ Right mouse opens the sidebar and never substitutes for Backspace. The pointer e
 - `[Countries]`: add-on model IDs or names; an unassigned add-on has a white badge. Country keys such as `SouthKorea` retain their INI spelling while the menu displays **South Korea**.
 - `[Logos] Car=0` and `Manufacturer=0`: independent switches, both off by default. Put `car.png` and/or `brand.png` in `logos/<internal model name>/`. Each missing/invalid image falls back to its own text. All 212 vanilla folders are provided, including non-car vehicles; `cheetah` contains the sample images.
 - `[GT4Showroom] Shadows=1`: showroom shadows; the sidebar saves this switch. Cinematic freezes the light phase and shadow-caster orientation/scale on entry; the car and background continue animating.
-- `[LicenseFail] Enabled=1`: replace supported driving-school failure results. Global Sound/MusicVolume/EffectsVolume settings apply.
 - `[SecretUnlocks]`: `Model`, `EnableModkit`, `EnablePaintjob` and `EnableAbilities` configure REALBIG. Eligible vehicles must be visible and installed; tuning/paintjobs must exist for that vehicle. Each enabled reward gets one random heavy-ramming or bullet/explosion-proof ability.
 - `GT4Showroom/vehicles.ini`: optional display metadata and paint names. `favorites.ini` stores personal Favorites and ordering; it is not replaced by a fresh personal Favorites file.
 
