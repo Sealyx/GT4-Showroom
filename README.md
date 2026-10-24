@@ -26,7 +26,7 @@ Gran Turismo 4 inspired vehicle showroom and spawner for classic GTA San Andreas
 - For add-on vehicles: their correctly registered models, textures and any loader/limit-adjuster configuration they already require.
 - **VehFuncs and IVF are optional**; install them when the particular vehicle requires their features. They are not included in this package.
 
-**CLEO and MoonLoader** No font installation or build toolchain is needed to play. Mobile, Definitive Edition and unverified executable editions are unsupported.
+**CLEO and MoonLoader are NOT REQUIRED** No font installation or build toolchain is needed to play. Mobile, Definitive Edition and unverified executable editions are unsupported.
 
 ## Installation
 
