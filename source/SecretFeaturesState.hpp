@@ -38,9 +38,9 @@ public:
   const bool u=i.up&&!previousUp,d=i.down&&!previousDown,a=i.accept&&!previousAccept,b=i.back&&!previousBack,c=i.click&&!previousClick;
   previousUp=i.up;previousDown=i.down;previousAccept=i.accept;previousBack=i.back;previousClick=i.click;
   if(quarantine){if(!any)quarantine=false;return SecretFeaturesChoice::None;}
-  if(i.mouseMoved){docking=false;pointerX=std::clamp(i.mouseX,0.f,w);pointerY=std::clamp(i.mouseY,0.f,h);const int hit=l.hit(pointerX,pointerY);if(hit>=0)selected=hit;}
+  if(i.mouseMoved){pointerX=std::clamp(i.mouseX,0.f,w);pointerY=std::clamp(i.mouseY,0.f,h);const int hit=l.hit(pointerX,pointerY);if(hit>=0){selected=hit;docking=false;}}
   // Dock only after an actual keyboard/controller action, never from an idle timer.
-  if(u||d||a||b){docking=true;if(u||d)selected=1-selected;}if(docking){const auto&r=l.buttons[selected];pointerX+=(r.x+r.w*.5f-pointerX)*std::min(1.f,float(dt)*24.f);pointerY+=(r.y+r.h*.5f-pointerY)*std::min(1.f,float(dt)*24.f);}
+  if(u||d||a||b){docking=true;if(u||d)selected=1-selected;}if(docking){const auto&r=l.buttons[selected];const float blend=1-std::exp(-24.f*float(std::max(0.,dt)));pointerX+=(r.x+r.w*.5f-pointerX)*blend;pointerY+=(r.y+r.h*.5f-pointerY)*blend;}
   if(!ready())return SecretFeaturesChoice::None;
   if(b){selected=1;accepted=true;return SecretFeaturesChoice::Exit;}
   if(a||(c&&l.hit(pointerX,pointerY)>=0)){if(c)selected=l.hit(pointerX,pointerY);accepted=true;return selected?SecretFeaturesChoice::Exit:SecretFeaturesChoice::Retry;}

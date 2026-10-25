@@ -8,7 +8,8 @@ inline int model=-1;inline std::array<int,2> choice{{0,0}};
 inline std::vector<int> nativeIndices;inline std::vector<std::string> nativeLabels,vehfuncsLabels;
 inline std::map<std::pair<int,int>,VehFuncsCatalogue> catalogues;
 inline VehFuncsCatalogue* active=nullptr;inline VehFuncsCatalogue* probing=nullptr;
-inline int probingSeed=-1;inline bool available=false;inline uint64_t nextProbe=0;
+inline int probingSeed=-1;inline bool available=false,metadataReady=false,preparedScan=false;inline uint64_t nextProbe=0;
+inline void scan(const Entry&e,bool force=false);
 inline const char* name(void*f){return reinterpret_cast<const char*(__cdecl*)(void*)>(0x72FB30)(f);}
 inline bool hasExtras(void*f,int depth=0){if(depth>64)return false;int budget=0;for(;f&&budget++<4096;f=game::field<void*>(f,0x9C)){const char*n=name(f);if(n&&std::strncmp(n,"f_extras",8)==0)return true;if(hasExtras(game::field<void*>(f,0x98),depth+1))return true;}return false;}
 // Fingerprint assembled geometry, not random paint/dirt, pointers or animated
@@ -27,7 +28,12 @@ inline void* __cdecl signatureAtomic(void*a,void*data){
 inline std::string signature(void*v){void*c=game::field<void*>(v,0x18);if(!c)return {};Signature s;reinterpret_cast<void*(__cdecl*)(void*,void*(__cdecl*)(void*,void*),void*)>(0x749B70)(c,signatureAtomic,&s);if(!s.valid||s.parts.empty())return {};return extraOutcomeKey(std::move(s.parts));}
 inline int actualSeed(void*v){auto module=GetModuleHandleW(L"VehFuncs.asi");auto get=reinterpret_cast<int(__cdecl*)(void*)>(GetProcAddress(module,"Ext_GetCarSeed"));return get?get(v):-1;}
 inline void observe(void*v){
- if(!v||game::field<int16_t>(v,0x22)!=model)return;auto*c=probing?probing:active;if(!c||(!probing&&!c->variants.empty()))return;
+ if(!v||game::field<int16_t>(v,0x22)!=model)return;
+ // Some vehicle plugins finish model metadata on the first native factory /
+ // render event. Re-enumerate at the private preview boundary after that event,
+ // before recording its first outcome; a world spawn must not be a prerequisite.
+ if(!preparedScan&&!probing){Entry e;e.id=model;scan(e,true);preparedScan=true;}
+ auto*c=probing?probing:active;if(!c||(!probing&&!c->variants.empty()))return;
  const int expected=probing?probingSeed:game::previewSeed(model);if(expected<=0||actualSeed(v)!=expected){c->stopped=true;return;}
  const std::array<int8_t,2> pair{{game::field<int8_t>(v,0x438),game::field<int8_t>(v,0x439)}};
  const auto key=signature(v);if(key.empty()){c->stopped=true;return;}c->add(expected,key,pair);
@@ -43,14 +49,18 @@ inline void activate(){
  active=&catalogues[key];updateSelection();
 }
 inline std::vector<std::string> labels(int group){return group==0?nativeLabels:group==1?vehfuncsLabels:std::vector<std::string>{};}
-inline void clear(){model=-1;choice={{0,0}};nativeIndices.clear();nativeLabels.clear();vehfuncsLabels.clear();active=probing=nullptr;available=false;game::extraChoice=-2;game::extrasModel=-1;game::extrasSeed=-1;game::extraComponents={{-2,-2}};nativePreview::observeVehicle=nullptr;}
+inline void clear(){model=-1;choice={{0,0}};nativeIndices.clear();nativeLabels.clear();vehfuncsLabels.clear();active=probing=nullptr;available=metadataReady=preparedScan=false;game::extraChoice=-2;game::extrasModel=-1;game::extrasSeed=-1;game::extraComponents={{-2,-2}};nativePreview::observeVehicle=nullptr;}
 inline void resetCatalogues(){clear();catalogues.clear();}
-inline void scan(const Entry&e){
- if(model==e.id)return;clear();model=e.id;game::extrasModel=model;void*mi=gta::modelInfo(model);if(!game::vehicleInfo(mi)||!gta::modelReady(model))return;
+inline void scan(const Entry&e,bool force){
+ if(model==e.id&&metadataReady&&!force)return;
+ if(model!=e.id){clear();model=e.id;game::extrasModel=model;}
+ void*mi=gta::modelInfo(model);if(!game::vehicleInfo(mi)||!gta::modelReady(model))return;
+ nativeIndices.clear();nativeLabels.clear();available=false;
  void*structure=game::field<void*>(mi,0x5C);if(structure){const auto count=game::field<uint8_t>(structure,0x30C);if(count<=6)for(unsigned i=0;i<count;++i)if(game::field<void*>(structure,0x2F4+i*4))nativeIndices.push_back(int(i));}
  if(!nativeIndices.empty()){nativeLabels={"Default","None"};for(int id:nativeIndices)nativeLabels.push_back("Extra "+std::to_string(id+1));}
  VehFuncsFrames binding;binding.bind();if(binding.verified){void*c=game::field<void*>(mi,0x1C);available=c&&hasExtras(game::field<void*>(c,4));if(!available&&structure)for(int id:nativeIndices){void*a=game::field<void*>(structure,0x2F4+size_t(id)*4);if(a&&hasExtras(game::field<void*>(a,4)))available=true;}}
- activate();nativePreview::observeVehicle=observe;
+ if(choice[0]<0||size_t(choice[0])>=nativeLabels.size())choice[0]=0;
+ metadataReady=true;activate();nativePreview::observeVehicle=observe;
 }
 inline bool select(int group,int option){const auto options=labels(group);if(group<0||group>1||option<0||size_t(option)>=options.size())return false;const bool changed=choice[size_t(group)]!=option;choice[size_t(group)]=option;if(group==0&&changed)activate();else updateSelection();return true;}
 // Discover one outcome per frame, only while the VehFuncs pane is open. Reuse
@@ -61,7 +71,7 @@ inline bool pump(uint64_t now){
  probing=active;probingSeed=variantProbeSeed(model,active->samples);const auto before=active->variants.size();const int saved=game::extrasSeed;game::extrasSeed=probingSeed;
  const bool ok=nativePreview::inspect(model);game::extrasSeed=saved;probing=nullptr;probingSeed=-1;if(!ok)active->stopped=true;updateSelection();return active->variants.size()!=before;
 }
-inline std::unique_ptr<Mesh> capture(int id){auto mesh=nativePreview::snapshot(id);updateSelection();return mesh;}
+inline std::unique_ptr<Mesh> capture(int id){if(id==model)preparedScan=false;auto mesh=nativePreview::snapshot(id);updateSelection();return mesh;}
 inline bool apply(void*v){
  if(!v||game::field<int16_t>(v,0x22)!=model||!available||!active||active->variants.empty())return true;
  // Consume the exact chosen seed now. VehFuncs' queued seed expires after one

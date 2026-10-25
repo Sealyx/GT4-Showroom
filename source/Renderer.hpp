@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <cstring>
 #include "Showroom.hpp"
+#include "Display.hpp"
 #include "PrivateFont.hpp"
 #include "ThumbnailFit.hpp"
 #include "CountryFlags.hpp"
@@ -151,8 +152,33 @@ public:
   rect(d,0,H*.944f,W,H*.056f,0xFF000000);const std::string message=bonusLabel(s.prize.ability);label(d,message,W*.5f,H*.951f,fitted(message,H*.014f,W*.9f),nameAlpha,true);
   if(age>=prizeReadyTime&&s.pointerVisible)cursor(d,s.pointerX*W,s.pointerY*H,H/720.f*.85f,readyAlpha);
  }
+
+ void monitorBevel(IDirect3DDevice9*d,UIRect r,float alpha,float scale,bool selected){
+  rect(d,r.x,r.y,r.w,r.h,color(0x696A6F,alpha));
+  const float edge=std::max(.6f,scale);for(int i=0;i<12;++i){const float t=float(i)/11;const float shade=.78f+.2f*t;rect(d,r.x+edge,r.y+edge+(r.h-2*edge)*i/12,r.w-2*edge,(r.h-2*edge)/12+.1f,color(0xF5F5F5,alpha,shade));}
+  rect(d,r.x+edge,r.y+r.h-edge,r.w-2*edge,edge,color(0xF6F6F6,alpha));
+  const float arrow=15*scale;rect(d,r.x+r.w-arrow-2*scale,r.y+2*scale,arrow,r.h-4*scale,color(selected?0xEBAE35:0xDDE0E3,alpha));
+  screen(d);d->SetTexture(0,nullptr);const float xx=r.x+r.w-arrow*.5f-2*scale,yy=r.y+r.h*.54f;const ScreenVertex triangle[]={{xx-3.4f*scale,yy-2*scale,0,1,color(0x17191B,alpha),0,0},{xx+3.4f*scale,yy-2*scale,0,1,color(0x17191B,alpha),0,0},{xx,yy+2.4f*scale,0,1,color(0x17191B,alpha),0,0}};d->DrawPrimitiveUP(D3DPT_TRIANGLELIST,1,triangle,sizeof(ScreenVertex));++drawCalls;
+ }
+ void monitorButton(IDirect3DDevice9*d,UIRect r,const std::string&caption,float alpha,float scale){
+  const float radius=r.h*.48f;for(int i=0;i<20;++i){const float t=(i+.5f)/20,dy=std::abs(t-.5f)*r.h;const float inset=radius-std::sqrt(std::max(0.f,radius*radius-dy*dy));const float shade=t<.45f?.98f: .86f+.09f*(t-.45f)/.55f;rect(d,r.x+inset,r.y+i*r.h/20,r.w-2*inset,r.h/20+.3f,color(0xF0F1F4,alpha,shade));}text(d,caption,r.x+r.w*.5f,r.y+.6f*scale,12*scale,color(0x101013,alpha),true,0,true);
+ }
+ void monitorSettings(IDirect3DDevice9*d,float W,float H,const Model&s){
+  const auto&m=s.ui.menu;const float scale=H/720.f;const float alpha=ease(float((s.clock-m.began)/.12));const auto boxes=m.monitorPanels(W,H);
+  auto window=[&](int level,bool single){const auto r=boxes[size_t(level)];rect(d,r.x+3*scale,r.y+3*scale,r.w,r.h,color(0,.26f*alpha));rect(d,r.x,r.y,r.w,r.h,color(0x67696E,alpha));rect(d,r.x+scale,r.y+scale,r.w-2*scale,r.h-2*scale,color(0xB6B6BB,alpha));rect(d,r.x,r.y,r.w,21*scale,color(0x17130A,alpha));text(d,m.monitorTitle(level),r.x+r.w*.5f,r.y+1*scale,fitted(m.monitorTitle(level),13*scale,r.w-20*scale,true),color(0xD0D0D2,alpha),true,0,true);
+   const auto rows=m.items(level);const int count=single?1:int(rows.size());for(int i=0;i<count;++i){const float yy=r.y+(22+28*i)*scale;rect(d,r.x+2*scale,yy,r.w-4*scale,28*scale,color(i%2?0xACACB1:0xB4B4B9,alpha));const auto field=m.monitorField(level,i,W,H);std::string caption,value;if(single){const auto b=m.thirdBranch();caption=b==MenuBranch::Countries?"Country":b==MenuBranch::Classes?"Class":"Selection";const auto options=m.items(2);if(!options.empty())value=options[size_t(std::clamp(m.countryRow,0,int(options.size())-1))].label;}else{caption=rows[size_t(i)].label;if(level==0&&i==1)caption="Favorites";if(level==0&&i==2)caption="Cinematic";value=m.monitorValue(level,i);}
+    text(d,caption,r.x+12*scale,yy+4*scale,fitted(caption,13.5f*scale,field.x-r.x-22*scale,true),color(0x08080C,alpha),false,0,true);const bool selected=m.monitorHover&&m.focus()==level&&(single||m.current(level)==i);monitorBevel(d,field,alpha,scale,selected);text(d,value,field.x+8*scale,field.y+.2f*scale,fitted(value,13.5f*scale,field.w-29*scale,true),color(0x08080C,alpha),false,0,true);
+   }
+   monitorButton(d,m.monitorButton(level,0,W,H),level?"Back":"Cancel",alpha,scale);monitorButton(d,m.monitorButton(level,1,W,H),"OK",alpha,scale);
+  };
+  auto dropdown=[&](UIRect r,int level){const float reveal=ease(float((s.clock-m.monitorChanged)/.09));if(reveal<=.001f)return;const float a=alpha*reveal;rect(d,r.x+3*scale,r.y+3*scale,r.w,r.h,color(0,.36f*a));rect(d,r.x,r.y,r.w,r.h,color(0xE1E1E3,a));rect(d,r.x,r.y,r.w,scale,color(0xFAFAFA,a));rect(d,r.x+r.w-scale,r.y,scale,r.h,color(0x55565B,a));rect(d,r.x,r.y+r.h-scale,r.w,scale,color(0x55565B,a));const auto options=m.items(level);const int first=m.monitorStart(level,H);for(int i=first;i<int(options.size());++i){const float yy=r.y+(i-first)*26*scale;if(yy+25*scale>r.y+r.h)break;const auto&item=options[size_t(i)];if(m.current(level)==i)rect(d,r.x+scale,yy+scale,r.w-2*scale,25*scale,color(0xEEB039,a));if(item.checked)text(d,"*",r.x+4*scale,yy+3*scale,12*scale,color(0x141418,a),false,0,true);text(d,item.label,r.x+14*scale,yy+3*scale,fitted(item.label,13.5f*scale,r.w-27*scale,true),color(0x08080C,a),false,0,true);if(item.child!=MenuBranch::None)text(d,">",r.x+r.w-13*scale,yy+3*scale,12*scale,color(0x111115,a),false,0,true);}
+  };
+  window(0,false);
+  if(m.sub){if(m.monitorSubWindow())window(1,false);else if(m.monitorSelectorWindow())window(2,true);else dropdown(boxes[1],1);}
+  if(m.monitorPicker)dropdown(m.monitorDropdown(W,H),2);
+ }
  void studioMenu(IDirect3DDevice9*d,float W,float H,const Model&s){
-  const auto&m=s.ui.menu;if(!m.open)return;const float scale=H/720.f,alpha=ease(float((s.clock-m.began)/.12));
+  const auto&m=s.ui.menu;if(!m.open)return;if(!m.classic){monitorSettings(d,W,H,s);return;}const float scale=H/720.f,alpha=ease(float((s.clock-m.began)/.12));
   for(int level=0;level<m.depth();++level){const auto r=m.panel(level,W,H);rect(d,r.x+4*scale,r.y+4*scale,r.w,r.h,color(0,.24f*alpha));rect(d,r.x,r.y,r.w,r.h,color(0x939B9B,.9f*alpha));rect(d,r.x+scale,r.y+scale,r.w-2*scale,r.h-2*scale,color(0x1B2225,.96f*alpha));rect(d,r.x+3*scale,r.y+3*scale,r.w-6*scale,2*scale,color(0x657071,.7f*alpha));
    const auto rows=m.items(level);const int first=m.windowStart(level,H);for(int i=first;i<int(rows.size());++i){const float y=r.y+7*scale+(i-first)*28*scale;if(y+25*scale>r.y+r.h)break;const auto&item=rows[size_t(i)];if(m.current(level)==i&&level<=m.focus())rect(d,r.x+3*scale,y-2*scale,r.w-6*scale,28*scale,color(0x596064,(m.focus()==level?.8f:.55f)*alpha));if(item.checked)disc(d,r.x+12*scale,y+10*scale,2.5f,scale,0xD4BE67);label(d,item.label,r.x+25*scale,y,fitted(item.label,11*scale,r.w-50*scale),alpha);if(item.child!=MenuBranch::None)label(d,">",r.x+r.w-20*scale,y,11*scale,alpha);}
   }
@@ -166,6 +192,10 @@ public:
  studio(d,mainCam,lightPhase);lastCarCamera=mainCam;lastCarAngle=angle;lastCarSize=s.scale()*adaptivePreviewSpan(span,compactThumbnail(e)||span<2.8f)/span;lastShadowAngle=angle;lastShadowSize=lastCarSize;lastCarSerial=main->serial;float lowX=W,lowY=H,highX=0,highY=0;const V3 center{(main->low.x+main->high.x)*.5f,(main->low.y+main->high.y)*.5f,main->low.z};for(int z=0;z<2;++z)for(int y=0;y<2;++y)for(int x=0;x<2;++x){V3 p={(x?main->high.x:main->low.x)-center.x,(y?main->high.y:main->low.y)-center.y,(z?main->high.z:main->low.z)-center.z};p=p*lastCarSize;const float co=std::cos(angle),si=std::sin(angle);p={p.x*co-p.y*si,p.x*si+p.y*co,p.z};float px,py,depth,rhw;if(mainCam.project(p,px,py,depth,rhw)){lowX=std::min(lowX,px);lowY=std::min(lowY,py);highX=std::max(highX,px);highY=std::max(highY,py);}}carHit={lowX,lowY,highX-lowX,highY-lowY};
  if(s.ui.shadows)mesh(d,*main,mainCam,angle,paint,s.carAlpha(),lastCarSize,true);mesh(d,*main,mainCam,angle,paint,s.carAlpha(),lastCarSize);}else studio(d,cam,lightPhase);
  d->SetRenderState(D3DRS_ZENABLE,FALSE);d->SetRenderState(D3DRS_ZWRITEENABLE,FALSE);d->SetRenderState(D3DRS_ALPHABLENDENABLE,TRUE);
+ if(main){const auto rows=vehicleDisplayRows(e,s.ui);if(!rows.empty()){
+  const auto box=vehicleDisplayPanel(W,H,carHit,rows.size());rect(d,box.x+2*scale,box.y+2*scale,box.w,box.h,color(0,.18f*s.carAlpha()));rect(d,box.x,box.y,box.w,box.h,color(0x242B2D,.78f*s.carAlpha()));rect(d,box.x,box.y,box.w,scale,color(0xBEC5C5,.8f*s.carAlpha()));
+  for(size_t i=0;i<rows.size();++i)label(d,rows[i],box.x+box.w*.5f,box.y+(5+22*i)*scale,fitted(rows[i],13*scale,box.w-18*scale),s.carAlpha(),true);
+ }}
  // Reference-matched bottom strip and paint submenu.
  if(!s.ui.cinematic.active){
  const float carStrip=(1-s.paintMix)*(1-s.ui.cinematic.mix),paintStrip=s.paintMix*(1-s.ui.cinematic.mix);
@@ -186,7 +216,7 @@ public:
  const bool carLogo=s.ui.carLogo&&logo(false,W*.77f,H*.065f,W*.4f,H*.13f,1-s.titleMix());if(!carLogo)label(d,e.title.empty()?e.name:e.title,W*.77f,H*.065f,fitted(e.title.empty()?e.name:e.title,50*scale,W*.40f),1-s.titleMix(),true,10*scale);
  const bool brandLogo=s.ui.brandLogo&&logo(true,W*.80f,H*.065f,W*.30f,H*.12f,s.titleMix());if(!brandLogo){label(d,e.brand,W*.80f,H*.085f,26*scale,s.titleMix(),true);label(d,"motor collection",W*.80f,H*.128f,13*scale,s.titleMix(),true);}
 
- rect(d,0,H*.907f,W,H*.093f,0xFF000000);std::string info=e.information;if(!e.power.empty())info+="    Power:"+e.power;if(!e.torque.empty())info+="    Torque:"+e.torque;std::string foot=s.status.empty()?((s.clock-s.changed<4||int(s.clock)%8<5)?info:(s.page==Page::Cars?"ENTER / CROSS Paint    UP / SQUARE Favorite    F / TRIANGLE Favorites    RMB / SELECT Menu":(s.page==Page::Livery?"ENTER / CROSS Spawn    BACKSPACE / CIRCLE Colors    RMB / SELECT Menu":s.liveries.size()>1?"ENTER / CROSS Liveries    BACKSPACE / CIRCLE Cars    RMB / SELECT Menu":"ENTER / CROSS Spawn    BACKSPACE / CIRCLE Cars    RMB / SELECT Menu"))):s.status;const FooterLayout footer(H);label(d,foot,W*.5f,footer.y,fitted(foot,footer.fontHeight,W*.84f),1,true);label(d,std::to_string(entries.empty()?0:s.selected+1)+" / "+std::to_string(entries.size()),W*.94f,footer.countY,footer.countHeight,1,true);
+ rect(d,0,H*.907f,W,H*.093f,0xFF000000);std::string info=e.information;if(!e.power.empty())info+="    Power:"+e.power;if(!e.torque.empty())info+="    Torque:"+e.torque;std::string foot=s.status.empty()?((s.clock-s.changed<4||int(s.clock)%8<5)?info:(s.page==Page::Cars?"ENTER / CROSS Paint    UP / SQUARE Favorite    F / TRIANGLE Favorites    RMB / SELECT Menu":(s.page==Page::Livery?"ENTER / CROSS Spawn    BACKSPACE / CIRCLE Colors    RMB / SELECT Menu":s.liveries.size()>1?"ENTER / CROSS Liveries    BACKSPACE / CIRCLE Cars    RMB / SELECT Menu":"ENTER / CROSS Spawn    BACKSPACE / CIRCLE Cars    RMB / SELECT Menu"))):s.status;const FooterLayout footer(H);const auto help=s.ui.menu.help();if(help.empty()){label(d,foot,W*.5f,footer.y,fitted(foot,footer.fontHeight,W*.84f),1,true);label(d,std::to_string(entries.empty()?0:s.selected+1)+" / "+std::to_string(entries.size()),W*.94f,footer.countY,footer.countHeight,1,true);}else text(d,help,W*.5f,H*.929f,fitted(help,16*scale,W*.9f,true),color(0xD5D5D8),true,0,true);
  // Red NORMAL status indicator and embossed heading from the reference.
  const float cx=63*scale,cy=47*scale;if(flags){const float index=float(e.country);rect(d,cx-17*scale,cy-13.26f*scale,34*scale,26.52f*scale,0xFFFFFFFF,flags,index/float(countryCount),0,(index+1)/float(countryCount),1);}label(d,e.category,104*scale,19*scale,26*scale);
  if(s.ui.favoritesOnly||s.ui.countryFilter>=0||s.ui.classFilter>=0)label(d,(s.ui.favoritesOnly?std::string("FAVORITES"):std::string())+(s.ui.favoritesOnly&&s.ui.countryFilter>=0?" / ":"")+(s.ui.countryFilter>=0?(s.ui.countryFilter==0?"UNASSIGNED":countryLabel(Country(s.ui.countryFilter))):"")+(s.ui.classFilter>=0?" / "+std::string(classNames[size_t(s.ui.classFilter)]):""),104*scale,56*scale,11*scale);if(entries.empty())label(d,s.ui.favoritesOnly?"NO FAVORITES YET - UP / SQUARE ADDS A CAR":"NO CARS IN THIS FILTER - RMB / SELECT CHANGES FILTER",W*.5f,H*.50f,19*scale,1,true);

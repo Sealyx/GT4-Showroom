@@ -22,7 +22,7 @@ inline V3 unit(V3 a){const float n=std::sqrt(dot(a,a));return n>.00001f?a*(1.f/n
 inline float ease(float x){x=std::clamp(x,0.f,1.f);return x*x*(3-2*x);}
 struct Paint {uint8_t ids[4]={0,0,0,0}; std::string name;uint32_t rgb[4]={0x94999C,0x94999C,0x94999C,0x94999C};};
 inline const char* classLabel(int value){static const char* labels[]={"NORMAL","POOR","RICH","EXECUTIVE","WORKER","HEAVY","TAXI","MOPED","MOTORBIKE","LEISURE BOAT","WORK BOAT","BICYCLE"};return value>=0&&value<12?labels[value]:"SPECIAL";}
-struct Entry {Country country=Country::Unknown;int id=0,kind=0,classId=0;uint32_t modelKey=0;float topSpeed=-1;std::string category="NORMAL",name,brand="SAN ANDREAS",title,year,power,torque,information; std::vector<Paint> paints; bool favorite=false;};
+struct Entry {Country country=Country::Unknown;int id=0,kind=0,classId=0;uint32_t modelKey=0;float topSpeed=-1;std::string category="NORMAL",name,modelName,brand="SAN ANDREAS",title,year,power,torque,information; std::vector<Paint> paints; bool favorite=false;};
 struct Livery {int index=-1,txd=-1;std::shared_ptr<void> texture;};
 enum class Page {Cars,Paint,Livery,Prize};
 enum class Cue {None,Move,Accept,Back,Favorite,Open,Spawn,Error,Slider};
@@ -94,7 +94,7 @@ inline void pointerButton(Model& model,const std::vector<Entry>& cars,float w,fl
 }
 inline void dockPointer(Model&s,const std::vector<Entry>&cars,float w,float h,double dt){
  if(!s.open||s.dragging||!s.ui.dock||w<=0||h<=0)return;float x=.5f,y=.79f;
- if(s.ui.menu.open){const int level=s.ui.menu.focus();const auto b=s.ui.menu.panel(level,w,h);const int visible=s.ui.menu.current(level)-s.ui.menu.windowStart(level,h);x=(b.x+b.w*.68f)/w;y=(b.y+(7+visible*28+14)*(h/720.f))/h;}
+ if(s.ui.menu.open){if(s.ui.menu.monitorDragLevel>=0)return;const auto b=s.ui.menu.pointerTarget(w,h);x=(b.x+b.w*.68f)/w;y=(b.y+b.h*.5f)/h;}
  else if(s.searching){if(!s.ui.keyboard.open)return;const auto b=s.ui.keyboard.box(w,h,s.ui.keyboard.selected);x=(b.x+b.w*.65f)/w;y=(b.y+b.h*.62f)/h;}
  else if(s.page==Page::Prize){x=.5f;y=prizeButtonTop+prizeButtonHeight*.45f;}
  else{if(s.ui.cinematic.active||s.ui.cinematic.mix>.01f||cars.empty()||s.selected>=cars.size())return;

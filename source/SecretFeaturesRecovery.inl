@@ -49,7 +49,7 @@ bool updateSecretRecovery(uint64_t tick,double dt,bool focus){
  D3DVIEWPORT9 vp{0,0,1280,720,0,1};if(auto*d=game::device())d->GetViewport(&vp);
  const uintptr_t mouse=0xB73418;float dx=game::at<float>(mouse+0xC),dy=game::at<float>(mouse+0x10);if(game::flag(0xBA6744))dx=-dx;if(game::flag(0xBA6745))dy=-dy;
  SecretFeaturesInput input;input.up=key(VK_UP)||sampledPad.up;input.down=key(VK_DOWN)||sampledPad.down;input.accept=key(VK_RETURN)||key(VK_SPACE)||sampledPad.accept;input.back=key(VK_BACK)||sampledPad.back;input.click=game::at<uint8_t>(mouse)!=0||key(VK_LBUTTON);input.mouseMoved=std::abs(dx)+std::abs(dy)>.03f;input.mouseX=f.pointerX+dx*mouseSensitivity;input.mouseY=f.pointerY+dy*mouseSensitivity;
- const auto choice=f.update(dt,input,float(vp.Width),float(vp.Height));if(!secretRecovery.music&&f.age>=.26){audio.startFailure();secretRecovery.music=true;}
- if(choice!=SecretFeaturesChoice::None){secretRecovery.pending=choice;secretRecovery.closing=0;if(choice==SecretFeaturesChoice::Retry){secretRetryFade.begin();log("Retry: fading out; holding full black for at least 0.6 seconds before native recovery.");}}
+ const int previousSelection=f.selected;const auto choice=f.update(dt,input,float(vp.Width),float(vp.Height));if(f.ready()&&f.selected!=previousSelection)audio.cue(Cue::Move);if(!secretRecovery.music&&f.age>=.26){audio.startFailure();secretRecovery.music=true;}
+ if(choice!=SecretFeaturesChoice::None){audio.cue(choice==SecretFeaturesChoice::Exit?Cue::Back:Cue::Accept);secretRecovery.pending=choice;secretRecovery.closing=0;if(choice==SecretFeaturesChoice::Retry){secretRetryFade.begin();log("Retry: fading out; holding full black for at least 0.6 seconds before native recovery.");}}
  return true;
 }

@@ -1,6 +1,7 @@
 #pragma once
 #include "Renderer.hpp"
 #include "RuntimeModels.hpp"
+#include "RegisteredNames.hpp"
 #include "RuntimeColors.hpp"
 #include "PaintNames.hpp"
 #include "InputState.hpp"
@@ -19,6 +20,7 @@ struct Matrix{V3 right;uint32_t a;V3 up;uint32_t b;V3 forward;uint32_t c;V3 pos;
 inline V3 point(const Matrix&m,V3 p){return m.pos+m.right*p.x+m.up*p.y+m.forward*p.z;}
 inline bool supported(){auto* b=reinterpret_cast<uint8_t*>(GetModuleHandleW(nullptr));if(uintptr_t(b)!=0x400000)return false;auto* dos=reinterpret_cast<IMAGE_DOS_HEADER*>(b);if(dos->e_magic!=IMAGE_DOS_SIGNATURE)return false;auto* pe=reinterpret_cast<IMAGE_NT_HEADERS*>(b+dos->e_lfanew);return pe->Signature==IMAGE_NT_SIGNATURE&&pe->FileHeader.Machine==IMAGE_FILE_MACHINE_I386&&pe->OptionalHeader.SizeOfImage>=0x900000&&(at<uint32_t>(0x401000)==0x53EC8B55||at<uint32_t>(0x401000)==0x16197BE9);}
 inline bool vehicleInfo(void*p){uintptr_t vt=0,fn=0;if(!p||!gta::read(uintptr_t(p),vt)||!gta::read(vt+16,fn)||!qb::readableCode(fn,1))return false;return reinterpret_cast<uint8_t(__thiscall*)(void*)>(fn)(p)==6;}
+inline void notification(const char* text){reinterpret_cast<void(__cdecl*)(const char*,bool,bool,bool)>(0x588BE0)(text,false,false,false);}
 inline void* player(){return reinterpret_cast<void*(__cdecl*)(int)>(0x56E210)(-1);}
 inline void* pad(){return reinterpret_cast<void*(__cdecl*)(int)>(0x53FB70)(0);}
 inline bool mission(){return reinterpret_cast<bool(__cdecl*)()>(0x464D50)();}
@@ -34,7 +36,7 @@ struct OpenState:OpenGate{FrontendState frontend;};
 inline OpenState openState(bool focus){OpenState g;g.gameState=at<int>(0xC8D4C0);g.frontend=readFrontendState();g.loadingData=g.frontend.loadingData();g.menu=g.frontend.menuActive();g.userPause=userPaused();g.codePause=codePaused();g.focus=focus;g.cutscene=flag(0xB5F851)||flag(0xB5F852);g.enex=at<int>(0x96A7CC);if(g.gameState==9&&!g.loadingData){void*p=player();g.alive=p&&field<float>(p,0x540)>0;g.inVehicle=p&&(field<uint32_t>(p,0x46C)&0x100)!=0;}return g;}
 inline IDirect3DDevice9* device(){return reinterpret_cast<IDirect3DDevice9*(__cdecl*)()>(0x7F9D50)();}
 inline std::vector<Paint> paints(void*mi){const int n=std::min(8,int(field<uint8_t>(mi,0x2D0)));std::vector<Paint> out;for(int i=0;i<std::max(n,1);++i){Paint p;for(int j=0;j<4;++j){p.ids[j]=n?field<uint8_t>(mi,0x2B0+j*8+i):uint8_t(1);gta::vehicleColor(p.ids[j],p.rgb[j]);}p.name=paintNames.name(p.ids[0],p.rgb[0]);if(p.rgb[1]!=p.rgb[0])p.name+=" / "+paintNames.name(p.ids[1],p.rgb[1]);out.push_back(p);}return out;}
-inline Entry entry(int id,void*mi){Entry e;e.id=id;e.modelKey=field<uint32_t>(mi,4);e.kind=field<int>(mi,0x3C);e.classId=field<int8_t>(mi,0x4D);e.category=classLabel(e.classId);char key[9]{};std::memcpy(key,static_cast<uint8_t*>(mi)+0x32,8);const char*t=*key?reinterpret_cast<const char*(__thiscall*)(void*,const char*)>(0x6A0050)(reinterpret_cast<void*>(0xC1B340),key):nullptr;char buffer[128]{};size_t i=0;if(t)for(;i<100&&t[i];++i)buffer[i]=uint8_t(t[i])<128?t[i]:'?';e.name=*buffer&&std::strcmp(buffer,"NULL")?buffer:(*key?std::string(key):"Vehicle "+std::to_string(id));e.paints=paints(mi);const auto h=handling(field<uint16_t>(mi,0x4A));e.topSpeed=h.valid?h.limit:-1;e.information=stats(h);return e;}
+inline Entry entry(int id,void*mi){Entry e;e.id=id;e.modelKey=field<uint32_t>(mi,4);e.modelName=registeredNames.find(id,e.modelKey);if(e.modelName.empty()&&vanillaVehicle(id)&&e.modelKey==modelNameKey(countryDefaults[size_t(id-400)].model))e.modelName=countryDefaults[size_t(id-400)].model;e.kind=field<int>(mi,0x3C);e.classId=field<int8_t>(mi,0x4D);e.category=classLabel(e.classId);char key[9]{};std::memcpy(key,static_cast<uint8_t*>(mi)+0x32,8);const char*t=*key?reinterpret_cast<const char*(__thiscall*)(void*,const char*)>(0x6A0050)(reinterpret_cast<void*>(0xC1B340),key):nullptr;char buffer[128]{};size_t i=0;if(t)for(;i<100&&t[i];++i)buffer[i]=uint8_t(t[i])<128?t[i]:'?';e.name=*buffer&&std::strcmp(buffer,"NULL")?buffer:(*key?std::string(key):"Vehicle "+std::to_string(id));e.paints=paints(mi);const auto h=handling(field<uint16_t>(mi,0x4A));e.topSpeed=h.valid?h.limit:-1;e.information=stats(h);return e;}
 inline void preserveRemapColors(void* vehicle){if(vehicle)field<uint8_t>(vehicle,0x42F)|=4;}
 inline void writePaint(void* vehicle,const Paint& paint){if(vehicle)for(int i=0;i<4;++i)field<uint8_t>(vehicle,0x434+size_t(i))=paint.ids[i];}
 inline int extrasModel=-1,extrasSeed=-1;

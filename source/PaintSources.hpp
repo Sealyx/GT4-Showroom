@@ -1,5 +1,6 @@
 #pragma once
 #include "PaintNames.hpp"
+#include "RegisteredNames.hpp"
 #include <filesystem>
 #include <map>
 #include <set>
@@ -27,6 +28,8 @@ struct ColorProfile {
 struct PaintSourceReport {size_t files=0,rows=0;std::string profile;};
 inline PaintSourceReport reloadPaintNames(const std::filesystem::path&gameRoot){
  namespace fs=std::filesystem;paintNames.rows.clear();PaintSourceReport report;auto read=[&](const fs::path&file,int priority){std::ifstream stream(file);if(stream){paintNames.parse(stream,file.u8string(),priority);++report.files;}};
+ registeredNames.clear();registeredNames.load(gameRoot/"data/vehicles.ide");
+ {std::ifstream dat(gameRoot/"data/gta.dat");std::string row;while(std::getline(dat,row)){row=trimName(row.substr(0,row.find('#')));if(row.size()<4||lowerName(row.substr(0,4))!="ide ")continue;auto file=trimName(row.substr(4));std::replace(file.begin(),file.end(),'\\','/');const fs::path relative(file);if(!relative.is_absolute()&&file.find("..") == std::string::npos)registeredNames.load(gameRoot/relative);}}
  read(gameRoot/"data/carcols.dat",0);const auto mods=gameRoot/"modloader";IniRows ini;ini.load(mods/"modloader.ini");std::error_code ec;
  if(fs::is_directory(mods/".profiles",ec)){std::vector<fs::path> profiles;for(fs::directory_iterator it(mods/".profiles",fs::directory_options::skip_permission_denied,ec),end;it!=end;it.increment(ec)){if(ec){ec.clear();continue;}if(lowerName(it->path().extension().u8string())==".ini")profiles.push_back(it->path());}std::sort(profiles.begin(),profiles.end());for(const auto&file:profiles)ini.load(file);}
  auto current=ini.value("folder.config","profile","Default");std::string chosen=current;
@@ -36,9 +39,9 @@ inline PaintSourceReport reloadPaintNames(const std::filesystem::path&gameRoot){
  ColorProfile profile;profile.apply(ini,chosen,current);report.profile=chosen;std::vector<std::string> otherExclusive;for(const auto&section:ini.sections){const auto suffix=section.first.find(".exclusivemods");if(section.first.rfind("profiles.",0)==0&&suffix!=std::string::npos&&!profile.visited.count(section.first.substr(9,suffix-9))){const auto values=ini.list(section.first);otherExclusive.insert(otherExclusive.end(),values.begin(),values.end());}}
  struct Source{fs::path file;int rank;};std::vector<Source> sources;
  if(fs::is_directory(mods,ec))for(fs::recursive_directory_iterator it(mods,fs::directory_options::skip_permission_denied,ec),end;it!=end;it.increment(ec)){
-  if(ec){ec.clear();continue;}const auto filename=it->path().filename().u8string();if(it->is_symlink(ec)){if(it->is_directory(ec))it.disable_recursion_pending();continue;}if(it->is_directory(ec)){if(!filename.empty()&&(filename[0]=='.'||filename[0]=='_'))it.disable_recursion_pending();continue;}if(lowerName(filename)!="carcols.dat")continue;
+  if(ec){ec.clear();continue;}const auto filename=it->path().filename().u8string();if(it->is_symlink(ec)){if(it->is_directory(ec))it.disable_recursion_pending();continue;}if(it->is_directory(ec)){if(!filename.empty()&&(filename[0]=='.'||filename[0]=='_'))it.disable_recursion_pending();continue;}if(lowerName(filename)!="carcols.dat"&&lowerName(it->path().extension().u8string())!=".ide")continue;
   const auto relative=it->path().lexically_relative(mods);auto part=relative.begin();if(part==relative.end())continue;const std::string mod=part->u8string();++part;fs::path inside;for(;part!=relative.end();++part)inside/=*part;if(profile.accepts(mod,inside.generic_u8string(),otherExclusive))sources.push_back({it->path(),profile.rank(mod)});
  }
- std::sort(sources.begin(),sources.end(),[](const Source&a,const Source&b){return a.rank!=b.rank?a.rank<b.rank:lowerName(a.file.u8string())<lowerName(b.file.u8string());});for(const auto&source:sources)read(source.file,source.rank);report.rows=paintNames.rows.size();return report;
+ std::sort(sources.begin(),sources.end(),[](const Source&a,const Source&b){return a.rank!=b.rank?a.rank<b.rank:lowerName(a.file.u8string())<lowerName(b.file.u8string());});for(const auto&source:sources){if(lowerName(source.file.filename().u8string())=="carcols.dat")read(source.file,source.rank);else registeredNames.load(source.file);}report.rows=paintNames.rows.size();return report;
 }
 }
