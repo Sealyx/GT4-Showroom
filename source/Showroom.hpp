@@ -94,7 +94,7 @@ inline void pointerButton(Model& model,const std::vector<Entry>& cars,float w,fl
 }
 inline void dockPointer(Model&s,const std::vector<Entry>&cars,float w,float h,double dt){
  if(!s.open||s.dragging||!s.ui.dock||w<=0||h<=0)return;float x=.5f,y=.79f;
- if(s.ui.menu.open){if(s.ui.menu.monitorDragLevel>=0)return;const auto b=s.ui.menu.pointerTarget(w,h);x=(b.x+b.w*.68f)/w;y=(b.y+b.h*.5f)/h;}
+ if(s.ui.menu.open){if(s.ui.menu.monitorDragLevel>=0)return;const auto b=s.ui.menu.pointerTarget(w,h);x=(b.x+b.w*(!s.ui.menu.classic&&s.ui.menu.monitorFooter>=0?.5f:.68f))/w;y=(b.y+b.h*.5f)/h;}
  else if(s.searching){if(!s.ui.keyboard.open)return;const auto b=s.ui.keyboard.box(w,h,s.ui.keyboard.selected);x=(b.x+b.w*.65f)/w;y=(b.y+b.h*.62f)/h;}
  else if(s.page==Page::Prize){x=.5f;y=prizeButtonTop+prizeButtonHeight*.45f;}
  else{if(s.ui.cinematic.active||s.ui.cinematic.mix>.01f||cars.empty()||s.selected>=cars.size())return;

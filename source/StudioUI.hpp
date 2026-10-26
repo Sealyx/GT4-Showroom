@@ -25,7 +25,7 @@ inline constexpr const char* classNames[]={"Normal","Poor","Rich","Executive","W
 inline int classIndex(int value){return value>=0&&value<12?value:12;}
 struct ContextMenu{
  // The three indices retain their historical names for saved UI fixtures.
- bool classic=true,monitorPicker=false,monitorHover=false,monitorHeaderHover=false;int monitorDragLevel=-1,monitorHelpLevel=-1,monitorHelpIndex=-1;float monitorDragX=0,monitorDragY=0;std::array<float,3> monitorX{},monitorY{};std::array<bool,3> monitorPlaced{};double monitorChanged=0;
+ bool classic=true,monitorPicker=false,monitorHover=false,monitorHeaderHover=false,monitorKeyboard=false;int monitorDragLevel=-1,monitorHelpLevel=-1,monitorHelpIndex=-1,monitorHoverLevel=-1,monitorHoverIndex=-1,monitorFooter=-1,monitorFooterLevel=0;float monitorDragX=0,monitorDragY=0;std::array<float,3> monitorX{},monitorY{};std::array<bool,3> monitorPlaced{};double monitorChanged=0;
  bool open=false,sub=false,countries=false,countryFocus=false;int row=0,sortRow=0,countryRow=0,choice=-1,focusLevel=0;float x=.5f,y=.5f;double began=0;
  std::vector<int> available{-1},classes{-1};std::array<int,countryCount> counts{};std::array<int,classCount> classCounts{};
  std::array<std::vector<std::string>,2> extras;std::array<int,2> extraChoice{{0,0}};bool favoriteView=false,cinematicView=false,shadows=true,carLogo=false,brandLogo=false,displayModelId=false,displayModelName=false,displayClass=false;int order=0,countryFilter=-1,classFilter=-1;
@@ -88,6 +88,8 @@ struct ContextMenu{
  UIRect monitorField(int level,int index,float w,float h)const;
  UIRect monitorDropdown(float w,float h)const;
  UIRect monitorButton(int level,int which,float w,float h)const;
+ bool monitorFieldSelected(int level,int index,bool single=false)const;
+ bool monitorButtonSelected(int level,int which)const;
  UIRect pointerTarget(float w,float h)const;
  std::string monitorValue(int level,int index)const;
  std::string monitorTitle(int level)const;
@@ -98,7 +100,7 @@ struct ContextMenu{
  StudioAction monitorActivate(bool favorites);
  StudioAction monitorClick(float px,float py,float w,float h,bool favorites);
  bool monitorDrag(float px,float py,float w,float h,bool down,bool pressed);
- void selectedAction(){if(!classic){monitorPicker=false;if(focus()==2){countryFocus=false;focusLevel=monitorSubWindow()?1:0;sub=monitorSubWindow();}}}
+ void selectedAction(){if(!classic){monitorPicker=false;monitorFooter=-1;if(focus()==2){countryFocus=false;focusLevel=monitorSubWindow()?1:0;sub=monitorSubWindow();}}}
 };
 #include "MonitorSettings.inl"
 struct CinematicView{

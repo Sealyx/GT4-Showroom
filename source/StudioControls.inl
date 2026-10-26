@@ -46,15 +46,15 @@ void interaction(const PadActions&pad,float W,float H,double dt,uint64_t tick){
   const auto action=searchInput.poll([](int v){return key(v);},tick,state.query);
   if(action==SearchAction::Submit)submitStudioSearch();else if(action==SearchAction::Cancel){state.searching=false;state.ui.keyboard.open=false;blockActions();}dockPointer(state,entries,W,H,dt);return;
  }
- if(context&&state.page!=Page::Prize){state.ui.menu.toggle(state.pointerX,state.pointerY,state.clock);state.cue=state.ui.menu.open?Cue::Open:Cue::Back;state.dragging=false;state.ui.cinematic.grabbed=false;if(pad.view||key(VK_APPS))state.ui.dock=true;dockPointer(state,entries,W,H,dt);return;}
- if(state.ui.menu.open){auto&m=state.ui.menu;const auto previous=std::make_tuple(m.open,m.sub,m.focus(),m.row,m.sortRow,m.countryRow,m.monitorPicker);
+ if(context&&state.page!=Page::Prize){state.ui.menu.toggle(state.pointerX,state.pointerY,state.clock);state.ui.menu.monitorKeyboard=pad.view||key(VK_APPS);state.cue=state.ui.menu.open?Cue::Open:Cue::Back;state.dragging=false;state.ui.cinematic.grabbed=false;if(pad.view||key(VK_APPS))state.ui.dock=true;dockPointer(state,entries,W,H,dt);return;}
+ if(state.ui.menu.open){auto&m=state.ui.menu;const auto previous=std::make_tuple(m.open,m.sub,m.focus(),m.row,m.sortRow,m.countryRow,m.monitorPicker,m.monitorFooter,m.monitorFooterLevel);
   if(m.monitorDrag(state.pointerX*W,state.pointerY*H,W,H,lDown,click)){state.ui.dock=false;return;}
   if(std::abs(dx)+std::abs(dy)>.03f)m.hover(state.pointerX*W,state.pointerY*H,W,H);if(upPress)m.move(0,-1);if(downPress)m.move(0,1);if(leftPress)m.move(-1,0);if(rightPress)m.move(1,0);
   if(game::at<uint8_t>(rawMouse+3))m.move(0,-1);else if(game::at<uint8_t>(rawMouse+4))m.move(0,1);
   if(goBack){if(m.classic){if(m.focus()>0)m.move(-1,0);else m.open=false;}else m.monitorBack();state.cue=Cue::Back;blockActions();return;}
-  if(accept)requestStudioAction(m.activate(state.ui.favoritesOnly));if(click)requestStudioAction(m.click(state.pointerX*W,state.pointerY*H,W,H,state.ui.favoritesOnly));
-  const auto current=std::make_tuple(m.open,m.sub,m.focus(),m.row,m.sortRow,m.countryRow,m.monitorPicker);
-  if(previous!=current){if(state.cue==Cue::None)state.cue=(accept||click||rightPress)?Cue::Accept:Cue::Move;if(std::get<1>(previous)!=m.sub||std::get<6>(previous)!=m.monitorPicker||std::get<2>(previous)!=m.focus())m.monitorChanged=state.clock;}
+  if(accept){m.monitorKeyboard=true;requestStudioAction(m.activate(state.ui.favoritesOnly));}if(click)requestStudioAction(m.click(state.pointerX*W,state.pointerY*H,W,H,state.ui.favoritesOnly));
+  const auto current=std::make_tuple(m.open,m.sub,m.focus(),m.row,m.sortRow,m.countryRow,m.monitorPicker,m.monitorFooter,m.monitorFooterLevel);
+  if(previous!=current){if(state.cue==Cue::None)state.cue=(accept||click||(rightPress&&m.monitorFooter<0))?Cue::Accept:Cue::Move;if(std::get<1>(previous)!=m.sub||std::get<6>(previous)!=m.monitorPicker||std::get<2>(previous)!=m.focus())m.monitorChanged=state.clock;}
   dockPointer(state,entries,W,H,dt);return;
  }
 

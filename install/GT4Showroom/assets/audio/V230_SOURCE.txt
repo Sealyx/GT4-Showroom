@@ -7,6 +7,8 @@ Full source MP3 decoded to PCM16 stereo 44100Hz. No video audio extraction.
 Slider: FrontiX360 GT4 Menu Sound Effects / Slider.mp3
 https://www.youtube.com/watch?v=hNmuS2Uzs-c
 https://drive.google.com/file/d/1YcsfZohZzDRB0KBx-ccNxa3VH9aKHliN/view
+This is the separate author-labelled Slider cue, not Move.mp3.
+Raw-disc extraction certification unavailable; exact Arcade/Dealership
+identity awaits user audition. V230_PROVENANCE.json gives source/output hashes.
 
 Audio/GT4 visual elements remain property of their respective rights holders.
-A downloaded pack does not grant an open public redistribution licence.

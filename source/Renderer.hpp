@@ -14,6 +14,7 @@
 #include <cstring>
 #include "Showroom.hpp"
 #include "Display.hpp"
+#include "MonitorArt.hpp"
 #include "PrivateFont.hpp"
 #include "ThumbnailFit.hpp"
 #include "CountryFlags.hpp"
@@ -154,22 +155,23 @@ public:
  }
 
  void monitorBevel(IDirect3DDevice9*d,UIRect r,float alpha,float scale,bool selected){
-  rect(d,r.x,r.y,r.w,r.h,color(0x696A6F,alpha));
-  const float edge=std::max(.6f,scale);for(int i=0;i<12;++i){const float t=float(i)/11;const float shade=.78f+.2f*t;rect(d,r.x+edge,r.y+edge+(r.h-2*edge)*i/12,r.w-2*edge,(r.h-2*edge)/12+.1f,color(0xF5F5F5,alpha,shade));}
-  rect(d,r.x+edge,r.y+r.h-edge,r.w-2*edge,edge,color(0xF6F6F6,alpha));
-  const float arrow=15*scale;rect(d,r.x+r.w-arrow-2*scale,r.y+2*scale,arrow,r.h-4*scale,color(selected?0xEBAE35:0xDDE0E3,alpha));
-  screen(d);d->SetTexture(0,nullptr);const float xx=r.x+r.w-arrow*.5f-2*scale,yy=r.y+r.h*.54f;const ScreenVertex triangle[]={{xx-3.4f*scale,yy-2*scale,0,1,color(0x17191B,alpha),0,0},{xx+3.4f*scale,yy-2*scale,0,1,color(0x17191B,alpha),0,0},{xx,yy+2.4f*scale,0,1,color(0x17191B,alpha),0,0}};d->DrawPrimitiveUP(D3DPT_TRIANGLELIST,1,triangle,sizeof(ScreenVertex));++drawCalls;
+  rect(d,r.x,r.y,r.w,r.h,color(0x696A72,alpha));
+  const float edge=std::max(.6f,scale),height=r.h-2*edge;for(size_t i=0;i<monitorFieldGray.size();++i)rect(d,r.x+edge,r.y+edge+height*i/monitorFieldGray.size(),r.w-2*edge,height/monitorFieldGray.size()+.1f,color(monitorFieldGray[i],alpha));
+  rect(d,r.x+edge,r.y+edge,edge,height,color(0xECEEF5,alpha));rect(d,r.x+edge,r.y+r.h-edge,r.w-2*edge,edge,color(0x9697A0,alpha));
+  const auto arrow=monitorArrowPanel(r,scale);const auto&ramp=selected?monitorOrange:monitorArrowGray;for(size_t i=0;i<ramp.size();++i)rect(d,arrow.x,arrow.y+arrow.h*i/ramp.size(),arrow.w,arrow.h/ramp.size()+.1f,color(ramp[i],alpha));
+  rect(d,arrow.x,arrow.y,edge*.65f,arrow.h,color(selected?0xFFD18A:0xF2F4F9,alpha));
+  screen(d);d->SetTexture(0,nullptr);const float xx=arrow.x+arrow.w*.5f,yy=arrow.y+arrow.h*.51f;const ScreenVertex triangle[]={{xx-4.5f*scale,yy-2.5f*scale,0,1,color(0x111214,alpha),0,0},{xx+4.5f*scale,yy-2.5f*scale,0,1,color(0x111214,alpha),0,0},{xx,yy+3.4f*scale,0,1,color(0x111214,alpha),0,0}};d->DrawPrimitiveUP(D3DPT_TRIANGLELIST,1,triangle,sizeof(ScreenVertex));++drawCalls;
  }
- void monitorButton(IDirect3DDevice9*d,UIRect r,const std::string&caption,float alpha,float scale){
-  const float radius=r.h*.48f;for(int i=0;i<20;++i){const float t=(i+.5f)/20,dy=std::abs(t-.5f)*r.h;const float inset=radius-std::sqrt(std::max(0.f,radius*radius-dy*dy));const float shade=t<.45f?.98f: .86f+.09f*(t-.45f)/.55f;rect(d,r.x+inset,r.y+i*r.h/20,r.w-2*inset,r.h/20+.3f,color(0xF0F1F4,alpha,shade));}text(d,caption,r.x+r.w*.5f,r.y+.6f*scale,12*scale,color(0x101013,alpha),true,0,true);
+ void monitorButton(IDirect3DDevice9*d,UIRect r,const std::string&caption,float alpha,float scale,bool selected){
+  const float radius=r.h*.48f;const int lines=selected?int(monitorOrange.size()):20;for(int i=0;i<lines;++i){const float t=(i+.5f)/lines,dy=std::abs(t-.5f)*r.h;const float inset=radius-std::sqrt(std::max(0.f,radius*radius-dy*dy));const float shade=t<.45f?.98f: .86f+.09f*(t-.45f)/.55f;const auto shadeColor=selected?color(monitorOrange[size_t(i)],alpha):color(0xF0F1F4,alpha,shade);rect(d,r.x+inset,r.y+i*r.h/lines,r.w-2*inset,r.h/lines+.3f,shadeColor);}text(d,caption,r.x+r.w*.5f,r.y+2.6f*scale,12*scale,color(0x101013,alpha),true,0,true);
  }
  void monitorSettings(IDirect3DDevice9*d,float W,float H,const Model&s){
   const auto&m=s.ui.menu;const float scale=H/720.f;const float alpha=ease(float((s.clock-m.began)/.12));const auto boxes=m.monitorPanels(W,H);
   auto window=[&](int level,bool single){const auto r=boxes[size_t(level)];rect(d,r.x+3*scale,r.y+3*scale,r.w,r.h,color(0,.26f*alpha));rect(d,r.x,r.y,r.w,r.h,color(0x67696E,alpha));rect(d,r.x+scale,r.y+scale,r.w-2*scale,r.h-2*scale,color(0xB6B6BB,alpha));rect(d,r.x,r.y,r.w,21*scale,color(0x17130A,alpha));text(d,m.monitorTitle(level),r.x+r.w*.5f,r.y+1*scale,fitted(m.monitorTitle(level),13*scale,r.w-20*scale,true),color(0xD0D0D2,alpha),true,0,true);
    const auto rows=m.items(level);const int count=single?1:int(rows.size());for(int i=0;i<count;++i){const float yy=r.y+(22+28*i)*scale;rect(d,r.x+2*scale,yy,r.w-4*scale,28*scale,color(i%2?0xACACB1:0xB4B4B9,alpha));const auto field=m.monitorField(level,i,W,H);std::string caption,value;if(single){const auto b=m.thirdBranch();caption=b==MenuBranch::Countries?"Country":b==MenuBranch::Classes?"Class":"Selection";const auto options=m.items(2);if(!options.empty())value=options[size_t(std::clamp(m.countryRow,0,int(options.size())-1))].label;}else{caption=rows[size_t(i)].label;if(level==0&&i==1)caption="Favorites";if(level==0&&i==2)caption="Cinematic";value=m.monitorValue(level,i);}
-    text(d,caption,r.x+12*scale,yy+4*scale,fitted(caption,13.5f*scale,field.x-r.x-22*scale,true),color(0x08080C,alpha),false,0,true);const bool selected=m.monitorHover&&m.focus()==level&&(single||m.current(level)==i);monitorBevel(d,field,alpha,scale,selected);text(d,value,field.x+8*scale,field.y+.2f*scale,fitted(value,13.5f*scale,field.w-29*scale,true),color(0x08080C,alpha),false,0,true);
+    text(d,caption,r.x+12*scale,yy+4*scale,fitted(caption,13.5f*scale,field.x-r.x-22*scale,true),color(0x08080C,alpha),false,0,true);monitorBevel(d,field,alpha,scale,m.monitorFieldSelected(level,i,single));text(d,value,field.x+8*scale,field.y+2.2f*scale,fitted(value,13.5f*scale,monitorArrowPanel(field,scale).x-field.x-12*scale,true),color(0x08080C,alpha),false,0,true);
    }
-   monitorButton(d,m.monitorButton(level,0,W,H),level?"Back":"Cancel",alpha,scale);monitorButton(d,m.monitorButton(level,1,W,H),"OK",alpha,scale);
+   monitorButton(d,m.monitorButton(level,0,W,H),level?"Back":"Cancel",alpha,scale,m.monitorButtonSelected(level,0));monitorButton(d,m.monitorButton(level,1,W,H),"OK",alpha,scale,m.monitorButtonSelected(level,1));
   };
   auto dropdown=[&](UIRect r,int level){const float reveal=ease(float((s.clock-m.monitorChanged)/.09));if(reveal<=.001f)return;const float a=alpha*reveal;rect(d,r.x+3*scale,r.y+3*scale,r.w,r.h,color(0,.36f*a));rect(d,r.x,r.y,r.w,r.h,color(0xE1E1E3,a));rect(d,r.x,r.y,r.w,scale,color(0xFAFAFA,a));rect(d,r.x+r.w-scale,r.y,scale,r.h,color(0x55565B,a));rect(d,r.x,r.y+r.h-scale,r.w,scale,color(0x55565B,a));const auto options=m.items(level);const int first=m.monitorStart(level,H);for(int i=first;i<int(options.size());++i){const float yy=r.y+(i-first)*26*scale;if(yy+25*scale>r.y+r.h)break;const auto&item=options[size_t(i)];if(m.current(level)==i)rect(d,r.x+scale,yy+scale,r.w-2*scale,25*scale,color(0xEEB039,a));if(item.checked)text(d,"*",r.x+4*scale,yy+3*scale,12*scale,color(0x141418,a),false,0,true);text(d,item.label,r.x+14*scale,yy+3*scale,fitted(item.label,13.5f*scale,r.w-27*scale,true),color(0x08080C,a),false,0,true);if(item.child!=MenuBranch::None)text(d,">",r.x+r.w-13*scale,yy+3*scale,12*scale,color(0x111115,a),false,0,true);}
   };

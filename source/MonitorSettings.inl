@@ -2,7 +2,7 @@
 // mouse hit tests, drag constraints and controller cursor docking.
 inline void ContextMenu::monitorToggle(float px,float py,double now){
  open=!open;sub=countries=countryFocus=false;row=sortRow=countryRow=focusLevel=0;
- monitorPicker=monitorHover=monitorHeaderHover=false;monitorDragLevel=monitorHelpLevel=monitorHelpIndex=-1;monitorPlaced={};
+ monitorPicker=monitorHover=monitorHeaderHover=monitorKeyboard=false;monitorDragLevel=monitorHelpLevel=monitorHelpIndex=monitorHoverLevel=monitorHoverIndex=monitorFooter=-1;monitorPlaced={};
  x=px;y=py;began=monitorChanged=now;
 }
 inline int ContextMenu::monitorStart(int level,float h)const{
@@ -30,6 +30,13 @@ inline UIRect ContextMenu::monitorButton(int level,int which,float w,float h)con
  const auto r=monitorPanels(w,h)[size_t(level)];const float s=h/720.f;
  const float bw=r.w*.34f;return {r.x+r.w*(which?.55f:.11f),r.y+r.h-26*s,bw,18*s};
 }
+inline bool ContextMenu::monitorFieldSelected(int level,int index,bool single)const{
+ if(monitorDragLevel>=0)return false;
+ return monitorKeyboard?(monitorFooter<0&&focus()==level&&(single||current(level)==index)):(monitorHoverLevel==level&&monitorHoverIndex==index);
+}
+inline bool ContextMenu::monitorButtonSelected(int level,int which)const{
+ return monitorDragLevel<0&&monitorFooter==which&&monitorFooterLevel==level&&(monitorKeyboard||monitorHover);
+}
 inline UIRect ContextMenu::monitorDropdown(float w,float h)const{
  const auto r=monitorField(monitorSubWindow()?1:2,monitorSubWindow()?sortRow:0,w,h);const float s=h/720.f;
  const float hh=std::min(h*.76f,26*s*std::max(size_t(1),items(2).size()));
@@ -40,6 +47,7 @@ inline UIRect ContextMenu::monitorDropdown(float w,float h)const{
 inline UIRect ContextMenu::pointerTarget(float w,float h)const{
  const float s=h/720.f;const int level=focus();
  if(classic){const auto r=panel(level,w,h);return {r.x,r.y+(7+(current(level)-windowStart(level,h))*28)*s,r.w,28*s};}
+ if(monitorFooter>=0)return monitorButton(monitorFooterLevel,monitorFooter,w,h);
  if(level==2){if(!monitorPicker)return monitorField(monitorSubWindow()?1:2,monitorSubWindow()?sortRow:0,w,h);const auto r=monitorDropdown(w,h);return {r.x,r.y+(countryRow-monitorStart(2,h))*26*s,r.w,26*s};}
  if(level==1&&!monitorSubWindow()){const auto r=monitorPanels(w,h)[1];return {r.x,r.y+(sortRow-monitorStart(1,h))*26*s,r.w,26*s};}
  return monitorField(level,current(level),w,h);
@@ -72,6 +80,7 @@ inline std::string ContextMenu::monitorValue(int level,int index)const{
 inline std::string ContextMenu::help()const{
  if(classic||!open||(!monitorHover&&monitorDragLevel<0))return {};
  if(monitorDragLevel>=0||monitorHeaderHover)return "Drag the title bar to move this settings window";
+ if(monitorFooter>=0)return monitorFooter?"Close this settings window":monitorFooterLevel?"Return to the previous settings window":"Close showroom settings";
  const int level=monitorHelpLevel>=0?monitorHelpLevel:focus();const auto rows=items(level);const int index=monitorHelpLevel>=0?monitorHelpIndex:current(level);if(index<0||size_t(index)>=rows.size())return {};
  const auto item=rows[size_t(index)];const auto branch=item.child;
  if(branch==MenuBranch::Sort)return "Choose the order of the vehicle list";
@@ -91,45 +100,52 @@ inline std::string ContextMenu::help()const{
  switch(item.action){case StudioAction::SortAscending:return "Order vehicles by name from A to Z";case StudioAction::SortDescending:return "Order vehicles by name from Z to A";case StudioAction::SortSpeed:return "Order vehicles by their top speed";case StudioAction::SortModelId:return "Order vehicles by model ID";case StudioAction::Favorites:case StudioAction::AllCars:return "Switch between favorites and the complete vehicle list";case StudioAction::Cinematic:return "Orbit and zoom around the selected vehicle";default:return {};}
 }
 inline void ContextMenu::monitorPoint(float px,float py,float w,float h){
- monitorHover=monitorHeaderHover=false;monitorHelpLevel=monitorHelpIndex=-1;if(monitorDragLevel>=0){monitorHover=true;return;}
+ monitorHover=monitorHeaderHover=monitorKeyboard=false;monitorHelpLevel=monitorHelpIndex=monitorHoverLevel=monitorHoverIndex=monitorFooter=-1;if(monitorDragLevel>=0){monitorHover=true;return;}
  const float s=h/720.f;const auto boxes=monitorPanels(w,h);
+ auto footer=[&](int level){for(int which=0;which<2;++which)if(monitorButton(level,which,w,h).contains(px,py)){monitorFooterLevel=level;monitorFooter=which;monitorHover=true;return true;}return false;};
+ auto field=[&](int level,int index){if(monitorField(level,index,w,h).contains(px,py)){monitorHoverLevel=level;monitorHoverIndex=index;}};
  auto list=[&](UIRect r,int level){if(!r.contains(px,py))return false;const int i=int((py-r.y)/(26*s))+monitorStart(level,h);const auto rows=items(level);if(i<0||size_t(i)>=rows.size())return false;
   if(level==2){countryRow=i;countryFocus=true;focusLevel=2;}else{sortRow=i;countryFocus=false;focusLevel=1;}monitorHover=true;return true;};
  if(monitorPicker&&list(monitorDropdown(w,h),2))return;
  if(monitorSelectorWindow()){
-  const auto r=boxes[2];if(r.contains(px,py)){monitorHeaderHover=py<r.y+22*s;monitorHover=monitorHeaderHover||monitorField(2,0,w,h).contains(px,py);return;}
+  const auto r=boxes[2];if(r.contains(px,py)){if(footer(2))return;monitorHeaderHover=py<r.y+22*s;field(2,0);monitorHover=monitorHeaderHover||monitorHoverLevel==2;return;}
  }
  if(sub){if(monitorSubWindow()){
-   const auto r=boxes[1];if(r.contains(px,py)){monitorHeaderHover=py<r.y+22*s;monitorHover=monitorHeaderHover;const int i=int((py-r.y-22*s)/(28*s));if(py>=r.y+22*s&&i>=0&&size_t(i)<items(1).size()){if(sortRow!=i){monitorPicker=false;countryFocus=false;sortRow=i;}if(!monitorPicker){focusLevel=1;countryFocus=false;}monitorHover=true;}return;}
+   const auto r=boxes[1];if(r.contains(px,py)){if(footer(1))return;monitorHeaderHover=py<r.y+22*s;monitorHover=monitorHeaderHover;const int i=int((py-r.y-22*s)/(28*s));if(py>=r.y+22*s&&i>=0&&size_t(i)<items(1).size()){if(sortRow!=i){monitorPicker=false;countryFocus=false;sortRow=i;}if(!monitorPicker){focusLevel=1;countryFocus=false;}monitorHelpLevel=1;monitorHelpIndex=i;field(1,i);monitorHover=true;}return;}
   }else if(!monitorSelectorWindow()&&list(boxes[1],1))return;
  }
- const auto r=boxes[0];if(!r.contains(px,py))return;monitorHeaderHover=py<r.y+22*s;monitorHover=monitorHeaderHover;
+ const auto r=boxes[0];if(!r.contains(px,py))return;if(footer(0))return;monitorHeaderHover=py<r.y+22*s;monitorHover=monitorHeaderHover;
  const int i=int((py-r.y-22*s)/(28*s));if(py>=r.y+22*s&&i>=0&&size_t(i)<rootItems().size()){
   monitorHelpLevel=0;monitorHelpIndex=i;
   if(!sub&&row!=i){row=i;sortRow=countryRow=0;countryFocus=monitorPicker=false;focusLevel=0;}
-  if(!sub){focusLevel=0;countryFocus=false;}monitorHover=true;
+  if(!sub){focusLevel=0;countryFocus=false;}field(0,i);monitorHover=true;
  }
 }
 inline void ContextMenu::monitorBack(){
- monitorHover=true;monitorHeaderHover=false;monitorHelpLevel=monitorHelpIndex=-1;
+ monitorHover=true;monitorHeaderHover=false;monitorHelpLevel=monitorHelpIndex=monitorHoverLevel=monitorHoverIndex=monitorFooter=-1;
  if(monitorPicker){monitorPicker=false;if(monitorSubWindow()){countryFocus=false;focusLevel=1;}return;}
  if(focus()==2){countryFocus=false;focusLevel=1;return;}
  if(sub){sub=countryFocus=false;focusLevel=0;return;}
  open=false;
 }
 inline void ContextMenu::monitorMove(int dx,int dy){
- if(!open)return;monitorHover=true;monitorHeaderHover=false;monitorHelpLevel=monitorHelpIndex=-1;
+ if(!open)return;monitorHover=monitorKeyboard=true;monitorHeaderHover=false;monitorHelpLevel=monitorHelpIndex=monitorHoverLevel=monitorHoverIndex=-1;
+ const int level=monitorFooter>=0?monitorFooterLevel:focus();
+ if(monitorFooter>=0){
+  if(dx)monitorFooter=std::clamp(monitorFooter+dx,0,1);
+  if(dy){monitorFooter=-1;focusLevel=level;countryFocus=level==2;if(level==0){row=dy<0?int(rootItems().size())-1:0;sub=false;}else if(level==1)sortRow=dy<0?int(items(1).size())-1:0;}
+  return;
+ }
  if(dx<0){monitorBack();return;}
- const int level=focus();
- if(level==2){if(!monitorPicker){if(dx>0||dy)monitorPicker=true;}const int n=int(items(2).size());if(monitorPicker&&n)countryRow=(countryRow+dy%n+n)%n;return;}
+ if(level==2){if(!monitorPicker){if(dx>0)monitorPicker=true;else if(dy){monitorFooter=dy>0?0:1;monitorFooterLevel=level;}return;}const int n=int(items(2).size());if(n)countryRow=(countryRow+dy%n+n)%n;return;}
  if(dx>0){const auto rows=items(level);const int index=current(level);if(index>=0&&size_t(index)<rows.size()&&rows[size_t(index)].child!=MenuBranch::None)monitorActivate(favoriteView);return;}
  const int n=int(items(level).size());if(!n)return;
- if(level==0){row=(row+dy%n+n)%n;sortRow=countryRow=0;sub=countryFocus=monitorPicker=false;}
- else {sortRow=(sortRow+dy%n+n)%n;countryRow=0;monitorPicker=countryFocus=false;}
+ if(level==0){if(row+dy>=n||row+dy<0){monitorFooter=dy>0?0:1;monitorFooterLevel=level;sub=countryFocus=monitorPicker=false;}else{row=(row+dy%n+n)%n;sortRow=countryRow=0;sub=countryFocus=monitorPicker=false;}}
+ else {if(monitorSubWindow()&&(sortRow+dy>=n||sortRow+dy<0)){monitorFooter=dy>0?0:1;monitorFooterLevel=level;}else sortRow=(sortRow+dy%n+n)%n;countryRow=0;monitorPicker=countryFocus=false;}
 }
 inline StudioAction ContextMenu::monitorActivate(bool favorites){
  favoriteView=favorites;if(!open)return StudioAction::None;monitorHover=true;monitorHelpLevel=monitorHelpIndex=-1;
- const int level=focus();const auto rows=items(level);const int index=current(level);if(index<0||size_t(index)>=rows.size())return StudioAction::None;
+ const int level=monitorFooter>=0?monitorFooterLevel:focus();if(monitorFooter>=0){monitorFooter=-1;monitorPicker=false;if(level==0){open=sub=countryFocus=false;}else if(level==1){sub=countryFocus=false;focusLevel=0;}else monitorBack();return StudioAction::None;}const auto rows=items(level);const int index=current(level);if(index<0||size_t(index)>=rows.size())return StudioAction::None;
  if(level==2&&!monitorPicker){monitorPicker=true;return StudioAction::None;}
  const auto item=rows[size_t(index)];
  if(item.child!=MenuBranch::None){
@@ -144,24 +160,24 @@ inline StudioAction ContextMenu::monitorActivate(bool favorites){
  return item.action;
 }
 inline StudioAction ContextMenu::monitorClick(float px,float py,float w,float h,bool favorites){
- if(!open)return StudioAction::None;const float s=h/720.f;const auto boxes=monitorPanels(w,h);
+ if(!open)return StudioAction::None;monitorPoint(px,py,w,h);const float s=h/720.f;const auto boxes=monitorPanels(w,h);
  auto pick=[&](UIRect r,int level)->bool{if(!r.contains(px,py))return false;const int i=int((py-r.y)/(26*s))+monitorStart(level,h);if(i<0||size_t(i)>=items(level).size())return false;if(level==2){countryRow=i;countryFocus=true;focusLevel=2;}else{sortRow=i;countryFocus=false;focusLevel=1;}return true;};
  if(monitorPicker&&pick(monitorDropdown(w,h),2))return monitorActivate(favorites);
  if(monitorSelectorWindow()){
   if(monitorField(2,0,w,h).contains(px,py)){monitorPicker=!monitorPicker;return StudioAction::None;}
-  for(int i=0;i<2;++i)if(monitorButton(2,i,w,h).contains(px,py)){monitorBack();return StudioAction::None;}
+  for(int i=0;i<2;++i)if(monitorButton(2,i,w,h).contains(px,py))return monitorActivate(favorites);
   if(boxes[2].contains(px,py))return StudioAction::None;
  }
  if(sub){if(monitorSubWindow()){
    for(size_t i=0;i<items(1).size();++i)if(monitorField(1,int(i),w,h).contains(px,py)){sortRow=int(i);focusLevel=1;countryFocus=false;return monitorActivate(favorites);}
-   for(int i=0;i<2;++i)if(monitorButton(1,i,w,h).contains(px,py)){sub=countryFocus=monitorPicker=false;focusLevel=0;return StudioAction::None;}
+   for(int i=0;i<2;++i)if(monitorButton(1,i,w,h).contains(px,py))return monitorActivate(favorites);
    if(boxes[1].contains(px,py))return StudioAction::None;
   }else if(!monitorSelectorWindow()&&pick(boxes[1],1))return monitorActivate(favorites);
  }
  for(size_t i=0;i<rootItems().size();++i)if(monitorField(0,int(i),w,h).contains(px,py)){
   row=int(i);focusLevel=0;countryFocus=sub=monitorPicker=false;return monitorActivate(favorites);
  }
- for(int i=0;i<2;++i)if(monitorButton(0,i,w,h).contains(px,py)){open=sub=countryFocus=monitorPicker=false;return StudioAction::None;}
+ for(int i=0;i<2;++i)if(monitorButton(0,i,w,h).contains(px,py))return monitorActivate(favorites);
  if(monitorPicker){monitorPicker=false;return StudioAction::None;}if(sub){sub=countryFocus=false;focusLevel=0;}else if(!boxes[0].contains(px,py))open=false;
  (void)s;return StudioAction::None;
 }
@@ -174,5 +190,5 @@ inline bool ContextMenu::monitorDrag(float px,float py,float w,float h,bool down
   for(int level=2;level>=0;--level){if((level==2&&!monitorSelectorWindow())||(level==1&&(!sub||!monitorSubWindow())))continue;const auto r=boxes[size_t(level)];if(UIRect{r.x,r.y,r.w,22*s}.contains(px,py)){monitorDragLevel=level;monitorDragX=px-r.x;monitorDragY=py-r.y;monitorPicker=false;break;}}}
  if(monitorDragLevel<0)return false;const int level=monitorDragLevel;const auto r=boxes[size_t(level)];const float xx=std::clamp(px-monitorDragX,8*s,std::max(8*s,w-r.w-8*s)),yy=std::clamp(py-monitorDragY,8*s,std::max(8*s,h*.9f-r.h-8*s));
  if(level==0){x=xx/w;y=yy/h;}else{monitorX[size_t(level)]=xx/w;monitorY[size_t(level)]=yy/h;monitorPlaced[size_t(level)]=true;}
- monitorHover=monitorHeaderHover=true;return true;
+ monitorHover=monitorHeaderHover=true;monitorKeyboard=false;monitorHoverLevel=monitorHoverIndex=monitorFooter=-1;return true;
 }
