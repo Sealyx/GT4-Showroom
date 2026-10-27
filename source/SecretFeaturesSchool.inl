@@ -1,4 +1,3 @@
- 
 using SchoolGroup=char(__thiscall*)(void*,int);SchoolGroup originalSchool0=nullptr,originalSchool2=nullptr,originalSchool8=nullptr,originalSchool9=nullptr,originalSchool11=nullptr,originalSchool23=nullptr;
 using HudDraw=void(__cdecl*)();HudDraw originalHudDraw=nullptr;
 #define GT4_SCHOOL_GROUP(N) char __fastcall school##N(void*self,void*,int command){return secretSchool.command(self,command,GetTickCount64())?0:originalSchool##N(self,command);}
