@@ -6,9 +6,6 @@
 namespace gt4 {
 inline constexpr float enthusiaFraming=1.32f;  
 struct PreviewPose {float yaw=0,pitch=12,zoom=1,centerY=.43f;};
- 
- 
- 
 inline PreviewPose enthusiaPose(double seconds){
  struct Key{double t;PreviewPose p;bool whip;};
  static constexpr std::array<Key,8> keys={{{0,{2.18f,12,.90f,.43f},false},
