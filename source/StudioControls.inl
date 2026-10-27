@@ -1,9 +1,17 @@
 // Included inside gt4 after native services/globals. No separate runtime bridge.
+inline Key previousCinematicHotspot,nextCinematicHotspot,pauseCinematic;
+void finishSettings(){
+ auto&ui=state.ui;if(!ui.menuSnapshot||ui.menu.open)return;
+ if(ui.menu.closeResult<0){ui.cinematic=ui.menuCinematic;ui.vehicle=ui.menuVehicle;ui.audioLevels=ui.menuAudio;}
+ else if(ui.audioLevels!=ui.menuAudio)saveStudioAudioPreferences();
+ audio.setLevels(ui.audioLevels);ui.menuSnapshot=false;
+}
 void requestStudioAction(StudioAction action){
  if(action==StudioAction::None||state.busy())return;
- if(action==StudioAction::Shadows||action==StudioAction::CarLogo||action==StudioAction::BrandLogo||action==StudioAction::DisplayModelId||action==StudioAction::DisplayModelName||action==StudioAction::DisplayClass){const bool value=state.ui.menu.choice!=0;if(action==StudioAction::Shadows)state.ui.shadows=value;else if(action==StudioAction::CarLogo)state.ui.carLogo=value;else if(action==StudioAction::BrandLogo)state.ui.brandLogo=value;else if(action==StudioAction::DisplayModelId)state.ui.displayModelId=value;else if(action==StudioAction::DisplayModelName)state.ui.displayModelName=value;else state.ui.displayClass=value;state.ui.menu.open=!state.ui.menu.classic;state.ui.menu.selectedAction();state.cue=Cue::Accept;blockActions();return;}
- if(action==StudioAction::Extra1||action==StudioAction::Extra2){const bool applied=selectStudioExtra(action==StudioAction::Extra2?1:0,state.ui.menu.choice);state.ui.menu.open=!state.ui.menu.classic;state.ui.menu.selectedAction();state.cue=applied?Cue::Accept:Cue::Error;blockActions();return;}
- if(action==StudioAction::Cinematic){if(entries.empty()||state.page==Page::Prize)return;auto&c=state.ui.cinematic;if(c.active)c.leave();else c.enter(state.clock,state.enthusia?enthusiaPose(state.clock-state.motionBegan).yaw:state.heading()+pi);state.ui.menu.open=false;state.ui.dock=false;state.ui.pointerMoved=state.clock;state.cue=Cue::Accept;return;}
+ if(action==StudioAction::Shadows||action==StudioAction::CarLogo||action==StudioAction::BrandLogo||action==StudioAction::DisplayModelId||action==StudioAction::DisplayModelName||action==StudioAction::DisplayClass){const bool value=state.ui.menu.choice!=0;if(action==StudioAction::Shadows)state.ui.shadows=value;else if(action==StudioAction::CarLogo)state.ui.carLogo=value;else if(action==StudioAction::BrandLogo)state.ui.brandLogo=value;else if(action==StudioAction::DisplayModelId)state.ui.displayModelId=value;else if(action==StudioAction::DisplayModelName)state.ui.displayModelName=value;else state.ui.displayClass=value;state.ui.menu.open=true;state.ui.menu.selectedAction();state.cue=Cue::Accept;blockActions();return;}
+ if(action==StudioAction::Extra1||action==StudioAction::Extra2){const bool applied=selectStudioExtra(action==StudioAction::Extra2?1:0,state.ui.menu.choice);state.ui.menu.open=true;state.ui.menu.selectedAction();state.cue=applied?Cue::Accept:Cue::Error;blockActions();return;}
+ if(action==StudioAction::Hotspots||action==StudioAction::Lights||action==StudioAction::Indicators){auto&v=state.ui.vehicle;const int value=state.ui.menu.choice;if(action==StudioAction::Hotspots)v.hotspots=value!=0;else if(action==StudioAction::Lights)v.lights=value!=0;else v.indicators=IndicatorMode(std::clamp(value,0,3));state.ui.menu.open=true;state.ui.menu.selectedAction();state.cue=Cue::Accept;blockActions();return;}
+ if(action==StudioAction::Cinematic){if(entries.empty()||state.page==Page::Prize)return;auto&c=state.ui.cinematic;const bool enabled=state.ui.menu.choice!=0;if(!enabled)c.leave();else if(!c.active)c.enter(state.clock,state.enthusia?enthusiaPose(state.clock-state.motionBegan).yaw:state.heading()+pi);state.ui.menu.open=true;state.ui.menu.cinematicView=c.active;state.ui.dock=true;state.ui.pointerMoved=state.clock;state.cue=Cue::Accept;blockActions();return;}
  state.ui.menu.open=false;state.ui.transition.request(action,state.clock);state.dragging=false;state.cue=Cue::Accept;
 }
 void applyViewTransition(){
@@ -22,7 +30,9 @@ void favoriteSelection(bool add){
 }
 void submitStudioSearch(){state.submitSearch(entries);state.ui.dock=true;state.ui.keyboard.open=false;if(state.page==Page::Prize)audio.endPrize(false);blockActions();}
 void interaction(const PadActions&pad,float W,float H,double dt,uint64_t tick){
+ if(!entries.empty()&&state.selected<entries.size())state.ui.vehicle.bind(entries[state.selected].id);
  applyViewTransition();state.ui.menu.sync(state.ui.favoritesOnly,state.ui.cinematic.active,state.ui.sortMode,state.ui.countryFilter,state.ui.classFilter,state.ui.shadows,state.ui.carLogo,state.ui.brandLogo,state.ui.displayModelId,state.ui.displayModelName,state.ui.displayClass);
+ state.ui.menu.hotspots=state.ui.vehicle.hotspots;state.ui.menu.lights=state.ui.vehicle.lights;state.ui.menu.indicators=int(state.ui.vehicle.indicators);
  const uintptr_t rawMouse=0xB73418;float dx=game::at<float>(rawMouse+0xC),dy=game::at<float>(rawMouse+0x10);if(game::flag(0xBA6744))dx=-dx;if(game::flag(0xBA6745))dy=-dy;
  const bool lDown=game::at<uint8_t>(rawMouse)!=0||key(VK_LBUTTON),rDown=game::at<uint8_t>(rawMouse+1)!=0||key(VK_RBUTTON);
  state.pointerMove(dx*mouseSensitivity,dy*mouseSensitivity,W,H);
@@ -33,10 +43,11 @@ void interaction(const PadActions&pad,float W,float H,double dt,uint64_t tick){
  const bool upPress=up.poll(key(VK_UP)||pad.up,tick,modal),downPress=down.poll(key(VK_DOWN)||pad.down,tick,modal);
  const bool accept=enter.poll(key(VK_RETURN)||key(VK_SPACE)||pad.accept,tick),goBack=backspace.poll(key(VK_BACK)||pad.back,tick);
  const bool add=addFavorite.poll(pad.add,tick),favoritesPress=favorite.poll((!state.searching&&key('F'))||pad.favorites,tick);
- if(pad.accept||pad.back||pad.add||pad.favorites||pad.view||pad.search||pad.left||pad.right||pad.up||pad.down||pad.orbitX||pad.orbitY||pad.zoom){state.ui.controllerUsed=true;}
+ const bool previousHotspot=previousCinematicHotspot.poll(pad.previousHotspot||(key(VK_TAB)&&key(VK_SHIFT)),tick),nextHotspot=nextCinematicHotspot.poll(pad.nextHotspot||(key(VK_TAB)&&!key(VK_SHIFT)),tick),pauseView=pauseCinematic.poll(key('P'),tick);
+ if(pad.accept||pad.back||pad.add||pad.favorites||pad.view||pad.search||pad.left||pad.right||pad.up||pad.down||pad.previousHotspot||pad.nextHotspot||pad.orbitX||pad.orbitY||pad.zoom){state.ui.controllerUsed=true;}
  if(leftPress||rightPress||upPress||downPress||accept||goBack||search||favoritesPress||add)state.ui.dock=true;
  if(state.busy())return;
- if(search){if(state.searching){state.searching=false;state.ui.keyboard.open=false;}else{state.beginSearch();state.ui.keyboard.open=pad.search;state.ui.keyboard.selected=0;}blockActions();return;}
+ if(search){if(state.ui.menu.open){state.ui.menu.finish(-1);finishSettings();}if(state.searching){state.searching=false;state.ui.keyboard.open=false;}else{state.beginSearch();state.ui.keyboard.open=pad.search;state.ui.keyboard.selected=0;}blockActions();return;}
  if(state.searching){
   if(state.ui.keyboard.open){auto&kb=state.ui.keyboard;if(leftPress)kb.move(-1,0);if(rightPress)kb.move(1,0);if(upPress)kb.move(0,-1);if(downPress)kb.move(0,1);
    int action=0;if(accept&&pad.accept)action=kb.type(state.query);if(add&&!state.query.empty())state.query.pop_back();if(favoritesPress)action=1;if(goBack&&pad.back)action=-1;
@@ -46,26 +57,36 @@ void interaction(const PadActions&pad,float W,float H,double dt,uint64_t tick){
   const auto action=searchInput.poll([](int v){return key(v);},tick,state.query);
   if(action==SearchAction::Submit)submitStudioSearch();else if(action==SearchAction::Cancel){state.searching=false;state.ui.keyboard.open=false;blockActions();}dockPointer(state,entries,W,H,dt);return;
  }
- if(context&&state.page!=Page::Prize){state.ui.menu.toggle(state.pointerX,state.pointerY,state.clock);state.ui.menu.monitorKeyboard=pad.view||key(VK_APPS);state.cue=state.ui.menu.open?Cue::Open:Cue::Back;state.dragging=false;state.ui.cinematic.grabbed=false;if(pad.view||key(VK_APPS))state.ui.dock=true;dockPointer(state,entries,W,H,dt);return;}
- if(state.ui.menu.open){auto&m=state.ui.menu;const auto previous=std::make_tuple(m.open,m.sub,m.focus(),m.row,m.sortRow,m.countryRow,m.monitorPicker,m.monitorFooter,m.monitorFooterLevel);
+ if(context&&state.page!=Page::Prize){auto&ui=state.ui;if(!ui.menu.open){ui.menuCinematic=ui.cinematic;ui.menuVehicle=ui.vehicle;ui.menuAudio=ui.audioLevels;ui.menuSnapshot=true;ui.menu.volumes=ui.audioLevels;}ui.menu.toggle(state.pointerX,state.pointerY,state.clock);ui.menu.monitorKeyboard=pad.view||key(VK_APPS);state.cue=ui.menu.open?Cue::Open:Cue::Back;state.dragging=false;ui.cinematic.grabbed=false;if(pad.view||key(VK_APPS))ui.dock=true;finishSettings();dockPointer(state,entries,W,H,dt);return;}
+ if(state.ui.menu.open){auto&m=state.ui.menu;const int previousTarget=m.audibleTarget();const auto previous=std::make_tuple(m.open,m.sub,m.focus(),m.monitorPicker);
+  if(goBack){m.monitorDragLevel=m.sliderDrag=-1;m.monitorBack();finishSettings();state.cue=Cue::Back;blockActions();return;}
+  if(m.monitorSlide(state.pointerX*W,state.pointerY*H,W,H,lDown,click)){state.ui.audioLevels=m.volumes;audio.setLevels(m.volumes);state.ui.dock=false;return;}
   if(m.monitorDrag(state.pointerX*W,state.pointerY*H,W,H,lDown,click)){state.ui.dock=false;return;}
   if(std::abs(dx)+std::abs(dy)>.03f)m.hover(state.pointerX*W,state.pointerY*H,W,H);if(upPress)m.move(0,-1);if(downPress)m.move(0,1);if(leftPress)m.move(-1,0);if(rightPress)m.move(1,0);
   if(game::at<uint8_t>(rawMouse+3))m.move(0,-1);else if(game::at<uint8_t>(rawMouse+4))m.move(0,1);
-  if(goBack){if(m.classic){if(m.focus()>0)m.move(-1,0);else m.open=false;}else m.monitorBack();state.cue=Cue::Back;blockActions();return;}
+  if(m.sliderChanged){state.ui.audioLevels=m.volumes;audio.setLevels(m.volumes);m.sliderChanged=false;state.cue=Cue::Move;}
   if(accept){m.monitorKeyboard=true;requestStudioAction(m.activate(state.ui.favoritesOnly));}if(click)requestStudioAction(m.click(state.pointerX*W,state.pointerY*H,W,H,state.ui.favoritesOnly));
-  const auto current=std::make_tuple(m.open,m.sub,m.focus(),m.row,m.sortRow,m.countryRow,m.monitorPicker,m.monitorFooter,m.monitorFooterLevel);
-  if(previous!=current){if(state.cue==Cue::None)state.cue=(accept||click||(rightPress&&m.monitorFooter<0))?Cue::Accept:Cue::Move;if(std::get<1>(previous)!=m.sub||std::get<6>(previous)!=m.monitorPicker||std::get<2>(previous)!=m.focus())m.monitorChanged=state.clock;}
+  const auto current=std::make_tuple(m.open,m.sub,m.focus(),m.monitorPicker);
+  const int target=m.audibleTarget();if(state.cue==Cue::None){if(previous!=current&&(accept||click||rightPress))state.cue=Cue::Accept;else if(target>=0&&target!=previousTarget)state.cue=Cue::Move;}
+  if(previous!=current)m.monitorChanged=state.clock;
+  finishSettings();
   dockPointer(state,entries,W,H,dt);return;
  }
 
- if(state.ui.cinematic.active){auto&c=state.ui.cinematic;
-  if(goBack){state.back();blockActions();return;}if(accept)c.toggle(state.clock);
+ if(state.ui.cinematic.active){auto&c=state.ui.cinematic;auto&v=state.ui.vehicle;
+  if(goBack){state.back();blockActions();return;}
   const Mesh*mesh=entries.empty()?nullptr:lookup(entries[state.selected].id);
-  if(click&&mesh&&renderer.hitCar(*mesh,state.pointerX*W,state.pointerY*H)){c.toggle(state.clock);c.grabbed=true;c.dragged=false;c.grabX=state.pointerX*W;c.grabY=state.pointerY*H;}
+  const bool hasHotspots=mesh&&v.hotspots&&mesh->cinematic.any();
+  if(hasHotspots&&(previousHotspot||nextHotspot)){const auto points=renderer.hotspots(*mesh,v);v.focus=points.cycle(v.focus,previousHotspot?-1:1);state.ui.dock=true;state.ui.pointerMoved=state.clock;state.cue=Cue::Move;}
+  if(accept){if(hasHotspots&&v.focus>=0){if(v.activate(v.focus,mesh->cinematic)){state.ui.pointerMoved=state.clock;state.cue=Cue::Accept;}}else c.toggle(state.clock);}if(pauseView)c.toggle(state.clock);
+  bool hotspotClicked=false;if(click&&hasHotspots){const int hit=renderer.hitHotspot(*mesh,v,state.pointerX*W,state.pointerY*H);if(hit>=0){hotspotClicked=v.activate(hit,mesh->cinematic);state.ui.pointerMoved=state.clock;state.cue=hotspotClicked?Cue::Accept:Cue::Error;}}
+  if(click&&!hotspotClicked&&mesh&&renderer.hitCar(*mesh,state.pointerX*W,state.pointerY*H)){c.toggle(state.clock);c.grabbed=true;c.dragged=false;c.grabX=state.pointerX*W;c.grabY=state.pointerY*H;}
   if(!lDown)c.grabbed=false;
   if(c.grabbed){const float px=state.pointerX*W,py=state.pointerY*H;if(c.dragged||std::abs(px-c.grabX)+std::abs(py-c.grabY)>3){c.orbit(dx*.007f,dy*.004f,state.clock);c.dragged=true;}}
   c.orbit(pad.orbitX*float(dt)*1.8f,pad.orbitY*float(dt)*.9f,state.clock);if(leftPress)c.orbit(-.09f,0,state.clock);if(rightPress)c.orbit(.09f,0,state.clock);if(upPress)c.orbit(0,-.06f,state.clock);if(downPress)c.orbit(0,.06f,state.clock);
-  if(game::at<uint8_t>(rawMouse+3))c.wheel(1);else if(game::at<uint8_t>(rawMouse+4))c.wheel(-1);if(pad.zoom)c.wheel(pad.zoom*float(dt)*8);return;
+  if(game::at<uint8_t>(rawMouse+3))c.wheel(1);else if(game::at<uint8_t>(rawMouse+4))c.wheel(-1);if(pad.zoom&&!(hasHotspots&&pad.zoomFromShoulders))c.wheel(pad.zoom*float(dt)*8);
+  if(hasHotspots&&state.ui.dock&&v.focus>=0){const auto points=renderer.hotspots(*mesh,v);for(size_t i=0;i<points.count;++i)if(points.items[i].component==v.focus){const float a=float(1-std::exp(-std::max(0.,dt)*14));state.pointerX+=(points.items[i].x/W-state.pointerX)*a;state.pointerY+=(points.items[i].y/H-state.pointerY)*a;break;}}
+  return;
  }
  if(leftPress)state.move(-1,entries);if(rightPress)state.move(1,entries);if(accept)state.accept(entries);if(goBack)state.back();
  if(favoritesPress&&state.page!=Page::Prize)requestStudioAction(state.ui.favoritesOnly?StudioAction::AllCars:StudioAction::Favorites);

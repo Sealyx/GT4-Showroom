@@ -5,9 +5,11 @@
 #include <string>
 #include <vector>
 #include "Countries.hpp"
+#include "AudioLevels.hpp"
+#include "CinematicVehicle.hpp"
 namespace gt4 {
 struct UIRect{float x=0,y=0,w=0,h=0;bool contains(float a,float b)const{return a>=x&&b>=y&&a<x+w&&b<y+h;}};
-enum class StudioAction{None,SortAscending,SortDescending,SortClass,SortSpeed,SortCountry,SortModelId,Favorites,AllCars,RefreshFavorites,Cinematic,FilterCountry,FilterClass,Shadows,CarLogo,BrandLogo,Extra1,Extra2,DisplayModelId,DisplayModelName,DisplayClass};
+enum class StudioAction{None,SortAscending,SortDescending,SortClass,SortSpeed,SortCountry,SortModelId,Favorites,AllCars,RefreshFavorites,Cinematic,FilterCountry,FilterClass,Shadows,CarLogo,BrandLogo,Extra1,Extra2,DisplayModelId,DisplayModelName,DisplayClass,Hotspots,Lights,Indicators,VolumeMaster,VolumeMusic,VolumeEffects};
 struct ViewTransition{
  StudioAction action=StudioAction::None;int phase=0;double began=0;bool black=false;
  bool active()const{return phase!=0;}
@@ -18,27 +20,63 @@ struct ViewTransition{
  bool ready()const{return phase==2&&black;}
  void applied(double now){phase=3;began=now;}
 };
-enum class MenuBranch{None,Sort,Countries,Classes,Shadows,Logos,BrandLogo,CarLogo,Extras,Extra1,Extra2,Display,DisplayModelId,DisplayModelName,DisplayClass};
+enum class MenuBranch{None,Sort,Countries,Classes,Shadows,Logos,BrandLogo,CarLogo,Extras,Extra1,Extra2,Display,DisplayModelId,DisplayModelName,DisplayClass,Cinematic,Favorites,CinematicControls,Hotspots,Lights,Indicators,Volume};
 struct MenuItem{std::string label;StudioAction action=StudioAction::None;int value=-1;MenuBranch child=MenuBranch::None;bool checked=false;};
 inline constexpr size_t classCount=13;
 inline constexpr const char* classNames[]={"Normal","Poor","Rich","Executive","Worker","Heavy","Taxi","Moped","Motorbike","Leisure Boat","Work Boat","Bicycle","Special"};
 inline int classIndex(int value){return value>=0&&value<12?value:12;}
 struct ContextMenu{
  // The three indices retain their historical names for saved UI fixtures.
- bool classic=true,monitorPicker=false,monitorHover=false,monitorHeaderHover=false,monitorKeyboard=false;int monitorDragLevel=-1,monitorHelpLevel=-1,monitorHelpIndex=-1,monitorHoverLevel=-1,monitorHoverIndex=-1,monitorFooter=-1,monitorFooterLevel=0;float monitorDragX=0,monitorDragY=0;std::array<float,3> monitorX{},monitorY{};std::array<bool,3> monitorPlaced{};double monitorChanged=0;
+ bool monitorPicker=false,monitorHover=false,monitorHeaderHover=false,monitorKeyboard=false;int monitorDragLevel=-1,monitorHelpLevel=-1,monitorHelpIndex=-1,monitorHoverLevel=-1,monitorHoverIndex=-1,monitorFooter=-1,monitorFooterLevel=0;float monitorDragX=0,monitorDragY=0;std::array<float,3> monitorX{},monitorY{};std::array<bool,3> monitorPlaced{};double monitorChanged=0;int closeResult=0,sliderDrag=-1;bool sliderChanged=false;AudioLevels volumes;bool hotspots=true,lights=false;int indicators=0;
  bool open=false,sub=false,countries=false,countryFocus=false;int row=0,sortRow=0,countryRow=0,choice=-1,focusLevel=0;float x=.5f,y=.5f;double began=0;
  std::vector<int> available{-1},classes{-1};std::array<int,countryCount> counts{};std::array<int,classCount> classCounts{};
  std::array<std::vector<std::string>,2> extras;std::array<int,2> extraChoice{{0,0}};bool favoriteView=false,cinematicView=false,shadows=true,carLogo=false,brandLogo=false,displayModelId=false,displayModelName=false,displayClass=false;int order=0,countryFilter=-1,classFilter=-1;
  void sync(bool f,bool c,int o,int country,int cls,bool shadow,bool car,bool brand,bool showId=false,bool showName=false,bool showClass=false){favoriteView=f;cinematicView=c;order=o;countryFilter=country;classFilter=cls;shadows=shadow;carLogo=car;brandLogo=brand;displayModelId=showId;displayModelName=showName;displayClass=showClass;}
- void setCountries(const std::array<int,countryCount>&c){if(counts==c)return;counts=c;available={-1};for(size_t i=1;i<countryCount;++i)if(c[i])available.push_back(int(i));if(c[0])available.push_back(0);countryRow=std::clamp(countryRow,0,int(available.size())-1);}
- void setClasses(const std::array<int,classCount>&c){if(classCounts==c)return;classCounts=c;classes={-1};for(size_t i=0;i<classCount;++i)if(c[i])classes.push_back(int(i));countryRow=std::clamp(countryRow,0,int(classes.size())-1);}
- void setExtras(std::vector<std::string> native,std::vector<std::string> vehfuncs){extras[0]=std::move(native);extras[1]=std::move(vehfuncs);row=std::min(row,int(rootItems().size())-1);}
- std::vector<MenuItem> rootItems()const{std::vector<MenuItem> r{{"Sort by",StudioAction::None,-1,MenuBranch::Sort},{favoriteView?"All Cars":"Favorites",favoriteView?StudioAction::AllCars:StudioAction::Favorites},{cinematicView?"Exit Cinematic":"Cinematic",StudioAction::Cinematic},{"Display",StudioAction::None,-1,MenuBranch::Display},{"Shadows",StudioAction::None,-1,MenuBranch::Shadows},{"Logos",StudioAction::None,-1,MenuBranch::Logos}};if(!extras[0].empty()||!extras[1].empty())r.push_back({"Extras",StudioAction::None,-1,MenuBranch::Extras});return r;}
+ void setCountries(const std::array<int,countryCount>& c) {
+  if(counts==c)return;
+  const int focused=thirdBranch()==MenuBranch::Countries&&countryRow>=0&&size_t(countryRow)<available.size()?available[size_t(countryRow)]:countryFilter;
+  counts=c;available={-1};
+  for(size_t i=0;i<countryCount;++i)if(c[i])available.push_back(int(i));
+  std::sort(available.begin()+1,available.end(),[&](int a,int b){
+   if(c[size_t(a)]!=c[size_t(b)])return c[size_t(a)]>c[size_t(b)];
+   const std::string an=a?countryLabel(Country(a)):"Unassigned",bn=b?countryLabel(Country(b)):"Unassigned";
+   return an<bn;
+  });
+  if(thirdBranch()==MenuBranch::Countries){const auto i=std::find(available.begin(),available.end(),focused);countryRow=i==available.end()?0:int(i-available.begin());}
+ }
+ void setClasses(const std::array<int,classCount>& c) {
+  if(classCounts==c)return;
+  const int focused=thirdBranch()==MenuBranch::Classes&&countryRow>=0&&size_t(countryRow)<classes.size()?classes[size_t(countryRow)]:classFilter;
+  classCounts=c;classes={-1};
+  for(size_t i=0;i<classCount;++i)if(c[i])classes.push_back(int(i));
+  std::sort(classes.begin()+1,classes.end(),[&](int a,int b){return c[size_t(a)]!=c[size_t(b)]?c[size_t(a)]>c[size_t(b)]:std::string(classNames[size_t(a)])<classNames[size_t(b)];});
+  if(thirdBranch()==MenuBranch::Classes){const auto i=std::find(classes.begin(),classes.end(),focused);countryRow=i==classes.end()?0:int(i-classes.begin());}
+ }
+ void setExtras(const std::vector<std::string>& native,const std::vector<std::string>& vehfuncs){if(extras[0]==native&&extras[1]==vehfuncs)return;extras[0]=native;extras[1]=vehfuncs;row=std::min(row,int(rootItems().size())-1);}
+ std::vector<MenuItem> rootItems()const {
+  std::vector<MenuItem> rows{{"Sort by",StudioAction::None,-1,MenuBranch::Sort},
+   {"Favorites",StudioAction::None,-1,MenuBranch::Favorites},
+   {"Cinematic",StudioAction::None,-1,MenuBranch::Cinematic},
+   {"Display",StudioAction::None,-1,MenuBranch::Display},
+   {"Shadows",StudioAction::None,-1,MenuBranch::Shadows},
+   {"Logos",StudioAction::None,-1,MenuBranch::Logos}};
+  if(!extras[0].empty()||!extras[1].empty())rows.push_back({"Extras",StudioAction::None,-1,MenuBranch::Extras});
+  rows.push_back({"Volume",StudioAction::None,-1,MenuBranch::Volume});
+  if(cinematicView)rows.push_back({"Cinematic controls",StudioAction::None,-1,MenuBranch::CinematicControls});
+  return rows;
+ }
  std::vector<MenuItem> branchItems(MenuBranch branch)const{
   switch(branch){
    case MenuBranch::Sort:return {{"Ascending  A - Z",StudioAction::SortAscending,0,MenuBranch::None,order==0},{"Descending  Z - A",StudioAction::SortDescending,1,MenuBranch::None,order==1},{"Class",StudioAction::None,-1,MenuBranch::Classes,classFilter>=0},{"Top Speed",StudioAction::SortSpeed,3,MenuBranch::None,order==3},{"Countries",StudioAction::None,-1,MenuBranch::Countries,countryFilter>=0},{"Model ID",StudioAction::SortModelId,5,MenuBranch::None,order==5}};
    case MenuBranch::Countries:{std::vector<MenuItem> r;for(int c:available){std::string label=c<0?"All Countries":c==0?"Unassigned":countryLabel(Country(c));if(c>=0)label+="  ("+std::to_string(counts[size_t(c)])+")";r.push_back({label,StudioAction::FilterCountry,c,MenuBranch::None,countryFilter==c});}return r;}
    case MenuBranch::Classes:{std::vector<MenuItem> r;for(int c:classes){std::string label=c<0?"All Classes":classNames[size_t(c)];if(c>=0)label+="  ("+std::to_string(classCounts[size_t(c)])+")";r.push_back({label,StudioAction::FilterClass,c,MenuBranch::None,classFilter==c});}return r;}
+   case MenuBranch::Cinematic:return {{"On",StudioAction::Cinematic,1,MenuBranch::None,cinematicView},{"Off",StudioAction::Cinematic,0,MenuBranch::None,!cinematicView}};
+   case MenuBranch::Favorites:return {{"All Cars",StudioAction::AllCars,0,MenuBranch::None,!favoriteView},{"Favorites",StudioAction::Favorites,1,MenuBranch::None,favoriteView}};
+   case MenuBranch::CinematicControls:return {{"Hotspots",StudioAction::None,-1,MenuBranch::Hotspots,hotspots},{"Lights",StudioAction::None,-1,MenuBranch::Lights,lights},{"Indicators",StudioAction::None,-1,MenuBranch::Indicators,indicators!=0}};
+   case MenuBranch::Hotspots:return {{"On",StudioAction::Hotspots,1,MenuBranch::None,hotspots},{"Off",StudioAction::Hotspots,0,MenuBranch::None,!hotspots}};
+   case MenuBranch::Lights:return {{"On",StudioAction::Lights,1,MenuBranch::None,lights},{"Off",StudioAction::Lights,0,MenuBranch::None,!lights}};
+   case MenuBranch::Indicators:return {{"Off",StudioAction::Indicators,0,MenuBranch::None,indicators==0},{"Left",StudioAction::Indicators,1,MenuBranch::None,indicators==1},{"Right",StudioAction::Indicators,2,MenuBranch::None,indicators==2},{"Hazard",StudioAction::Indicators,3,MenuBranch::None,indicators==3}};
+   case MenuBranch::Volume:return {{"Master",StudioAction::VolumeMaster,volumes.value[0]},{"Music",StudioAction::VolumeMusic,volumes.value[1]},{"Sound effects",StudioAction::VolumeEffects,volumes.value[2]}};
    case MenuBranch::Shadows:return {{"On",StudioAction::Shadows,1,MenuBranch::None,shadows},{"Off",StudioAction::Shadows,0,MenuBranch::None,!shadows}};
    case MenuBranch::Logos:return {{"Manufacturer",StudioAction::None,-1,MenuBranch::BrandLogo,brandLogo},{"Car name",StudioAction::None,-1,MenuBranch::CarLogo,carLogo}};
    case MenuBranch::BrandLogo:return {{"On",StudioAction::BrandLogo,1,MenuBranch::None,brandLogo},{"Off",StudioAction::BrandLogo,0,MenuBranch::None,!brandLogo}};
@@ -53,34 +91,26 @@ struct ContextMenu{
   }
  }
  MenuBranch childBranch()const{const auto r=rootItems();return row>=0&&size_t(row)<r.size()?r[size_t(row)].child:MenuBranch::None;}
- MenuBranch thirdBranch()const{if(!sub)return MenuBranch::None;const auto branch=childBranch();if((branch==MenuBranch::Logos||branch==MenuBranch::Extras||branch==MenuBranch::Display)&&focus()==0)return MenuBranch::None;const auto r=branchItems(branch);return sortRow>=0&&size_t(sortRow)<r.size()?r[size_t(sortRow)].child:MenuBranch::None;}
+ MenuBranch thirdBranch()const{if(!sub)return MenuBranch::None;const auto branch=childBranch();if((branch==MenuBranch::Logos||branch==MenuBranch::Extras||branch==MenuBranch::Display||branch==MenuBranch::CinematicControls||branch==MenuBranch::Volume)&&focus()==0)return MenuBranch::None;const auto r=branchItems(branch);return sortRow>=0&&size_t(sortRow)<r.size()?r[size_t(sortRow)].child:MenuBranch::None;}
  std::vector<MenuItem> items(int level)const{return level==0?rootItems():branchItems(level==1?childBranch():thirdBranch());}
  std::array<int,2> previewExtras()const{auto selected=extraChoice;if(open&&focus()==2){const auto branch=thirdBranch();if(branch==MenuBranch::Extra1||branch==MenuBranch::Extra2){const size_t group=branch==MenuBranch::Extra2?1:0;if(countryRow>=0&&size_t(countryRow)<extras[group].size())selected[group]=countryRow;}}return selected;}
  int current(int level)const{return level==0?row:level==1?sortRow:countryRow;}
  int depth()const{return !open?0:!sub?1:thirdBranch()==MenuBranch::None?2:3;}
  int focus()const{return countryFocus?2:focusLevel;}
  void path(){sub=childBranch()!=MenuBranch::None;const auto r=items(1);sortRow=r.empty()?0:std::clamp(sortRow,0,int(r.size())-1);countries=thirdBranch()==MenuBranch::Countries;const auto t=items(2);countryRow=t.empty()?0:std::clamp(countryRow,0,int(t.size())-1);if(t.empty())countryFocus=false;}
- void toggle(float px,float py,double now){if(!classic){monitorToggle(px,py,now);return;}open=!open;sub=countries=countryFocus=false;row=sortRow=countryRow=focusLevel=0;x=px;y=py;began=now;if(open)path();}
- int windowStart(int level,float h)const{if(!classic)return monitorStart(level,h);const int count=int(items(level).size()),slots=std::max(1,int((h-30*(h/720.f))/(28*(h/720.f))));return std::clamp(current(level)-slots+1,0,std::max(0,count-slots));}
- std::array<UIRect,3> panels(float w,float h)const{if(!classic)return monitorPanels(w,h);
-  const float s=h/720.f,gap=2*s;std::array<float,3> widths{{230*s,226*s,260*s}};const float full=widths[0]+widths[1]+widths[2]+2*gap;if(full>w-16*s){const float factor=std::max(.25f,(w-16*s-2*gap)/(widths[0]+widths[1]+widths[2]));for(auto&v:widths)v*=factor;}
-  std::array<float,3> heights{};float maxHeight=0;for(int i=0;i<3;++i){heights[size_t(i)]=std::min(h-16*s,(14+28*std::max(size_t(1),items(i).size()))*s);maxHeight=std::max(maxHeight,heights[size_t(i)]);}const size_t reserve=std::max({rootItems().size(),size_t(6),available.size(),classes.size(),extras[0].size(),extras[1].size()});maxHeight=std::min(h-16*s,(14+28*reserve)*s);
-  const float yy=std::clamp(y*h,8*s,std::max(8*s,h-maxHeight-8*s)),total=widths[0]+widths[1]+widths[2]+2*gap;
-  // Every panel uses the same top edge. Reserve the complete chain up front.
-  const float left=std::clamp(x*w,8*s,std::max(8*s,w-total-8*s));return {{{left,yy,widths[0],heights[0]},{left+widths[0]+gap,yy,widths[1],heights[1]},{left+widths[0]+widths[1]+2*gap,yy,widths[2],heights[2]}}};
- }
- UIRect panel(int level,float w,float h)const{return panels(w,h)[size_t(level)];}
- UIRect root(float w,float h)const{return panel(0,w,h);}UIRect child(float w,float h)const{return panel(1,w,h);}UIRect grandchild(float w,float h)const{return panel(2,w,h);}
- int hit(const UIRect&r,float px,float py,int rows,float s,int first=0)const{if(!r.contains(px,py))return -1;const int v=int((py-r.y-7*s)/(28*s))+first;return py>=r.y+7*s&&v>=first&&v<rows?v:-1;}
- void hover(float px,float py,float w,float h){if(!classic){monitorPoint(px,py,w,h);return;}const auto boxes=panels(w,h);for(int level=depth()-1;level>=0;--level){const int v=hit(boxes[size_t(level)],px,py,int(items(level).size()),h/720.f,windowStart(level,h));if(v<0)continue;if(level==2){countryRow=v;countryFocus=true;focusLevel=2;}else if(level==1){if(sortRow!=v)countryRow=0;sortRow=v;countryFocus=false;focusLevel=1;path();}else{if(row!=v){row=v;sortRow=countryRow=0;}countryFocus=false;focusLevel=0;path();}return;}}
- void move(int dx,int dy){if(!classic){monitorMove(dx,dy);return;}if(!open)return;const int level=focus();if(level==2){if(dx<0){countryFocus=false;focusLevel=1;return;}const int n=int(items(2).size());if(n)countryRow=(countryRow+dy%n+n)%n;return;}
-  if(level==1){if(dx<0){countryFocus=false;focusLevel=0;return;}const int n=int(items(1).size());if(n)sortRow=(sortRow+dy%n+n)%n;countries=thirdBranch()==MenuBranch::Countries;if(dy)countryRow=0;if(dx>0&&thirdBranch()!=MenuBranch::None){countryFocus=true;focusLevel=2;}return;}
-  const int n=int(rootItems().size());row=(row+dy%n+n)%n;if(dy){sortRow=countryRow=0;path();}if(dx>0&&childBranch()!=MenuBranch::None){sub=true;focusLevel=1;countries=thirdBranch()==MenuBranch::Countries;}
- }
- StudioAction activate(bool favorites){if(!classic)return monitorActivate(favorites);favoriteView=favorites;if(!open)return StudioAction::None;int level=focus();auto r=items(level);if(r.empty())return StudioAction::None;const int idx=current(level);if(idx<0||size_t(idx)>=r.size())return StudioAction::None;const auto item=r[size_t(idx)];if(item.child!=MenuBranch::None){if(level==0){sub=true;focusLevel=1;}else{countryFocus=true;focusLevel=2;}countries=thirdBranch()==MenuBranch::Countries;return StudioAction::None;}choice=item.value;open=sub=countries=countryFocus=false;return item.action;}
- StudioAction click(float px,float py,float w,float h,bool favorites){if(!classic)return monitorClick(px,py,w,h,favorites);hover(px,py,w,h);const auto b=panels(w,h);for(int level=depth()-1;level>=0;--level){const int n=hit(b[size_t(level)],px,py,int(items(level).size()),h/720.f,windowStart(level,h));if(n<0)continue;row=level==0?n:row;sortRow=level==1?n:sortRow;countryRow=level==2?n:countryRow;sub=level>0;countryFocus=level==2;focusLevel=level;return activate(favorites);}open=sub=countries=countryFocus=false;return StudioAction::None;}
+ void toggle(float px,float py,double now){monitorToggle(px,py,now);}
+ int windowStart(int level,float h)const{return monitorStart(level,h);}
+ std::array<UIRect,3> panels(float w,float h)const{return monitorPanels(w,h);}
+ UIRect panel(int level,float w,float h)const{return monitorPanels(w,h)[size_t(level)];}
+ UIRect root(float w,float h)const{return panel(0,w,h);}
+ UIRect child(float w,float h)const{return panel(1,w,h);}
+ UIRect grandchild(float w,float h)const{return panel(2,w,h);}
+ void hover(float px,float py,float w,float h){monitorPoint(px,py,w,h);}
+ void move(int dx,int dy){monitorMove(dx,dy);}
+ StudioAction activate(bool favorites){return monitorActivate(favorites);}
+ StudioAction click(float px,float py,float w,float h,bool favorites){return monitorClick(px,py,w,h,favorites);}
 
- bool monitorSubWindow()const{return childBranch()==MenuBranch::Logos||childBranch()==MenuBranch::Extras||childBranch()==MenuBranch::Display;}
+ bool monitorSubWindow()const{const auto b=childBranch();return b==MenuBranch::Logos||b==MenuBranch::Extras||b==MenuBranch::Display||b==MenuBranch::Volume||b==MenuBranch::CinematicControls;}
  bool monitorSelectorWindow()const{return sub&&focus()==2&&!monitorSubWindow();}
  void monitorToggle(float px,float py,double now);
  int monitorStart(int level,float h)const;
@@ -88,6 +118,12 @@ struct ContextMenu{
  UIRect monitorField(int level,int index,float w,float h)const;
  UIRect monitorDropdown(float w,float h)const;
  UIRect monitorButton(int level,int which,float w,float h)const;
+ UIRect monitorListRow(UIRect list,int level,int index,float h)const;
+ UIRect monitorSlider(int index,float w,float h)const;
+ bool monitorSlide(float px,float py,float w,float h,bool down,bool pressed);
+ bool fieldOpensWindow(int level,int index)const;
+ int audibleTarget()const;
+ void finish(int result){closeResult=result;open=sub=countries=countryFocus=monitorPicker=false;sliderDrag=-1;}
  bool monitorFieldSelected(int level,int index,bool single=false)const;
  bool monitorButtonSelected(int level,int which)const;
  UIRect pointerTarget(float w,float h)const;
@@ -100,7 +136,7 @@ struct ContextMenu{
  StudioAction monitorActivate(bool favorites);
  StudioAction monitorClick(float px,float py,float w,float h,bool favorites);
  bool monitorDrag(float px,float py,float w,float h,bool down,bool pressed);
- void selectedAction(){if(!classic){monitorPicker=false;monitorFooter=-1;if(focus()==2){countryFocus=false;focusLevel=monitorSubWindow()?1:0;sub=monitorSubWindow();}}}
+ void selectedAction(){monitorPicker=false;monitorFooter=-1;if(focus()==2){countryFocus=false;focusLevel=monitorSubWindow()?1:0;sub=monitorSubWindow();}}
 };
 #include "MonitorSettings.inl"
 struct CinematicView{
@@ -123,11 +159,11 @@ struct ControllerKeyboard{
  int type(std::string&query){if(selected==38)return 1;if(selected==39)return -1;if(selected==37){if(!query.empty())query.pop_back();}else if(query.size()<48)query+=selected==36?" ":key(selected);return 0;}
 };
 struct StudioUI{
- ContextMenu menu;CinematicView cinematic;ControllerKeyboard keyboard;ViewTransition transition;
+ ContextMenu menu;CinematicView cinematic,menuCinematic;CinematicVehicleState vehicle,menuVehicle;AudioLevels audioLevels,menuAudio;bool menuSnapshot=false;ControllerKeyboard keyboard;ViewTransition transition;
  bool favoritesOnly=false,controllerUsed=false;int sortMode=5,countryFilter=-1,classFilter=-1;bool shadows=true,carLogo=false,brandLogo=false,displayModelId=false,displayModelName=false,displayClass=false;double pointerMoved=0;bool dock=false;
  bool modal()const{return menu.open||keyboard.open;}
  void mouse(double now,float dx,float dy){if(std::abs(dx)+std::abs(dy)>.03f){pointerMoved=now;dock=false;controllerUsed=false;}}
- void resetTransient(){menu.open=false;keyboard.open=false;cinematic.leave();transition={};dock=false;}
+ void resetTransient(){menu.open=false;keyboard.open=false;cinematic.leave();vehicle.reset();menuSnapshot=false;transition={};dock=false;}
 };
 }
 

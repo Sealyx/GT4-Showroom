@@ -48,7 +48,7 @@ inline void activate(){
  const auto key=std::make_pair(model,choice[0]);if(!catalogues.count(key)&&catalogues.size()>=128)for(auto it=catalogues.begin();it!=catalogues.end();++it)if(it->first.first!=model){catalogues.erase(it);break;}
  active=&catalogues[key];updateSelection();
 }
-inline std::vector<std::string> labels(int group){return group==0?nativeLabels:group==1?vehfuncsLabels:std::vector<std::string>{};}
+inline const std::vector<std::string>& labels(int group){static const std::vector<std::string> empty;return group==0?nativeLabels:group==1?vehfuncsLabels:empty;}
 inline void clear(){model=-1;choice={{0,0}};nativeIndices.clear();nativeLabels.clear();vehfuncsLabels.clear();active=probing=nullptr;available=metadataReady=preparedScan=false;game::extraChoice=-2;game::extrasModel=-1;game::extrasSeed=-1;game::extraComponents={{-2,-2}};nativePreview::observeVehicle=nullptr;}
 inline void resetCatalogues(){clear();catalogues.clear();}
 inline void scan(const Entry&e,bool force){
@@ -62,7 +62,7 @@ inline void scan(const Entry&e,bool force){
  if(choice[0]<0||size_t(choice[0])>=nativeLabels.size())choice[0]=0;
  metadataReady=true;activate();nativePreview::observeVehicle=observe;
 }
-inline bool select(int group,int option){const auto options=labels(group);if(group<0||group>1||option<0||size_t(option)>=options.size())return false;const bool changed=choice[size_t(group)]!=option;choice[size_t(group)]=option;if(group==0&&changed)activate();else updateSelection();return true;}
+inline bool select(int group,int option){const auto&options=labels(group);if(group<0||group>1||option<0||size_t(option)>=options.size())return false;const bool changed=choice[size_t(group)]!=option;choice[size_t(group)]=option;if(group==0&&changed)activate();else updateSelection();return true;}
 // Discover one outcome per frame, only while the VehFuncs pane is open. Reuse
 // complete catalogues across visits. Sampling is bounded; no CRT RNG rewriting,
 // seed-zero bypass, frame-hiding overlay or raw VehFuncs memory writes.

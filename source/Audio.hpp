@@ -1,4 +1,5 @@
 #pragma once
+#include "AudioLevels.hpp"
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -59,7 +60,13 @@ class Audio {
  void playBed(){if(!bed)return;if(!musicStarted){bed->SetCurrentPosition(0);musicStarted=true;}bed->SetVolume(DSBVOLUME_MIN);bedPlaying=SUCCEEDED(bed->Play(0,0,DSBPLAY_LOOPING));musicGain=0;}
 public:
  ~Audio(){close();}Audio()=default;Audio(const Audio&)=delete;Audio& operator=(const Audio&)=delete;
- bool enabled=true,running=false,focused=true;unsigned bedVolume=45,cueVolume=80;
+ bool enabled=true,running=false,focused=true;unsigned bedVolume=45,cueVolume=80,masterVolume=100;
+ void setLevels(AudioLevels levels){
+  levels.normalize();
+  if(masterVolume==unsigned(levels.value[0])&&bedVolume==unsigned(levels.value[1])&&cueVolume==unsigned(levels.value[2]))return;
+  masterVolume=unsigned(levels.value[0]);bedVolume=unsigned(levels.value[1]);cueVolume=unsigned(levels.value[2]);
+  for(auto& voice:voices)if(voice.buffer)voice.buffer->SetVolume(volume(float(masterVolume*cueVolume)/100.f));
+ }
  static LONG volume(float percent){percent=std::clamp(percent,0.f,100.f);return percent>0?LONG(std::max(-10000.,2000*std::log10(double(percent)/100))):DSBVOLUME_MIN;}
  void init(HWND window,const std::wstring& folder,bool studio=true){
   if(!enabled)return;if(!ds){if(FAILED(DirectSoundCreate8(nullptr,&ds,nullptr)))return;if(FAILED(ds->SetCooperativeLevel(window,DSSCL_NORMAL))){close();return;}}
@@ -82,9 +89,9 @@ public:
   const uint64_t tick=GetTickCount64();const float dt=previous?std::min(float(tick-previous)/1000.f,.1f):0;previous=tick;
   const float target=running&&focused&&enabled?1.f:0.f;
   musicGain+=std::clamp(target-musicGain,-dt/.15f,dt/.15f);
-  if(bed&&bedPlaying){bed->SetVolume(volume(float(bedVolume)*musicGain));if(musicGain<=0&&target==0){bed->Stop();bedPlaying=false;}}
-  const float prizeTarget=prizeActive&&focused&&enabled?1.f:0.f;prizeGain+=std::clamp(prizeTarget-prizeGain,-dt/.12f,dt/.22f);if(prize&&prizePlaying){prize->SetVolume(volume(float(bedVolume)*prizeGain));DWORD flags=0;if(FAILED(prize->GetStatus(&flags))||!(flags&DSBSTATUS_PLAYING))prizePlaying=false;else if(prizeGain<=0&&prizeTarget==0){prize->Stop();prizePlaying=false;}}
-  const float failTarget=failureActive&&focused&&enabled?1.f:0.f;failureGain+=std::clamp(failTarget-failureGain,-dt/.15f,dt/.08f);if(failure&&failurePlaying)failure->SetVolume(volume(float(bedVolume)*failureGain));
+  if(bed&&bedPlaying){bed->SetVolume(volume(float(masterVolume*bedVolume)/100.f*musicGain));if(musicGain<=0&&target==0){bed->Stop();bedPlaying=false;}}
+  const float prizeTarget=prizeActive&&focused&&enabled?1.f:0.f;prizeGain+=std::clamp(prizeTarget-prizeGain,-dt/.12f,dt/.22f);if(prize&&prizePlaying){prize->SetVolume(volume(float(masterVolume*bedVolume)/100.f*prizeGain));DWORD flags=0;if(FAILED(prize->GetStatus(&flags))||!(flags&DSBSTATUS_PLAYING))prizePlaying=false;else if(prizeGain<=0&&prizeTarget==0){prize->Stop();prizePlaying=false;}}
+  const float failTarget=failureActive&&focused&&enabled?1.f:0.f;failureGain+=std::clamp(failTarget-failureGain,-dt/.15f,dt/.08f);if(failure&&failurePlaying)failure->SetVolume(volume(float(masterVolume*bedVolume)/100.f*failureGain));
   for(auto&v:voices)if(v.buffer){DWORD flags=0;if(FAILED(v.buffer->GetStatus(&flags))||!(flags&DSBSTATUS_PLAYING)){v.buffer->Release();v={};}}
  }
  void focus(bool on){if(focused==on)return;focused=on;if(!on){if(bed)bed->Stop();bedPlaying=false;musicGain=0;prizeResume=prizePlaying;if(prize)prize->Stop();prizePlaying=false;prizeGain=0;failureResume=failurePlaying;if(failure)failure->Stop();failurePlaying=false;failureGain=0;releaseVoices();}else if(failureActive&&failureResume&&enabled&&failure){failurePlaying=SUCCEEDED(failure->Play(0,0,DSBPLAY_LOOPING));failureResume=false;}else if(prizeActive&&prizeResume&&enabled&&prize){prizePlaying=SUCCEEDED(prize->Play(0,0,0));prizeResume=false;}else if(running&&enabled)playBed();}
@@ -99,7 +106,7 @@ public:
   if(!clips[index])return false;IDirectSoundBuffer* b=nullptr;if(FAILED(ds->DuplicateSoundBuffer(clips[index],&b)))return false;
   // Microsoft documents duplicate-buffer volume caching: set a DIFFERENT
   // attenuation first, then the desired level, including the zero-volume case.
-  const LONG level=volume(float(cueVolume));b->SetVolume(level==DSBVOLUME_MIN?DSBVOLUME_MIN+1:DSBVOLUME_MIN);b->SetVolume(level);
+  const LONG level=volume(float(masterVolume*cueVolume)/100.f);b->SetVolume(level==DSBVOLUME_MIN?DSBVOLUME_MIN+1:DSBVOLUME_MIN);b->SetVolume(level);
   b->SetCurrentPosition(0);if(FAILED(b->Play(0,0,0))){b->Release();return false;}
   auto it=std::find_if(voices.begin(),voices.end(),[](const Voice&v){return v.buffer==nullptr;});
   if(it==voices.end()){it=std::min_element(voices.begin(),voices.end(),[](const Voice&a,const Voice&b){return a.serial<b.serial;});it->buffer->Stop();it->buffer->Release();}

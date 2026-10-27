@@ -1,6 +1,7 @@
 #pragma once
 #include <array>
 #include <cstdint>
+#include <vector>
 #include "StudioUI.hpp"
 namespace gt4 {
 // Vertical color bands measured from the settings reference. The shared orange
@@ -27,5 +28,25 @@ inline UIRect monitorArrowPanel(const UIRect&r,float scale){
  const float edge=std::max(.6f,scale),height=std::max(0.f,r.h-2*edge);
  const float width=std::min(std::max(0.f,r.w-2*edge),height*1.27f);
  return {r.x+r.w-edge-width,r.y+edge,width,height};
+}
+struct MonitorButtonImage {int width=0,height=0;std::vector<uint32_t> pixels;};
+inline MonitorButtonImage monitorButtonImage(float aspect,bool selected){
+ // Cached at four samples per axis. The sheen follows the capsule curvature;
+ // the lower shadow is outside its hit rectangle and does not change layout.
+ MonitorButtonImage out;const int body=64;out.width=std::clamp(int(std::lround(aspect*body)),128,1024);out.height=body+8;out.pixels.resize(size_t(out.width*out.height));
+ const float radius=body*.5f;
+ for(int y=0;y<out.height;++y)for(int x=0;x<out.width;++x){float a=0,r=0,g=0,b=0;
+  for(int sy=0;sy<4;++sy)for(int sx=0;sx<4;++sx){const float px=x+(sx+.5f)/4,py=y+(sy+.5f)/4;
+   const float center=std::clamp(px,radius,out.width-radius),dy=py-radius,dist=std::sqrt((px-center)*(px-center)+dy*dy);
+   const float shadowY=py-radius-3,shadowDist=std::sqrt((px-center)*(px-center)+shadowY*shadowY);float opacity=0;uint32_t rgb=0;
+   if(dist<=radius){const float u=(px-out.width*.5f)/(out.width*.5f),curve=.025f*(1-u*u);const float t=std::clamp(py/body+curve,0.f,.999f);
+    rgb=selected?monitorOrange[size_t(t*monitorOrange.size())]:monitorArrowGray[size_t(t*monitorArrowGray.size())];
+    if(dist>radius-1.1f)rgb=py<radius?(selected?0xFFE0A0u:0xFAFBFDu):(selected?0xC8913Bu:0x989AA3u);opacity=1;
+   }else if(shadowDist<radius+4)opacity=.13f*std::clamp((radius+4-shadowDist)/4,0.f,1.f);
+   a+=opacity;r+=((rgb>>16)&255)*opacity;g+=((rgb>>8)&255)*opacity;b+=(rgb&255)*opacity;
+  }
+  if(a>0)out.pixels[size_t(y*out.width+x)]=(uint32_t(std::lround(a*255/16))<<24)|(uint32_t(std::lround(r/a))<<16)|(uint32_t(std::lround(g/a))<<8)|uint32_t(std::lround(b/a));
+ }
+ return out;
 }
 }

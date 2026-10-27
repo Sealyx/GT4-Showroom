@@ -34,7 +34,12 @@ inline bool menu(){return readFrontendState().menuActive();}
 inline bool loading(){return at<int>(0xC8D4C0)!=9||readFrontendState().loadingData();}
 struct OpenState:OpenGate{FrontendState frontend;};
 inline OpenState openState(bool focus){OpenState g;g.gameState=at<int>(0xC8D4C0);g.frontend=readFrontendState();g.loadingData=g.frontend.loadingData();g.menu=g.frontend.menuActive();g.userPause=userPaused();g.codePause=codePaused();g.focus=focus;g.cutscene=flag(0xB5F851)||flag(0xB5F852);g.enex=at<int>(0x96A7CC);if(g.gameState==9&&!g.loadingData){void*p=player();g.alive=p&&field<float>(p,0x540)>0;g.inVehicle=p&&(field<uint32_t>(p,0x46C)&0x100)!=0;}return g;}
+#ifdef GTA_NATIVE_PREVIEW_TEST
+inline IDirect3DDevice9*(*previewDevice)()=nullptr;
+inline IDirect3DDevice9* device(){return previewDevice?previewDevice():nullptr;}
+#else
 inline IDirect3DDevice9* device(){return reinterpret_cast<IDirect3DDevice9*(__cdecl*)()>(0x7F9D50)();}
+#endif
 inline std::vector<Paint> paints(void*mi){const int n=std::min(8,int(field<uint8_t>(mi,0x2D0)));std::vector<Paint> out;for(int i=0;i<std::max(n,1);++i){Paint p;for(int j=0;j<4;++j){p.ids[j]=n?field<uint8_t>(mi,0x2B0+j*8+i):uint8_t(1);gta::vehicleColor(p.ids[j],p.rgb[j]);}p.name=paintNames.name(p.ids[0],p.rgb[0]);if(p.rgb[1]!=p.rgb[0])p.name+=" / "+paintNames.name(p.ids[1],p.rgb[1]);out.push_back(p);}return out;}
 inline Entry entry(int id,void*mi){Entry e;e.id=id;e.modelKey=field<uint32_t>(mi,4);e.modelName=registeredNames.find(id,e.modelKey);if(e.modelName.empty()&&vanillaVehicle(id)&&e.modelKey==modelNameKey(countryDefaults[size_t(id-400)].model))e.modelName=countryDefaults[size_t(id-400)].model;e.kind=field<int>(mi,0x3C);e.classId=field<int8_t>(mi,0x4D);e.category=classLabel(e.classId);char key[9]{};std::memcpy(key,static_cast<uint8_t*>(mi)+0x32,8);const char*t=*key?reinterpret_cast<const char*(__thiscall*)(void*,const char*)>(0x6A0050)(reinterpret_cast<void*>(0xC1B340),key):nullptr;char buffer[128]{};size_t i=0;if(t)for(;i<100&&t[i];++i)buffer[i]=uint8_t(t[i])<128?t[i]:'?';e.name=*buffer&&std::strcmp(buffer,"NULL")?buffer:(*key?std::string(key):"Vehicle "+std::to_string(id));e.paints=paints(mi);const auto h=handling(field<uint16_t>(mi,0x4A));e.topSpeed=h.valid?h.limit:-1;e.information=stats(h);return e;}
 inline void preserveRemapColors(void* vehicle){if(vehicle)field<uint8_t>(vehicle,0x42F)|=4;}
@@ -49,7 +54,7 @@ inline void queue(int id){reinterpret_cast<void(__cdecl*)(int,int)>(0x4087E0)(id
 // CStreaming::Update exits while paused; progress its normal loading channels once.
 inline void pumpStreaming(){reinterpret_cast<void(__cdecl*)()>(0x40E3A0)();}
 inline void request(int id){queue(id);reinterpret_cast<void(__cdecl*)(bool)>(0x40EA10)(false);}
-struct Extract{Mesh* out;size_t count=0;bool(*visible)(void*)=nullptr;const std::unordered_map<void*,int>* paintSlots=nullptr;void*plateTexture=nullptr;void*plateMaterial=nullptr;};
+struct Extract{Mesh* out;size_t count=0;bool(*visible)(void*)=nullptr;const std::unordered_map<void*,int>* paintSlots=nullptr;void*plateTexture=nullptr;void*plateMaterial=nullptr;const std::array<void*,cinematicComponentCount>* componentFrames=nullptr;int(*component)(void*,const std::array<void*,cinematicComponentCount>*)=nullptr;CinematicLamp(*namedLamp)(void*)=nullptr;const std::unordered_map<void*,CinematicLamp>* lampSlots=nullptr;};
 inline void* __cdecl extractAtomic(void*atomic,void*data){
  auto& c=*static_cast<Extract*>(data);if(!(field<uint8_t>(atomic,2)&4)||c.count>=120000)return atomic;
  void*g=field<void*>(atomic,0x18),*f=field<void*>(atomic,4);
@@ -67,7 +72,7 @@ inline void* __cdecl extractAtomic(void*atomic,void*data){
   // Only retain materials owned by this geometry's pinned material list.
   bool owned=false;for(int i=0;i<nm;++i)if(materials[i]==material){owned=true;break;}if(!owned)return;
   Batch b;void*tex=field<void*>(material,0);std::array<char,33> textureName{};if(tex)gta::read(uintptr_t(tex)+0x10,textureName);textureName[32]=0;const bool plate=blankPreviewPlate(textureName.data(),node,tex&&tex==c.plateTexture,material==c.plateMaterial);const uint32_t rgba=field<uint32_t>(material,4);
-  const uint32_t rgb=((rgba&255)<<16)|(rgba&0xFF00)|((rgba>>16)&255);b.rgb=previewMaterialColor(rgb);b.alpha=float(rgba>>24)/255.f;
+  const uint32_t rgb=((rgba&255)<<16)|(rgba&0xFF00)|((rgba>>16)&255);b.rgb=previewMaterialColor(rgb);b.alpha=float(rgba>>24)/255.f;b.component=c.component?c.component(f,c.componentFrames):-1;b.lamp=cinematicMarkerLamp(rgb);if(c.lampSlots){const auto slot=c.lampSlots->find(material);if(slot!=c.lampSlots->end())b.lamp=slot->second;}if(b.lamp==CinematicLamp::None&&c.namedLamp)b.lamp=c.namedLamp(f);
   constexpr uint32_t markers[]={0x3CFF00,0xFF00AF,0x00FFFF,0xFF00FF};for(int j=0;j<4;++j)if(rgb==markers[j])b.paint=j;if(c.paintSlots){const auto slot=c.paintSlots->find(material);if(slot!=c.paintSlots->end())b.paint=slot->second;}if(b.paint>=0){b.rgb=0xFFFFFF;c.out->paintMask|=uint8_t(1u<<b.paint);}
   if(plate){b.rgb=0xE5E4DD;b.alpha=1;b.paint=-1;}if(tex&&!plate){const auto address=textureAddresses(field<uint32_t>(tex,0x50));b.addressU=address.first;b.addressV=address.second;}
   const auto bound=plate?NativeTextureView{}:nativeTexture(tex,at<int>(0xB4E9E0));if(bound.declared){++c.out->declaredTextures;if(!bound.texture)++c.out->missingTextures;if(bound.unsupported)++c.out->unsupportedTextures;}

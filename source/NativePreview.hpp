@@ -5,6 +5,7 @@
 #include "WheelPose.hpp"
 #include "PreviewMaterialCycle.hpp"
 #include "SpecialComponentPose.hpp"
+#include "CinematicNative.hpp"
 namespace gt4::nativePreview {
 // VehFuncs assembles f_wheel variations in its vehicleRenderEvent.before,
 // reached through CVehicle::Render -> CEntity::Render. Capture at the latter
@@ -19,6 +20,7 @@ inline std::unique_ptr<Mesh> result;
 inline void(*observeVehicle)(void*)=nullptr;
 inline bool copyGeometry=true,reached=false;
 inline std::unordered_map<void*,int> markerSlots;
+inline std::unordered_map<void*,CinematicLamp> lampSlots;
 struct MaterialPin{void* material=nullptr;uint32_t color=0;void* texture=nullptr;std::array<uint8_t,12> surface{};};
 inline std::vector<MaterialPin> retired;
 // No native cleanup in a C++ static destructor: RenderWare may already be down.
@@ -37,7 +39,7 @@ inline bool onEntityRender(void* entity){
    // matrix helper, after VehFuncs has selected/copied the wheel children.
    // Avoid full PreRender: it emits lights, particles, shadows and audio.
    restWheelMatrices(entity);prepareCementPose(entity,game::field<int16_t>(entity,0x22),[&](int node){return game::field<void*>(entity,0x648+size_t(node)*4);},reinterpret_cast<void(__thiscall*)(void*,void*,int,float,bool)>(0x6DBA30));void*root=game::field<void*>(clump,4);if(root)reinterpret_cast<void*(__cdecl*)(void*)>(0x7F0910)(root);
-   lastRemaining=sourceGroups(root);game::Extract extract{result.get(),0,frameVisible,&markerSlots};extract.plateTexture=game::field<void*>(entity,0x588);if(void*mi=gta::modelInfo(game::field<int16_t>(entity,0x22)))extract.plateMaterial=game::field<void*>(mi,0x24);reinterpret_cast<void*(__cdecl*)(void*,void*(__cdecl*)(void*,void*),void*)>(0x749B70)(clump,game::extractAtomic,&extract);++prepared;
+    lastRemaining=sourceGroups(root);void*mi=gta::modelInfo(game::field<int16_t>(entity,0x22));const auto frames=cinematicNative::capture(entity,mi?game::field<int>(mi,0x3C):-1,result->cinematic);game::Extract extract{result.get(),0,frameVisible,&markerSlots};extract.componentFrames=&frames;extract.component=cinematicNative::component;extract.namedLamp=cinematicNative::namedLamp;extract.lampSlots=&lampSlots;extract.plateTexture=game::field<void*>(entity,0x588);if(mi)extract.plateMaterial=game::field<void*>(mi,0x24);reinterpret_cast<void*(__cdecl*)(void*,void*(__cdecl*)(void*,void*),void*)>(0x749B70)(clump,game::extractAtomic,&extract);++prepared;
   }return true;
  }
  if(!target&&(game::field<uint8_t>(entity,0x36)&7)==2)releaseRetired();
@@ -47,16 +49,17 @@ inline bool enabledFor(int id){void*mi=gta::modelInfo(id);if(!game::vehicleInfo(
 // Run one paired native material/render cycle on an existing instance. The
 // observer runs after VehFuncs has resolved classes, pruned extras and copied
 // wheel variants. It must never mutate shared model-template geometry.
+template<class Device,class State>bool beginCaptureState(Device*device,State*&saved){saved=nullptr;return device&&SUCCEEDED(device->CreateStateBlock(D3DSBT_ALL,&saved))&&saved;}
 inline std::unique_ptr<Mesh> captureVehicle(void* vehicle,int id,void(*prepare)(void*)=nullptr){
  if(!vehicle||target)return nullptr;void*clump=game::field<void*>(vehicle,0x18);if(!clump)return nullptr;
+ IDirect3DStateBlock9* saved=nullptr;if(!beginCaptureState(game::device(),saved))return nullptr;
  if(prepare)prepare(vehicle);
- markerSlots.clear();Pins pins;reinterpret_cast<void*(__cdecl*)(void*,void*(__cdecl*)(void*,void*),void*)>(0x749B70)(clump,pinAtomic,&pins);
- if(!pins.valid){for(auto&p:pins.values){reinterpret_cast<bool(__cdecl*)(void*)>(0x74DA20)(p.material);if(p.texture)reinterpret_cast<bool(__cdecl*)(void*)>(0x7F3820)(p.texture);}return nullptr;}
+ markerSlots.clear();lampSlots.clear();Pins pins;reinterpret_cast<void*(__cdecl*)(void*,void*(__cdecl*)(void*,void*),void*)>(0x749B70)(clump,pinAtomic,&pins);for(const auto&p:pins.values){const auto rgba=p.color;const auto lamp=cinematicMarkerLamp(((rgba&255)<<16)|(rgba&0xFF00)|((rgba>>16)&255));if(lamp!=CinematicLamp::None)lampSlots.emplace(p.material,lamp);}
+  if(!pins.valid){for(auto&p:pins.values){reinterpret_cast<bool(__cdecl*)(void*)>(0x74DA20)(p.material);if(p.texture)reinterpret_cast<bool(__cdecl*)(void*)>(0x7F3820)(p.texture);}saved->Apply();saved->Release();return nullptr;}
  game::seedVehicle(vehicle,id);visibility.bind();lastModel=id;lastSources=sourceGroups(game::field<void*>(clump,4));lastRemaining=lastSources;lastWheels=0;
  if(copyGeometry&&game::field<int>(gta::modelInfo(id),0x3C)==0)for(int node:{2,5,4,7,3,6})if(game::field<void*>(vehicle,0x648+size_t(node)*4))++lastWheels;
- IDirect3DStateBlock9* saved=nullptr;if(auto*d=game::device())d->CreateStateBlock(D3DSBT_ALL,&saved);
  target=vehicle;result.reset();reached=false;
- previewMaterialCycle(vehicle,reinterpret_cast<void(__thiscall*)(void*)>(0x6D64F0),reinterpret_cast<void(__thiscall*)(void*)>(0x6D0E60),reinterpret_cast<void(__thiscall*)(void*)>(0x6D0E20));target=nullptr;markerSlots.clear();
+ previewMaterialCycle(vehicle,reinterpret_cast<void(__thiscall*)(void*)>(0x6D64F0),reinterpret_cast<void(__thiscall*)(void*)>(0x6D0E60),reinterpret_cast<void(__thiscall*)(void*)>(0x6D0E20));target=nullptr;markerSlots.clear();lampSlots.clear();
  if(saved){saved->Apply();saved->Release();}
  restore(pins.values);
  if(reached)retired=std::move(pins.values);else{failedPath=true;retired.insert(retired.end(),pins.values.begin(),pins.values.end());}
