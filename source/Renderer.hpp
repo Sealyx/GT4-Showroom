@@ -66,16 +66,13 @@ class Renderer {
  void transforms(IDirect3DDevice9*d,const Camera&c,const D3DMATRIX&world){D3DMATRIX view=identity(),projection{};view._11=c.right.x;view._21=c.right.y;view._31=c.right.z;view._41=-dot(c.eye,c.right);view._12=c.up.x;view._22=c.up.y;view._32=c.up.z;view._42=-dot(c.eye,c.up);view._13=c.forward.x;view._23=c.forward.y;view._33=c.forward.z;view._43=-dot(c.eye,c.forward);projection._11=2*c.focal/c.w;projection._31=2*c.offsetX/c.w;projection._22=2*c.focal/c.h;projection._32=1-2*c.cy/c.h;projection._33=1;projection._34=1;projection._43=-.1f;d->SetTransform(D3DTS_WORLD,&world);d->SetTransform(D3DTS_VIEW,&view);d->SetTransform(D3DTS_PROJECTION,&projection);}
  void ownedState(IDirect3DDevice9*d){d->SetRenderState(D3DRS_ZFUNC,D3DCMP_LESSEQUAL);d->SetRenderState(D3DRS_SHADEMODE,D3DSHADE_GOURAUD);d->SetRenderState(D3DRS_FILLMODE,D3DFILL_SOLID);d->SetRenderState(D3DRS_STENCILENABLE,FALSE);d->SetRenderState(D3DRS_TWOSIDEDSTENCILMODE,FALSE);d->SetRenderState(D3DRS_CLIPPLANEENABLE,0);d->SetRenderState(D3DRS_CLIPPING,TRUE);d->SetRenderState(D3DRS_VERTEXBLEND,D3DVBF_DISABLE);d->SetRenderState(D3DRS_INDEXEDVERTEXBLENDENABLE,FALSE);d->SetRenderState(D3DRS_POINTSPRITEENABLE,FALSE);d->SetRenderState(D3DRS_WRAP0,0);d->SetRenderState(D3DRS_DEPTHBIAS,0);d->SetRenderState(D3DRS_SLOPESCALEDEPTHBIAS,0);d->SetRenderState(D3DRS_NORMALIZENORMALS,TRUE);d->SetRenderState(D3DRS_COLORVERTEX,FALSE);d->SetRenderState(D3DRS_DIFFUSEMATERIALSOURCE,D3DMCS_MATERIAL);d->SetRenderState(D3DRS_SPECULARMATERIALSOURCE,D3DMCS_MATERIAL);d->SetRenderState(D3DRS_AMBIENTMATERIALSOURCE,D3DMCS_MATERIAL);d->SetRenderState(D3DRS_EMISSIVEMATERIALSOURCE,D3DMCS_MATERIAL);d->SetRenderState(D3DRS_LOCALVIEWER,TRUE);d->SetRenderState(D3DRS_AMBIENT,0xFF6B6B6B);D3DCAPS9 caps{};d->GetDeviceCaps(&caps);for(DWORD i=0;i<caps.MaxActiveLights;++i)d->LightEnable(i,FALSE);d->SetTextureStageState(0,D3DTSS_RESULTARG,D3DTA_CURRENT);d->SetSamplerState(0,D3DSAMP_MAXMIPLEVEL,0);d->SetSamplerState(0,D3DSAMP_MIPMAPLODBIAS,0);d->SetTextureStageState(0,D3DTSS_TEXCOORDINDEX,0);d->SetTextureStageState(0,D3DTSS_TEXTURETRANSFORMFLAGS,D3DTTFF_DISABLE);d->SetTextureStageState(1,D3DTSS_ALPHAOP,D3DTOP_DISABLE);}
  void disc(IDirect3DDevice9*d,float x,float y,float radius,float scale,uint32_t rgb){screen(d);ScreenVertex v[50]{};v[0]={x,y,0,1,color(rgb),0,0};for(int i=0;i<=48;++i){float a=i*2*pi/48;v[i+1]={x+std::cos(a)*radius*scale,y+std::sin(a)*radius*.78f*scale,0,1,color(rgb),0,0};}d->SetTexture(0,nullptr);d->SetTextureStageState(0,D3DTSS_COLOROP,D3DTOP_SELECTARG2);d->SetTextureStageState(0,D3DTSS_ALPHAOP,D3DTOP_SELECTARG2);d->DrawPrimitiveUP(D3DPT_TRIANGLEFAN,48,v,sizeof(ScreenVertex));++drawCalls;}
-
  void flagsCreate(IDirect3DDevice9*d){if(flags)return;if(FAILED(d->CreateTexture(UINT(countryCount*128),128,1,0,D3DFMT_A8R8G8B8,D3DPOOL_MANAGED,&flags,nullptr)))return;D3DLOCKED_RECT l{};if(FAILED(flags->LockRect(0,&l,nullptr,0))){flags->Release();flags=nullptr;return;}for(int n=0;n<int(countryCount);++n)for(int y=0;y<128;++y)for(int x=0;x<128;++x){uint32_t out=flagPixel(Country(n),x,y,128);reinterpret_cast<uint32_t*>(static_cast<uint8_t*>(l.pBits)+y*l.Pitch)[n*128+x]=out;}flags->UnlockRect(0);}
  void marker(IDirect3DDevice9*d,float x,float y,float scale,float alpha){
   if(alpha<=.002f)return;screen(d);d->SetTexture(0,nullptr);d->SetTextureStageState(0,D3DTSS_COLOROP,D3DTOP_SELECTARG2);d->SetTextureStageState(0,D3DTSS_ALPHAOP,D3DTOP_SELECTARG2);
   auto point=[&](size_t i,float expand,float opacity){const auto p=thumbnailPeak[i];const float shade=i==0?.93f:(i==1||i==4)?.85f:.47f;return ScreenVertex{x+p.x*scale*expand,y+p.y*scale*expand,0,1,color(0xF1F3F4,alpha*opacity,shade),0,0};};
-   
   for(size_t i=0;i<thumbnailPeak.size();++i){const size_t j=(i+1)%thumbnailPeak.size();const auto a=point(i,1,1),b=point(j,1,1),c=point(i,1.09f,0),e=point(j,1.09f,0);const ScreenVertex edge[]={a,b,c,c,b,e};d->DrawPrimitiveUP(D3DPT_TRIANGLELIST,2,edge,sizeof(ScreenVertex));++drawCalls;}
   const ScreenVertex fill[]={point(0,1,1),point(1,1,1),point(2,1,1),point(0,1,1),point(2,1,1),point(3,1,1),point(0,1,1),point(3,1,1),point(4,1,1)};d->DrawPrimitiveUP(D3DPT_TRIANGLELIST,3,fill,sizeof(ScreenVertex));++drawCalls;
  }
-
  void fontAtlas(IDirect3DDevice9*d,IDirect3DTexture9*&atlas,std::array<float,96>&advances,const wchar_t*face,int em=29,int cell=64){
   if(atlas)return;const int w=cell*16,h=cell*6;HDC dc=CreateCompatibleDC(nullptr);if(!dc)return;
   BITMAPINFO bi{};bi.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);bi.bmiHeader.biWidth=w;bi.bmiHeader.biHeight=-h;bi.bmiHeader.biPlanes=1;bi.bmiHeader.biBitCount=32;bi.bmiHeader.biCompression=BI_RGB;void*pixels=nullptr;
@@ -115,23 +112,18 @@ public:
   auto vertex=[&](ArrowPoint p,uint32_t rgb,float opacity,float offset=0.f){return ScreenVertex{x+p.x*scale+offset,y+p.y*scale+offset,0,1,color(rgb,alpha*opacity),0,0};};
   const int indices[]={0,1,2,0,2,3};
   for(int layer=0;layer<2;++layer){ScreenVertex v[6]{};for(int i=0;i<6;++i)v[i]=vertex(cursorOutline[size_t(indices[i])],layer?0x9C740E:0x080A07,layer?1.f:.35f,layer?0:1.4f*scale);d->DrawPrimitiveUP(D3DPT_TRIANGLELIST,2,v,sizeof(ScreenVertex));++drawCalls;}
-   
   const uint32_t gold[]={0xF6CE42,0xA77B0C,0xB88B11,0xFFE25B,0xE4AF12,0xF8CB27};
   ScreenVertex faces[6]{};for(int i=0;i<6;++i)faces[i]=vertex(cursorInset[size_t(indices[i])],gold[i],1);d->DrawPrimitiveUP(D3DPT_TRIANGLELIST,2,faces,sizeof(ScreenVertex));++drawCalls;
   auto stroke=[&](ArrowPoint a,ArrowPoint b,float width,uint32_t rgb){const float dx=b.x-a.x,dy=b.y-a.y,length=std::sqrt(dx*dx+dy*dy);if(length<.001f)return;const ArrowPoint n{-dy/length*width*.5f,dx/length*width*.5f};const ArrowPoint q[]={{a.x+n.x,a.y+n.y},{b.x+n.x,b.y+n.y},{b.x-n.x,b.y-n.y},{a.x-n.x,a.y-n.y}};const ScreenVertex v[]={vertex(q[0],rgb,1),vertex(q[1],rgb,1),vertex(q[2],rgb,1),vertex(q[0],rgb,1),vertex(q[2],rgb,1),vertex(q[3],rgb,1)};d->DrawPrimitiveUP(D3DPT_TRIANGLELIST,2,v,sizeof(ScreenVertex));++drawCalls;};
   stroke(cursorInset[0],cursorInset[1],.65f,0xDEB837);
   stroke(cursorInset[0],cursorInset[3],.85f,0xA57308);
-
  }
-
  void studio(IDirect3DDevice9*d,const Camera& cam,float phase){
-  
  screen(d);
  std::vector<ScreenVertex> v;v.reserve(48*40*6);
  auto sample=[&](float x,float y){float z=0;if(y>9){const float q=(y-9)/15.f;z=q*q*14.f;}const V3 p={x,y,z};const float beam=std::exp(-std::pow((y+1.3f+std::sin(phase)*x*.42f+std::sin(phase*.7f)*3.f)/2.2f,2));const float spot=.14f*std::exp(-std::pow((x+std::sin(phase)*14)/14.f,2)-std::pow((z-5)/12.f,2));const float light=spot+.23f+.25f*(.5f+.5f*std::cos(phase+.8f))+.28f*beam+std::max(0.f,z)*.009f;ScreenVertex s{};cam.project(p,s.x,s.y,s.z,s.rhw);s.color=color(0xB7BDBF,1,light*1.6f);return s;};
  std::array<ScreenVertex,49*41> grid{};for(int y=0;y<=40;++y)for(int x=0;x<=48;++x)grid[y*49+x]=sample((x-24)*2.6f,cam.eye.y+.12f+y*(24-cam.eye.y-.12f)/40);for(int y=0;y<40;++y)for(int x=0;x<48;++x){const auto&a=grid[y*49+x],&b=grid[y*49+x+1],&c=grid[(y+1)*49+x+1],&e=grid[(y+1)*49+x];v.insert(v.end(),{a,b,c,a,c,e});}d->SetTexture(0,nullptr);d->SetTextureStageState(0,D3DTSS_COLOROP,D3DTOP_SELECTARG2);d->SetTextureStageState(0,D3DTSS_ALPHAOP,D3DTOP_SELECTARG2);d->SetRenderState(D3DRS_ALPHABLENDENABLE,FALSE);d->SetRenderState(D3DRS_ZENABLE,TRUE);d->SetRenderState(D3DRS_ZWRITEENABLE,TRUE);d->DrawPrimitiveUP(D3DPT_TRIANGLELIST,UINT(v.size()/3),v.data(),sizeof(ScreenVertex));triangles+=v.size()/3;++drawCalls;
  }
-
  void mesh(IDirect3DDevice9*d,const Mesh&m,const Camera&cam,float angle,const Paint&paint,float opacity,float size=1,bool shadow=false,bool reflection=false,bool absolute=false,const CinematicVehicleState*vehicle=nullptr,double clock=0){if(opacity<=0||m.empty())return;GpuMesh*g=upload(d,m);if(!g)return;const V3 center=absolute?V3{}:V3{(m.low.x+m.high.x)*.5f,(m.low.y+m.high.y)*.5f,m.low.z};const float co=std::cos(angle),si=std::sin(angle);D3DMATRIX world=identity();world._11=co*size;world._12=si*size;world._21=-si*size;world._22=co*size;world._33=size;world._41=(-center.x*co+center.y*si)*size;world._42=(-center.x*si-center.y*co)*size;world._43=-center.z*size;if(reflection){world._33=-world._33;world._43=-world._43;}
  const float phase=shadow?lastShadowPhase:lightPhase;const V3 light=unit({-3.f+std::sin(phase)*4.f,-4.f+std::cos(phase)*2.f,7});
  if(shadow){D3DMATRIX flat=world;for(int row=0;row<4;++row){flat.m[row][0]=world.m[row][0]-world.m[row][2]*light.x/light.z;flat.m[row][1]=world.m[row][1]-world.m[row][2]*light.y/light.z;flat.m[row][2]=row==3?.003f:0;}world=flat;d->SetRenderState(D3DRS_STENCILENABLE,TRUE);d->SetRenderState(D3DRS_STENCILFUNC,D3DCMP_NOTEQUAL);d->SetRenderState(D3DRS_STENCILREF,1);d->SetRenderState(D3DRS_STENCILMASK,255);d->SetRenderState(D3DRS_STENCILWRITEMASK,255);d->SetRenderState(D3DRS_STENCILPASS,D3DSTENCILOP_REPLACE);d->SetRenderState(D3DRS_STENCILFAIL,D3DSTENCILOP_KEEP);d->SetRenderState(D3DRS_STENCILZFAIL,D3DSTENCILOP_KEEP);}
@@ -147,8 +139,6 @@ public:
   if(!prizeTexture&&!prizePixels.empty()&&SUCCEEDED(d->CreateTexture(prizeWidth,prizeHeight,1,0,D3DFMT_A8R8G8B8,D3DPOOL_MANAGED,&prizeTexture,nullptr))){D3DLOCKED_RECT l{};if(SUCCEEDED(prizeTexture->LockRect(0,&l,nullptr,0))){for(UINT y=0;y<prizeHeight;++y)std::memcpy(static_cast<uint8_t*>(l.pBits)+size_t(y)*l.Pitch,prizePixels.data()+size_t(y)*prizeWidth,size_t(prizeWidth)*4);prizeTexture->UnlockRect(0);}else{prizeTexture->Release();prizeTexture=nullptr;}}
   const double age=s.prizeReady?std::max(0.,s.clock-s.prizeBegan):0;const auto pose=prizePose(age);
   d->SetRenderState(D3DRS_ZENABLE,FALSE);d->SetRenderState(D3DRS_ZWRITEENABLE,FALSE);d->SetRenderState(D3DRS_ALPHABLENDENABLE,TRUE);rect(d,0,0,W,H,0xFF000000);
-   
-   
   if(prizeTexture){const PrizeBackdrop backdrop(W,H);const auto band=[&](float x,float width,float u0,float u1){for(size_t i=1;i<prizeBackdropBands.size();++i){const auto a=prizeBackdropBands[i-1],b=prizeBackdropBands[i];rect(d,x,H*a.first,width,H*(b.first-a.first),0xFFFFFFFF,prizeTexture,u0,a.second,u1,b.second);}};if(backdrop.wing>0){band(0,backdrop.wing,backdrop.edge,0);band(W-backdrop.wing,backdrop.wing,1,1-backdrop.edge);}band(backdrop.wing,backdrop.center,0,1);}
   else label(d,"Congratulations",W*.5f,H*.12f,H*.055f,1,true);
   if(s.prizeReady&&car&&pose.alpha>0){
@@ -165,7 +155,6 @@ public:
   rect(d,0,H*.944f,W,H*.056f,0xFF000000);const std::string message=bonusLabel(s.prize.ability);label(d,message,W*.5f,H*.951f,fitted(message,H*.014f,W*.9f),nameAlpha,true);
   if(age>=prizeReadyTime&&s.pointerVisible)cursor(d,s.pointerX*W,s.pointerY*H,H/720.f*.85f,readyAlpha);
  }
-
  void monitorBevel(IDirect3DDevice9*d,UIRect r,float alpha,float scale,bool selected,bool opensWindow=false){
   rect(d,r.x,r.y,r.w,r.h,color(0x696A72,alpha));
   const float edge=std::max(.6f,scale),height=r.h-2*edge;for(size_t i=0;i<monitorFieldGray.size();++i)rect(d,r.x+edge,r.y+edge+height*i/monitorFieldGray.size(),r.w-2*edge,height/monitorFieldGray.size()+.1f,color(monitorFieldGray[i],alpha));
@@ -192,7 +181,6 @@ public:
   text(d,caption,r.x+r.w*.5f,r.y+2.f*scale,12*scale,color(0x101013,alpha),true,0,true);
  }
  void monitorNextIcon(IDirect3DDevice9*d,float x,float y,float scale,float alpha){
-   
   screen(d);d->SetTexture(0,nullptr);d->SetTextureStageState(0,D3DTSS_COLOROP,D3DTOP_SELECTARG2);d->SetTextureStageState(0,D3DTSS_ALPHAOP,D3DTOP_SELECTARG2);
   auto v=[&](float a,float b){return ScreenVertex{x+a*scale,y+b*scale,0,1,color(0x111115,alpha),0,0};};const ScreenVertex p[]={v(-4,-5),v(5,0),v(-1,0),v(-1,0),v(5,0),v(-4,5)};d->DrawPrimitiveUP(D3DPT_TRIANGLELIST,2,p,sizeof(ScreenVertex));++drawCalls;
  }
@@ -232,8 +220,6 @@ public:
   }
   int hitHotspot(const Mesh&m,const CinematicVehicleState&state,float x,float y)const{
    const auto projected=hotspots(m,state);const float scale=lastCarCamera.h/720.f;for(size_t i=0;i<projected.count;++i){const auto&h=projected.items[i];if(std::hypot(x-h.x,y-h.y)>h.radius+5*scale)continue;const auto&p=m.cinematic.parts[size_t(h.component)];const V3 end=cinematicPoint(m,state,h.component,p.anchor+p.outward*.025f),ray=end-lastCarCamera.eye;
-     
-     
     bool hidden=false;for(const auto&b:m.batches){if(b.component==h.component||b.alpha<.98f)continue;for(size_t j=0;j+2<b.vertices.size();j+=3){auto point=[&](size_t k){const auto&v=b.vertices[j+k].p;return cinematicPoint(m,state,b.component,{v.x,v.y,v.z});};const V3 a=point(0),edge1=point(1)-a,edge2=point(2)-a,q=cross(ray,edge2);const float det=dot(edge1,q);if(std::abs(det)<1.e-7f)continue;const V3 t=lastCarCamera.eye-a;const float u=dot(t,q)/det;if(u<0||u>1)continue;const V3 v=cross(t,edge1);const float w=dot(ray,v)/det;if(w<0||u+w>1)continue;const float distance=dot(edge2,v)/det;if(distance>.001f&&distance<.985f){hidden=true;break;}}if(hidden)break;}if(!hidden)return h.component;
    }return -1;
   }
@@ -248,7 +234,6 @@ public:
   const auto box=vehicleDisplayPanel(W,H,carHit,rows.size());rect(d,box.x+2*scale,box.y+2*scale,box.w,box.h,color(0,.18f*s.carAlpha()));rect(d,box.x,box.y,box.w,box.h,color(0x242B2D,.78f*s.carAlpha()));rect(d,box.x,box.y,box.w,scale,color(0xBEC5C5,.8f*s.carAlpha()));
   for(size_t i=0;i<rows.size();++i)label(d,rows[i],box.x+box.w*.5f,box.y+(5+22*i)*scale,fitted(rows[i],13*scale,box.w-18*scale),s.carAlpha(),true);
  }}
-  
  if(!s.ui.cinematic.active){
  const float carStrip=(1-s.paintMix)*(1-s.ui.cinematic.mix),paintStrip=s.paintMix*(1-s.ui.cinematic.mix);
  const Carousel layout(W,H,s,entries.size());
@@ -257,23 +242,17 @@ public:
  const int fullX=int(std::floor(box.x+2*scale)),fullY=int(std::floor(box.y+2*scale)),fullW=std::max(1,int(box.w-4*scale)),fullH=std::max(1,int(box.h-4*scale));
  const int clipX=std::max(0,fullX),clipY=std::max(0,fullY),right=std::min(int(width),fullX+fullW),bottom=std::min(int(height),fullY+fullH);
  if(right>clipX&&bottom>clipY){D3DVIEWPORT9 thumbVP{DWORD(clipX),DWORD(clipY),DWORD(right-clipX),DWORD(bottom-clipY),0,1};d->SetViewport(&thumbVP);RECT clip{clipX,clipY,right,bottom};d->SetScissorRect(&clip);d->SetRenderState(D3DRS_SCISSORTESTENABLE,TRUE);d->Clear(0,nullptr,D3DCLEAR_ZBUFFER,0,1,0);Camera small=fittedThumbnail(float(fullW),float(fullH),thumb->low,thumb->high,thumbAngle,compactThumbnail(entries[i])?.72f:.96f);small.offsetX+=float(fullX-clipX)+(float(fullW)-float(thumbVP.Width))*.5f;small.cy+=float(fullY-clipY);small.w=float(thumbVP.Width);small.h=float(thumbVP.Height);d->SetRenderState(D3DRS_ZENABLE,TRUE);mesh(d,*thumb,small,thumbAngle,entries[i].paints.empty()?Paint{}:entries[i].paints[0],carStrip,1);d->SetRenderState(D3DRS_SCISSORTESTENABLE,FALSE);d->SetViewport(&vp);d->SetRenderState(D3DRS_ZENABLE,FALSE);d->SetRenderState(D3DRS_ALPHABLENDENABLE,TRUE);}
-
  }}
  if(carStrip>.01f){const auto selected=layout.box(int(s.selected));if(s.page==Page::Cars&&!entries.empty()&&s.selected<entries.size())marker(d,selected.x+selected.w*.5f,selected.y-10*scale,scale,carStrip*thumbnailPulse(s.clock-s.changed));label(d,e.name+(e.year.empty()?"":" "+e.year)+(e.favorite?"  *":""),W*.5f,H*.82f+25*scale*s.paintMix,22*scale,carStrip,true);const BrowseBar bar(W,H,s,entries.size());rect(d,bar.track.x,bar.track.y,bar.track.w,bar.track.h,color(0x171D1D,carStrip));rect(d,bar.thumb.x,bar.thumb.y,bar.thumb.w,bar.thumb.h,color(0x737978,carStrip));}
  if(paintStrip>.01f&&s.page!=Page::Livery){const size_t n=std::max(size_t(1),e.paints.size());for(size_t i=0;i<n;++i){const auto p=e.paints.empty()?Paint{}:e.paints[i];const auto box=paintBox(W,H,i,n);rect(d,box.x,box.y,box.w,box.h,color(i==s.paint?0xE6DD9F:0x151919,paintStrip));const unsigned slots=main?paintSlotCount(main->paintMask):2;for(unsigned slot=0;slot<slots;++slot){const float hh=44*scale/slots;rect(d,box.x+2*scale,box.y+2*scale+slot*hh,10*scale,hh,color(p.rgb[slot],paintStrip));}rect(d,box.x+2*scale,box.y+2*scale,3*scale,42*scale,color(0xFFFFFF,paintStrip*.3f));}std::string paintLabel=paint.name.empty()?"Paint "+std::to_string(s.paint+1)+" / "+std::to_string(n):paint.name;const unsigned displayedSlots=main?paintSlotCount(main->paintMask):2;for(unsigned slot=2;slot<displayedSlots;++slot)paintLabel+=" / "+paintNames.name(paint.ids[slot],paint.rgb[slot]);label(d,paintLabel,W*.5f,H*.830f,fitted(paintLabel,19*scale,W*.8f),paintStrip,true);}
-
  if(paintStrip>.01f&&s.page==Page::Livery){for(size_t i=0;i<s.liveries.size();++i){const auto b=liveryBox(W,H,i,s.liveries.size());rect(d,b.x,b.y,b.w,b.h,color(i==s.livery?0xE6DD9F:0x151919,paintStrip));rect(d,b.x+2*scale,b.y+2*scale,b.w-4*scale,b.h-4*scale,color(0x353C3E,paintStrip));if(i&&s.liveries[i].texture){auto*t=static_cast<IDirect3DTexture9*>(s.liveries[i].texture.get());D3DSURFACE_DESC desc{};if(SUCCEEDED(t->GetLevelDesc(0,&desc))&&desc.Width&&desc.Height){const float fit=std::min((b.w-4*scale)/desc.Width,(b.h-4*scale)/desc.Height);const float ww=desc.Width*fit,hh=desc.Height*fit;rect(d,b.x+(b.w-ww)*.5f,b.y+(b.h-hh)*.5f,ww,hh,color(0xFFFFFF,paintStrip),t);}}else label(d,i?"...":"NONE",b.x+b.w*.5f,b.y+16*scale,8*scale,paintStrip,true);}const std::string name=s.livery==0?"No Livery":"Livery "+std::to_string(s.livery);label(d,name,W*.5f,H*.830f,19*scale,paintStrip,true);}
-  
  auto logo=[&](bool brand,float centerX,float top,float maxW,float maxH,float alpha){unsigned iw=0,ih=0;auto*t=logos.get(d,e.modelKey,brand,iw,ih);if(!t||!iw||!ih)return false;const float fit=std::min(maxW/iw,maxH/ih);rect(d,centerX-iw*fit*.5f,top,iw*fit,ih*fit,color(0xFFFFFF,alpha),t);return true;};
  const bool carLogo=s.ui.carLogo&&logo(false,W*.77f,H*.065f,W*.4f,H*.13f,1-s.titleMix());if(!carLogo)label(d,e.title.empty()?e.name:e.title,W*.77f,H*.065f,fitted(e.title.empty()?e.name:e.title,50*scale,W*.40f),1-s.titleMix(),true,10*scale);
  const bool brandLogo=s.ui.brandLogo&&logo(true,W*.80f,H*.065f,W*.30f,H*.12f,s.titleMix());if(!brandLogo){label(d,e.brand,W*.80f,H*.085f,26*scale,s.titleMix(),true);label(d,"motor collection",W*.80f,H*.128f,13*scale,s.titleMix(),true);}
-
  rect(d,0,H*.907f,W,H*.093f,0xFF000000);std::string info=e.information;if(!e.power.empty())info+="    Power:"+e.power;if(!e.torque.empty())info+="    Torque:"+e.torque;std::string foot=s.status.empty()?((s.clock-s.changed<4||int(s.clock)%8<5)?info:showroomControlHint(s.page,s.ui.controllerUsed,s.liveries.size()>1)):s.status;const FooterLayout footer(H);const auto help=s.ui.menu.help();if(help.empty()){label(d,foot,W*.5f,footer.y,fitted(foot,footer.fontHeight,W*.84f),1,true);label(d,std::to_string(entries.empty()?0:s.selected+1)+" / "+std::to_string(entries.size()),W*.94f,footer.countY,footer.countHeight,1,true);}else text(d,help,W*.5f,H*.929f,fitted(help,16*scale,W*.9f,true),color(0xD5D5D8),true,0,true);
-  
  const float cx=63*scale,cy=47*scale;if(flags){const float index=float(e.country);rect(d,cx-17*scale,cy-13.26f*scale,34*scale,26.52f*scale,0xFFFFFFFF,flags,index/float(countryCount),0,(index+1)/float(countryCount),1);}label(d,e.category,104*scale,19*scale,26*scale);
  if(s.ui.favoritesOnly||s.ui.countryFilter>=0||s.ui.classFilter>=0)label(d,(s.ui.favoritesOnly?std::string("FAVORITES"):std::string())+(s.ui.favoritesOnly&&s.ui.countryFilter>=0?" / ":"")+(s.ui.countryFilter>=0?(s.ui.countryFilter==0?"UNASSIGNED":countryLabel(Country(s.ui.countryFilter))):"")+(s.ui.classFilter>=0?" / "+std::string(classNames[size_t(s.ui.classFilter)]):""),104*scale,56*scale,11*scale);if(entries.empty())label(d,s.ui.favoritesOnly?"NO FAVORITES YET - UP / SQUARE ADDS A CAR":"NO CARS IN THIS FILTER - RMB / SELECT CHANGES FILTER",W*.5f,H*.50f,19*scale,1,true);
  }
-  
  if(s.searching){const float boxW=std::min(W*.42f,520*scale),boxH=86*scale,x=(W-boxW)*.5f,y=H*(s.ui.keyboard.open?.53f:.605f);
   rect(d,x-1*scale,y-1*scale,boxW+2*scale,boxH+2*scale,color(0x8B9191,.85f));rect(d,x,y,boxW,boxH,color(0x080B0D,.96f));rect(d,x,y,boxW,2*scale,0xFFAEB5B5);
   disc(d,x+13*scale,y+14*scale,3,scale,0xD31012);label(d,"MODEL SEARCH",x+23*scale,y+3*scale,10*scale);
@@ -290,7 +269,5 @@ public:
  }
 };
 }
-
-
 
 
