@@ -2,9 +2,6 @@
 #include "RuntimeModels.hpp"
 #include <array>
 namespace gt4 {
- 
- 
- 
 inline bool hideExportLayout(const uint8_t* b,size_t n){constexpr uint8_t pattern[]={0x55,0x8B,0xEC,0x8B,0x4D,0x08,0x03,0x0D,0,0,0,0,0x8A,0x41,0x09,0x24,0xFE,0x0A,0x45,0x0C,0x88,0x41,0x09,0x5D,0xC3};if(n<sizeof(pattern))return false;for(size_t i=0;i<sizeof(pattern);++i)if((i<8||i>11)&&b[i]!=pattern[i])return false;return true;}
 struct VehFuncsFrames{
  int offset=-1;bool verified=false;
