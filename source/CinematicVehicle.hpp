@@ -6,8 +6,6 @@
 #include <string_view>
 
 namespace gt4 {
-// Immutable, value-only metadata copied from the private native preview. No
-// RenderWare, pool or world-vehicle pointer survives snapshot extraction.
 struct CinematicPoint {float x=0,y=0,z=0;};
 inline CinematicPoint operator+(CinematicPoint a,CinematicPoint b){return {a.x+b.x,a.y+b.y,a.z+b.z};}
 inline CinematicPoint operator-(CinematicPoint a,CinematicPoint b){return {a.x-b.x,a.y-b.y,a.z-b.z};}
