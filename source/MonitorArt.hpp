@@ -4,8 +4,6 @@
 #include <vector>
 #include "StudioUI.hpp"
 namespace gt4 {
-// Vertical color bands measured from the settings reference. The shared orange
-// ramp is used by both square selectors and rounded footer buttons.
 inline constexpr std::array<uint32_t,24> monitorOrange{{
  0xEDB55D,0xEEB65E,0xEFB65E,0xF0B75E,0xF0B75D,0xF0B75D,
  0xF0B85F,0xF0B85F,0xF1B75F,0xF2B75F,0xF2B75E,0xF2B75D,
@@ -31,8 +29,6 @@ inline UIRect monitorArrowPanel(const UIRect&r,float scale){
 }
 struct MonitorButtonImage {int width=0,height=0;std::vector<uint32_t> pixels;};
 inline MonitorButtonImage monitorButtonImage(float aspect,bool selected){
- // Cached at four samples per axis. The sheen follows the capsule curvature;
- // the lower shadow is outside its hit rectangle and does not change layout.
  MonitorButtonImage out;const int body=64;out.width=std::clamp(int(std::lround(aspect*body)),128,1024);out.height=body+8;out.pixels.resize(size_t(out.width*out.height));
  const float radius=body*.5f;
  for(int y=0;y<out.height;++y)for(int x=0;x<out.width;++x){float a=0,r=0,g=0,b=0;
