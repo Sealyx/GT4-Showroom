@@ -12,8 +12,7 @@ inline int probingSeed=-1;inline bool available=false,metadataReady=false,prepar
 inline void scan(const Entry&e,bool force=false);
 inline const char* name(void*f){return reinterpret_cast<const char*(__cdecl*)(void*)>(0x72FB30)(f);}
 inline bool hasExtras(void*f,int depth=0){if(depth>64)return false;int budget=0;for(;f&&budget++<4096;f=game::field<void*>(f,0x9C)){const char*n=name(f);if(n&&std::strncmp(n,"f_extras",8)==0)return true;if(hasExtras(game::field<void*>(f,0x98),depth+1))return true;}return false;}
- 
- 
+
 inline uint64_t hashBytes(uint64_t h,const void*p,size_t n){const auto*b=static_cast<const uint8_t*>(p);for(size_t i=0;i<n;++i)h=(h^b[i])*1099511628211ull;return h;}
 struct Signature {std::vector<std::string> parts;bool valid=true;size_t atomics=0,bytes=0;};
 inline void* __cdecl signatureAtomic(void*a,void*data){
@@ -29,9 +28,6 @@ inline std::string signature(void*v){void*c=game::field<void*>(v,0x18);if(!c)ret
 inline int actualSeed(void*v){auto module=GetModuleHandleW(L"VehFuncs.asi");auto get=reinterpret_cast<int(__cdecl*)(void*)>(GetProcAddress(module,"Ext_GetCarSeed"));return get?get(v):-1;}
 inline void observe(void*v){
  if(!v||game::field<int16_t>(v,0x22)!=model)return;
-  
-  
-  
  if(!preparedScan&&!probing){Entry e;e.id=model;scan(e,true);preparedScan=true;}
  auto*c=probing?probing:active;if(!c||(!probing&&!c->variants.empty()))return;
  const int expected=probing?probingSeed:game::previewSeed(model);if(expected<=0||actualSeed(v)!=expected){c->stopped=true;return;}
@@ -63,9 +59,7 @@ inline void scan(const Entry&e,bool force){
  metadataReady=true;activate();nativePreview::observeVehicle=observe;
 }
 inline bool select(int group,int option){const auto&options=labels(group);if(group<0||group>1||option<0||size_t(option)>=options.size())return false;const bool changed=choice[size_t(group)]!=option;choice[size_t(group)]=option;if(group==0&&changed)activate();else updateSelection();return true;}
- 
- 
- 
+
 inline bool pump(uint64_t now){
  if(!active||active->stopped||active->variants.empty()||now<nextProbe)return false;nextProbe=now+16;
  probing=active;probingSeed=variantProbeSeed(model,active->samples);const auto before=active->variants.size();const int saved=game::extrasSeed;game::extrasSeed=probingSeed;
@@ -74,9 +68,7 @@ inline bool pump(uint64_t now){
 inline std::unique_ptr<Mesh> capture(int id){if(id==model)preparedScan=false;auto mesh=nativePreview::snapshot(id);updateSelection();return mesh;}
 inline bool apply(void*v){
  if(!v||game::field<int16_t>(v,0x22)!=model||!available||!active||active->variants.empty())return true;
-  
-  
-  
+
  return nativePreview::initialize(v,model);
 }
 }
