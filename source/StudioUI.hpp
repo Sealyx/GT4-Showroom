@@ -26,7 +26,6 @@ inline constexpr size_t classCount=13;
 inline constexpr const char* classNames[]={"Normal","Poor","Rich","Executive","Worker","Heavy","Taxi","Moped","Motorbike","Leisure Boat","Work Boat","Bicycle","Special"};
 inline int classIndex(int value){return value>=0&&value<12?value:12;}
 struct ContextMenu{
-  
  bool monitorPicker=false,monitorHover=false,monitorHeaderHover=false,monitorKeyboard=false;int monitorDragLevel=-1,monitorHelpLevel=-1,monitorHelpIndex=-1,monitorHoverLevel=-1,monitorHoverIndex=-1,monitorFooter=-1,monitorFooterLevel=0;float monitorDragX=0,monitorDragY=0;std::array<float,3> monitorX{},monitorY{};std::array<bool,3> monitorPlaced{};double monitorChanged=0;int closeResult=0,sliderDrag=-1;bool sliderChanged=false;AudioLevels volumes;bool hotspots=true,lights=false;int indicators=0;
  bool open=false,sub=false,countries=false,countryFocus=false;int row=0,sortRow=0,countryRow=0,choice=-1,focusLevel=0;float x=.5f,y=.5f;double began=0;
  std::vector<int> available{-1},classes{-1};std::array<int,countryCount> counts{};std::array<int,classCount> classCounts{};
@@ -108,7 +107,6 @@ struct ContextMenu{
  void move(int dx,int dy){monitorMove(dx,dy);}
  StudioAction activate(bool favorites){return monitorActivate(favorites);}
  StudioAction click(float px,float py,float w,float h,bool favorites){return monitorClick(px,py,w,h,favorites);}
-
  bool monitorSubWindow()const{const auto b=childBranch();return b==MenuBranch::Logos||b==MenuBranch::Extras||b==MenuBranch::Display||b==MenuBranch::Volume||b==MenuBranch::CinematicControls;}
  bool monitorSelectorWindow()const{return sub&&focus()==2&&!monitorSubWindow();}
  void monitorToggle(float px,float py,double now);
@@ -160,7 +158,6 @@ struct ControllerKeyboard{
  static std::string key(int i){static const std::string chars="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";return i<36?chars.substr(size_t(i),1):i==36?"SPACE":i==37?"DEL":i==38?"FIND":"CLOSE";}
  void move(int dx,int dy){selected=((selected/10+dy+4)%4)*10+(selected%10+dx+10)%10;}
  UIRect box(float w,float h,int i)const{const float s=h/720.f,cw=48*s,ch=37*s;return {(w-10*cw)*.5f+(i%10)*cw,h*.68f+(i/10)*ch,cw-3*s,ch-3*s};}
-  
  int type(std::string&query){if(selected==38)return 1;if(selected==39)return -1;if(selected==37){if(!query.empty())query.pop_back();}else if(query.size()<48)query+=selected==36?" ":key(selected);return 0;}
 };
 struct StudioUI{
@@ -171,4 +168,3 @@ struct StudioUI{
  void resetTransient(){menu.open=false;keyboard.open=false;cinematic.leave();vehicle.reset();menuSnapshot=false;transition={};dock=false;}
 };
 }
-
