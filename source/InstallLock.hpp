@@ -3,8 +3,6 @@
 #include <cstdio>
 #include <cwchar>
 namespace modding {
-// Coordinate shared engine entries between these independently loaded ASIs.
-// Always acquire outside DllMain, before creating any trampoline.
 struct InstallLock {
     HANDLE mutex=nullptr;
     bool acquired=false;
