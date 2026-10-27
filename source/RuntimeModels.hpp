@@ -24,8 +24,6 @@ template<class T> bool read(uintptr_t address,T& result) { return reader(address
 struct ModelRegistry { uintptr_t table=0; uint32_t count=0; };
 inline ModelRegistry registry() {
     ModelRegistry result;
-     
-     
     uint32_t address=0;
     if(!read(0x40CD67,address) || !read(0x40CD58,result.count)) return {};
     if(!address || result.count<1 || result.count>1000000) return {};
