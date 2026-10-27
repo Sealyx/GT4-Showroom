@@ -126,7 +126,6 @@ void __fastcall padUpdate(void*self,void*,int index){
   claimView=sampledPad.view&&(state.open||openIntent.pending(tick)||openState(focus).ready());
  }
  originalPadUpdate(self,index);
- // Claim only accepted View/Select input, before native world camera controls.
  if(index==0&&claimView)game::field<int16_t>(self,0x1A)=0;
 }
 
@@ -142,8 +141,7 @@ void updateStudio(){
  const auto pad=sampledPad;const auto gate=openState(focus);const bool blocked=gate.blocked();if(!state.open&&returnFade.active()){if(game::loading()||!gate.alive)returnFade.reset();else if(focus&&!gate.menu&&!gate.codePause&&!gate.userPause)returnFade.step(dt);}
  const bool reloadAllowed=showroomReloadAllowed(state.open,state.searching,focus,gate.menu,gate.codePause,gate.gameState,gate.loadingData,gate.cutscene,key(VK_CONTROL)||key(VK_MENU));const bool typedReloadRequest=typedReload.poll([](int v){return key(v);},tick,reloadAllowed);const bool padReloadRequest=reloadChord.poll(controllerReloadRequested(state.open,pad.view,pad.search),tick);if(!state.busy()&&reloadAllowed&&(typedReloadRequest||padReloadRequest)){reloadAll();blockOpenInput();return;}
  if(statusUntil&&tick>=statusUntil){state.status.clear();statusUntil=0;}
- // Sample releases even while ineligible. A blocked press is logged and discarded,
- // never silently swallowed or carried forward out of menus/loading.
+ 
  const bool physicalOpen=studioOpenInput(key(hotkey),state.open,pad);const bool pressed=openKey.poll(physicalOpen&&(!state.searching||(hotkey>=VK_F1&&hotkey<=VK_F24)),tick);
  if(blocked){blockActions();openIntent.clear();}
  static bool first=true,readyLogged=false,catalogueLogged=false;
