@@ -7,8 +7,6 @@ struct NativeTextureView {
  IDirect3DTexture9* texture=nullptr;float uScale=1,vScale=1,uOffset=0,vOffset=0;
  bool declared=false,unsupported=false;
 };
-// RwRaster parent/size/offset and the D3D9 raster extension are verified against
-// the classic RW SDK. A subraster need not own a second D3D texture.
 inline NativeTextureView nativeTexture(void* rwTexture,int extension){
  NativeTextureView out;out.declared=rwTexture!=nullptr;if(!rwTexture)return out;
  void* raster=nullptr;if(extension<4||extension>=4096||!gta::read(uintptr_t(rwTexture),raster)||!raster)return out;
