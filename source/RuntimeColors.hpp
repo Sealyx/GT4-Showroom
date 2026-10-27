@@ -1,8 +1,6 @@
 #pragma once
 #include "RuntimeModels.hpp"
 namespace gta {
- 
- 
 inline uintptr_t vehiclePalette(){
  uint8_t a[3]{},b[3]{};uint32_t p=0,q=0;
  const uint8_t lea[]={0x8D,0x04,0x85},mov[]={0x8B,0x0C,0x85};
