@@ -3,8 +3,6 @@
 #include <cstdint>
 #include <cstring>
 namespace gt4 {
- 
- 
 struct SecretFeaturesKnownPatches {
  template<size_t N>static bool normalize(uint8_t*b,size_t size,size_t off,const std::array<uint8_t,N>&before,const std::array<uint8_t,N>&after){if(off>size||N>size-off)return false;if(!std::memcmp(b+off,before.data(),N))return true;if(std::memcmp(b+off,after.data(),N))return false;std::memcpy(b+off,before.data(),N);return true;}
  static bool silentPatch(uint8_t*b,size_t size){
