@@ -2,7 +2,6 @@
 #include "Countries.hpp"
 #include <cmath>
 namespace gt4 {
- 
 inline bool flagStar(float x,float y,float cx,float cy,float radius,float rotation=0){
  bool inside=false;float ax=0,ay=0,bx=0,by=0;for(int i=0,j=9;i<10;j=i++){
   auto point=[&](int k,float&px,float&py){const float a=rotation-1.57079633f+k*.62831853f,r=radius*(k%2?.382f:1.f);px=cx+std::cos(a)*r;py=cy+std::sin(a)*r;};point(i,ax,ay);point(j,bx,by);
@@ -10,7 +9,6 @@ inline bool flagStar(float x,float y,float cx,float cy,float radius,float rotati
  }return inside;
 }
 inline bool malaysiaStar(float x,float y){
-  
  const float dx=(x+.25f)*1.5f,dy=y+.46f;
  const float angle=std::atan2(dy,dx)+1.57079633f;
  const float sector=std::remainder(angle,6.28318531f/14);
