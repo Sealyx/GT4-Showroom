@@ -14,10 +14,6 @@ inline bool readableCode(uintptr_t address,size_t size) {
     const uintptr_t base=reinterpret_cast<uintptr_t>(info.BaseAddress);
     return address>=base && address-base<info.RegionSize && size<=info.RegionSize-(address-base);
 }
-
- 
- 
- 
 inline bool validateEntryJump(uintptr_t entry,uintptr_t& destination) {
     std::array<uintptr_t,8> seen{};
     uintptr_t current=entry;
