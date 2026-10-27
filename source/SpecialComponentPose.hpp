@@ -1,9 +1,5 @@
 #pragma once
 namespace gt4 {
- 
- 
- 
- 
 template<class Node,class Rotate>
 bool prepareCementPose(void*vehicle,int model,Node node,Rotate rotate){
  if(model!=524)return false;constexpr float tilt=-.1745329350233078f;
