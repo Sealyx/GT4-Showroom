@@ -3,9 +3,6 @@
 #include "CinematicVehicle.hpp"
 
 namespace gt4::cinematicNative {
-// Classic 1.0 US: Plugin-SDK CAutomobile/CDoor/tHandlingData and
-// gta-reversed CAutomobile::OpenDoor. Extract only from the prepared private
-// instance; frame pointers are scoped to this synchronous capture.
 struct DoorFields {float open,closed;uint16_t direction;uint8_t axis,state;float angle,previous,speed;};
 static_assert(sizeof(DoorFields)==0x18,"classic CDoor layout");
 inline bool automobileKind(int kind){return kind==0||kind==1||kind==2||kind==11;}
