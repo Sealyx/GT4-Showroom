@@ -16,7 +16,7 @@
 #include <cstring>
 namespace gt4 {
 struct PcmClip {WAVEFORMATEX format{};std::vector<char> bytes;};
- 
+
 inline bool readPcm(const std::filesystem::path& name,size_t limit,PcmClip& clip){
  clip={};std::ifstream f(name,std::ios::binary|std::ios::ate);if(!f)return false;
  const auto length=f.tellg();if(length<12||uint64_t(length)>limit+65536)return false;f.seekg(0);
@@ -104,8 +104,7 @@ public:
   if(!enabled||!focused||!ds||cue==Cue::None)return false;update();
   size_t index=1;switch(cue){case Cue::Move:index=0;break;case Cue::Slider:index=6;break;case Cue::Back:index=2;break;case Cue::Open:index=3;break;case Cue::Spawn:index=4;break;case Cue::Error:index=5;break;default:break;}
   if(!clips[index])return false;IDirectSoundBuffer* b=nullptr;if(FAILED(ds->DuplicateSoundBuffer(clips[index],&b)))return false;
-   
-   
+
   const LONG level=volume(float(masterVolume*cueVolume)/100.f);b->SetVolume(level==DSBVOLUME_MIN?DSBVOLUME_MIN+1:DSBVOLUME_MIN);b->SetVolume(level);
   b->SetCurrentPosition(0);if(FAILED(b->Play(0,0,0))){b->Release();return false;}
   auto it=std::find_if(voices.begin(),voices.end(),[](const Voice&v){return v.buffer==nullptr;});
