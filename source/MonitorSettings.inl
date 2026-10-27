@@ -1,5 +1,3 @@
- 
- 
 inline void ContextMenu::monitorToggle(float px,float py,double now){
  if(open){finish(-1);return;}open=true;closeResult=0;sliderDrag=-1;sliderChanged=false;sub=countries=countryFocus=false;row=sortRow=countryRow=focusLevel=0;
  monitorPicker=monitorHover=monitorHeaderHover=monitorKeyboard=false;monitorDragLevel=monitorHelpLevel=monitorHelpIndex=monitorHoverLevel=monitorHoverIndex=monitorFooter=-1;monitorPlaced={};
@@ -253,7 +251,6 @@ inline bool ContextMenu::monitorDrag(float px,float py,float w,float h,bool down
  if(!open)return false;if(!down){monitorDragLevel=-1;return false;}
  const float s=h/720.f;const auto boxes=monitorPanels(w,h);
  if(pressed){
-   
   if((monitorPicker&&monitorDropdown(w,h).contains(px,py))||(sub&&!monitorSubWindow()&&!monitorSelectorWindow()&&boxes[1].contains(px,py)))return false;
   for(int level=2;level>=0;--level){if((level==2&&!monitorSelectorWindow())||(level==1&&(!sub||!monitorSubWindow())))continue;const auto r=boxes[size_t(level)];if(UIRect{r.x,r.y,r.w,22*s}.contains(px,py)){monitorDragLevel=level;monitorDragX=px-r.x;monitorDragY=py-r.y;monitorPicker=false;break;}}}
  if(monitorDragLevel<0)return false;const int level=monitorDragLevel;const auto r=boxes[size_t(level)];const float xx=std::clamp(px-monitorDragX,8*s,std::max(8*s,w-r.w-8*s)),yy=std::clamp(py-monitorDragY,8*s,std::max(8*s,h*.9f-r.h-8*s));
