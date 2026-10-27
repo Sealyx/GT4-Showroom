@@ -5,8 +5,6 @@
 #include <cstring>
 #include <cstddef>
 namespace gt4 {
- 
- 
 struct SecretFeaturesProfile {
  static constexpr size_t bytes=46648;static constexpr uint32_t fnv=0x68EAB6D8;
  static constexpr size_t resultSub=33258,resultEnd=35069,choiceButton=35073;
@@ -15,7 +13,6 @@ struct SecretFeaturesProfile {
  static bool match(const uint8_t*b,size_t n){if(!b||n<bytes)return false;if(hash(b,bytes)==fnv)return true;std::array<uint8_t,bytes> normalized{};std::memcpy(normalized.data(),b,bytes);return SecretFeaturesKnownPatches::silentPatch(normalized.data(),normalized.size())&&hash(normalized.data(),normalized.size())==fnv;}
 };
 struct SecretFeaturesCommand {
-  
  uintptr_t owner=0,base=0,ip=0;const uint8_t*mission=nullptr;size_t length=0;bool active=false,external=false,isMission=false;
  std::array<char,8> name{};int test=0,score=100,leave=0,testRunning=0;
 };
@@ -34,8 +31,6 @@ public:
  bool needsScene()const{return recording||(testArmed&&recordStopped)||state.active;}
  void reset(){verifiedBase=owner=rejectedBase=0;touched=0;latched=false;verified=false;testArmed=recordStopped=recording=false;observed=0;recordSerial=0;mismatch=false;state.reset();}
  void stop(){owner=verifiedBase=0;verified=false;touched=observed=0;latched=testArmed=recordStopped=recording=false;state.reset();}
-  
-  
  void suspended(uint64_t now){if(verified){if(touched)touched=now;if(observed)observed=now;}}
  void expire(uint64_t now){const uint64_t latest=std::max(touched,observed);if(latest&&now-latest>500)stop();}
  SecretFeaturesSkip inspect(const SecretFeaturesCommand&c,uint64_t now){
@@ -46,7 +41,6 @@ public:
   }
   if(!verified||c.ip<c.base||c.ip-c.base+2>SecretFeaturesProfile::bytes)return out;
   observed=now;const size_t at=size_t(c.ip-c.base);const auto*b=c.mission;const uint16_t op=uint16_t(b[at]|unsigned(b[at+1])<<8)&0x7FFF;
-   
   if(op==0x0050&&at+7<=SecretFeaturesProfile::bytes&&b[at+2]==1){int32_t target=0;std::memcpy(&target,b+at+3,4);
    if(target==-31041){state.reset();latched=false;owner=c.owner;testArmed=true;recordStopped=false;recording=false;++recordSerial;}
    if(target==-32505){recordStopped=true;recording=false;}
@@ -60,12 +54,9 @@ public:
    int args=-1;switch(op){case 0x0937:args=6;break;case 0x033E:args=3;break;case 0x045A:args=4;break;case 0x045B:args=5;break;case 0x038D:args=9;break;default:break;}
    if(args>=0){const size_t end=secretFeaturesArgumentEnd(b,SecretFeaturesProfile::bytes,at+2,args);if(end){out.consume=true;out.next=end;}}
   }
-   
-   
   if(at==SecretFeaturesProfile::choiceButton&&op==0x00E1){out.next=secretFeaturesArgumentEnd(b,SecretFeaturesProfile::bytes,at+2,2);out.consume=out.next!=0;out.compareFalse=out.consume;}
   return out;
  }
-  
  template<class Write>bool choose(SecretFeaturesChoice choice,Write write){
   if(choice==SecretFeaturesChoice::None||!verified||!state.active||!state.accepted||!owner)return false;
   if(choice==SecretFeaturesChoice::Exit&&!write(SecretFeaturesProfile::leaveGlobal,2))return false;
