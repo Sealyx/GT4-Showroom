@@ -13,7 +13,6 @@ template<class Backend>PrizeStreamReport probePrize(const PrizePlan& plan,Backen
  report.txd=plan.enablePaintjob?backend.remap(plan):-1;const bool painted=report.txd<0||(backend.queueTxd(report.txd),backend.txdReady(report.txd));
  report.stage=report.missing>=0?PrizeStage::Upgrades:!painted?PrizeStage::Paint:PrizeStage::Ready;return report;
 }
- 
 struct PrizeLoadGate {
  int id=-1;uint32_t serial=0;unsigned flushed=0;
  bool shouldFlush(const PrizePlan& plan,const PrizeStreamReport& report){if(id!=plan.id||serial!=plan.serial){id=plan.id;serial=plan.serial;flushed=0;}if(report.ready()||report.stage==PrizeStage::Invalid)return false;const unsigned bit=1u<<unsigned(report.stage);if(flushed&bit)return false;flushed|=bit;return true;}
