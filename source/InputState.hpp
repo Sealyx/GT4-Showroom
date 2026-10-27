@@ -31,8 +31,6 @@ struct TypedReload {
  template<class Down>bool poll(Down down,uint64_t tick,bool active){bool trigger=false;for(int vk=8;vk<=90;++vk){if(vk<32&&vk!=8)continue;const bool pressed=down(vk);if(active&&pressed&&!held[size_t(vk)]){if(vk>='A'&&vk<='Z')trigger=feed(char(vk),tick)||trigger;else text.clear();}held[size_t(vk)]=pressed;}if(!active)text.clear();return trigger;}
 };
 struct MoveCueGate{uint64_t next=0;bool allow(uint64_t tick){if(tick<next)return false;next=tick+100;return true;}};
-// A frontend resume clears the same UserPause bit that the showroom owns.
-// Reacquire after native menu processing, before CGame::Process's world branch.
 struct PauseOwnership {
  bool owned=false;
  template<class Start>void begin(bool paused,Start start){if(!paused){start();owned=true;}}
