@@ -15,9 +15,6 @@ inline bool readableCode(uintptr_t address,size_t size) {
     return address>=base && address-base<info.RegionSize && size<=info.RegionSize-(address-base);
 }
 
-// MinHook relocates an existing E9 into the original-call trampoline, preserving
-// the earlier mod's destination. Only explicitly opted-in engine entries
-// use this path. Reject unreadable code, internal jumps, cycles and short jumps.
 inline bool validateEntryJump(uintptr_t entry,uintptr_t& destination) {
     std::array<uintptr_t,8> seen{};
     uintptr_t current=entry;
