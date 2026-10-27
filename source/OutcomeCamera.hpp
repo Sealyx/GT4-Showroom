@@ -1,8 +1,6 @@
 #pragma once
 #include "SpawnEntry.hpp"
 namespace gt4 {
- 
- 
 struct OutcomeEntityRef {
  uintptr_t poolAddress=0,objects=0,flags=0;int index=-1;uint8_t generation=0;size_t stride=0;
  struct Pool {uintptr_t objects,flags;int count;};
@@ -17,8 +15,6 @@ struct OutcomeEntityRef {
  void*get()const{Pool p{};uint8_t flag=0;if(index<0||!pool(poolAddress,p)||p.objects!=objects||p.flags!=flags||index>=p.count||!gta::read(flags+size_t(index),flag)||flag!=generation||(flag&0x80))return nullptr;return reinterpret_cast<void*>(objects+size_t(index)*stride);}
 };
 inline EntryCameraPose outcomeCameraPose(double age,V3 cj,V3 direction,float yaw){
-  
-  
  const float orbit=.13f*std::sin(float(age)*.34f),a=yaw+orbit;
  EntryCameraPose p;p.fov=55;p.source=cj+V3{4.3f*std::cos(a),4.3f*std::sin(a),2.15f+.1f*std::sin(float(age)*.45f)};
  const float n=std::sqrt(direction.x*direction.x+direction.y*direction.y);if(n>.01f)direction=direction*(.2f/n);else direction={};
@@ -41,7 +37,6 @@ struct OutcomeCamera {
   stop();void*p=entryNative::function<void*(__cdecl*)(int)>(0x56E210)(-1);player=OutcomeEntityRef::from(p);if(!player.get()||game::field<uint32_t>(camera(),0xB0)==1)return false;
   busted=arrest;age=0;actor=culprit(p,arrest);V3 cj=game::position(p),direction{};if(void*a=actor.get())direction=game::position(a)-cj;
   yaw=dot(direction,direction)>.01f?std::atan2(direction.y,direction.x)+.85f:game::field<float>(p,0x558)+.8f;
-   
   float best=-1;const float start=yaw;for(float offset:{0.f,1.57f,-1.57f,3.14f}){auto pose=outcomeCameraPose(0,cj,direction,start+offset);const V3 checked=safe(pose.target,pose.source,p);const float span=dot(checked-pose.target,checked-pose.target);if(span>best){best=span;yaw=start+offset;}}
   auto pose=outcomeCameraPose(0,cj,direction,yaw);source=safe(pose.target,pose.source,p);target=pose.target;V3 up{};entryNative::function<void(__thiscall*)(void*,const V3*,const V3*)>(0x50BEC0)(camera(),&source,&up);entryNative::function<void(__thiscall*)(void*,const V3*,int16_t,int)>(0x50C8B0)(camera(),&target,2,1);owned=true;if(!owns()){owned=false;return false;}return true;
  }
