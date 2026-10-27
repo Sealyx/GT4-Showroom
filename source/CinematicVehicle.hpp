@@ -17,7 +17,6 @@ inline bool cinematicFinite(CinematicPoint p){return std::isfinite(p.x)&&std::is
 inline CinematicPoint cinematicClosestPoint(CinematicPoint p,CinematicPoint a,CinematicPoint b,CinematicPoint c){
  const auto ab=b-a,ac=c-a,ap=p-a;const float d1=cinematicDot(ab,ap),d2=cinematicDot(ac,ap);if(d1<=0&&d2<=0)return a;const auto bp=p-b;const float d3=cinematicDot(ab,bp),d4=cinematicDot(ac,bp);if(d3>=0&&d4<=d3)return b;const float vc=d1*d4-d3*d2;if(vc<=0&&d1>=0&&d3<=0)return a+ab*(d1/(d1-d3));const auto cp=p-c;const float d5=cinematicDot(ab,cp),d6=cinematicDot(ac,cp);if(d6>=0&&d5<=d6)return c;const float vb=d5*d2-d1*d6;if(vb<=0&&d2>=0&&d6<=0)return a+ac*(d2/(d2-d6));const float va=d3*d6-d5*d4;if(va<=0&&d4-d3>=0&&d5-d6>=0)return b+(c-b)*((d4-d3)/((d4-d3)+(d5-d6)));const float sum=va+vb+vc;if(std::abs(sum)<1.e-12f)return a;return a+ab*(vb/sum)+ac*(vc/sum);
 }
-
 enum class IndicatorMode:uint8_t {Off,Left,Right,Hazards};
 enum class CinematicLamp:uint8_t {None,HeadLeft,HeadRight,TailLeft,TailRight,IndicatorLeft,IndicatorRight};
 enum class CinematicComponent:uint8_t {Bonnet,Boot,FrontLeftDoor,FrontRightDoor,RearLeftDoor,RearRightDoor,FrontLeftWheel,FrontRightWheel,RearLeftWheel,RearRightWheel};
@@ -69,8 +68,6 @@ inline bool cinematicLampLeft(CinematicLamp lamp){return lamp==CinematicLamp::He
 inline bool cinematicLampIndicator(CinematicLamp lamp){return lamp==CinematicLamp::IndicatorLeft||lamp==CinematicLamp::IndicatorRight;}
 struct CinematicLampState {bool on=false,indicator=false;uint32_t color=0xFFFFFF;};
 inline CinematicLampState cinematicLampState(CinematicLamp lamp,const CinematicVehicleState* state,double clock){if(!state||lamp==CinematicLamp::None)return {};const bool blink=state->indicatorOn(cinematicLampLeft(lamp),clock);if(blink)return {true,true,0xFFBA35};if(cinematicLampIndicator(lamp))return {};return {state->lights,false,lamp==CinematicLamp::TailLeft||lamp==CinematicLamp::TailRight?0xFF4A38u:0xFFF3D8u};}
- 
- 
 inline CinematicLamp cinematicMarkerLamp(uint32_t rgb){const unsigned r=(rgb>>16)&255,g=(rgb>>8)&255,b=rgb&255;if(r==255&&b==0&&g>=173&&g<=175)return CinematicLamp::HeadLeft;if(r==0&&g==255&&b>=198&&b<=200)return CinematicLamp::HeadRight;if(g==255&&b==0&&r>=181&&r<=185)return CinematicLamp::TailLeft;if(r==255&&b==0&&g>=56&&g<=60)return CinematicLamp::TailRight;return CinematicLamp::None;}
 inline CinematicLamp cinematicNamedLamp(std::string_view name){auto contains=[&](std::string_view p){if(name.size()<p.size())return false;for(size_t i=0;i+p.size()<=name.size();++i){size_t k=0;for(;k<p.size();++k){char c=name[i+k];if(c>='A'&&c<='Z')c=char(c+'a'-'A');if(c!=p[k])break;}if(k==p.size())return true;}return false;};if(contains("indicator_l")||contains("turn_l")||contains("turnlight_l"))return CinematicLamp::IndicatorLeft;if(contains("indicator_r")||contains("turn_r")||contains("turnlight_r"))return CinematicLamp::IndicatorRight;return CinematicLamp::None;}
 }
