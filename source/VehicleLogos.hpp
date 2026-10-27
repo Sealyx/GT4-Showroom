@@ -8,8 +8,6 @@
 #include <cstring>
 #include <vector>
 namespace gt4 {
- 
- 
 class VehicleLogos {
  struct Image{IDirect3DTexture9* texture=nullptr;unsigned width=0,height=0;};
  std::filesystem::path root;std::map<uint32_t,std::filesystem::path> folders;std::map<std::pair<uint32_t,bool>,Image> cache;
