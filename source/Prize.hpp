@@ -33,8 +33,6 @@ struct PrizeBackdrop {float center,wing,edge;PrizeBackdrop(float width,float hei
 inline constexpr float prizeButtonTop=.895f,prizeButtonHeight=.034f;
 inline float prizeButtonWidth(float width,float height){return std::min(width,height*4/3)*.235f;}
 inline float prizeMeshScale(float span,float height){return std::min(5.1f/std::max(.01f,span),1.6f/std::max(.01f,height));}
- 
- 
 inline constexpr double prizeNameTime=4.05,prizeCarTime=5.20,prizeIntroEnd=6.70,prizeReadyTime=8.0;
 struct PrizeRevealKey{double time;float zoom,centerY,visibility;};
 inline constexpr std::array<PrizeRevealKey,12> prizeRevealKeys={{{5.20,6.2f,1.05f,0},{5.30,5.3f,.94f,.025f},{5.40,4.3f,.85f,.103f},{5.50,3.4f,.76f,.161f},{5.60,2.8f,.71f,.211f},{5.80,2.05f,.64f,.314f},{6.00,1.55f,.59f,.409f},{6.20,1.25f,.55f,.504f},{6.50,1.03f,.522f,.661f},{6.70,1,.52f,.76f},{7.00,1,.52f,.909f},{7.20,1,.52f,1}}};
