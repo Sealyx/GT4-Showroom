@@ -58,7 +58,6 @@ inline void scan(const Entry&e,bool force){
  metadataReady=true;activate();nativePreview::observeVehicle=observe;
 }
 inline bool select(int group,int option){const auto&options=labels(group);if(group<0||group>1||option<0||size_t(option)>=options.size())return false;const bool changed=choice[size_t(group)]!=option;choice[size_t(group)]=option;if(group==0&&changed)activate();else updateSelection();return true;}
-
 inline bool pump(uint64_t now){
  if(!active||active->stopped||active->variants.empty()||now<nextProbe)return false;nextProbe=now+16;
  probing=active;probingSeed=variantProbeSeed(model,active->samples);const auto before=active->variants.size();const int saved=game::extrasSeed;game::extrasSeed=probingSeed;
@@ -67,7 +66,6 @@ inline bool pump(uint64_t now){
 inline std::unique_ptr<Mesh> capture(int id){if(id==model)preparedScan=false;auto mesh=nativePreview::snapshot(id);updateSelection();return mesh;}
 inline bool apply(void*v){
  if(!v||game::field<int16_t>(v,0x22)!=model||!available||!active||active->variants.empty())return true;
-
  return nativePreview::initialize(v,model);
 }
 }
