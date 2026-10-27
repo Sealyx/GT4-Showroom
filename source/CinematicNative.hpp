@@ -3,9 +3,6 @@
 #include "CinematicVehicle.hpp"
 
 namespace gt4::cinematicNative {
- 
- 
- 
 struct DoorFields {float open,closed;uint16_t direction;uint8_t axis,state;float angle,previous,speed;};
 static_assert(sizeof(DoorFields)==0x18,"classic CDoor layout");
 inline bool automobileKind(int kind){return kind==0||kind==1||kind==2||kind==11;}
@@ -17,8 +14,6 @@ inline FrameMatrix frameMatrix=nullptr;
 inline const FrameMatrix frameMatrix=reinterpret_cast<FrameMatrix>(0x7F0990);
 #endif
 inline bool matrix(void*frame,game::Matrix&out){
-  
-  
  if(!frame||!frameMatrix)return false;auto*current=frameMatrix(frame);
  return current&&gta::read(uintptr_t(current),out)&&cinematicFinite(point(out.pos))&&cinematicFinite(point(out.right))&&cinematicFinite(point(out.up))&&cinematicFinite(point(out.forward));
 }
