@@ -10,9 +10,6 @@ inline constexpr uintptr_t resolve(uintptr_t address){return address;}
 #endif
  template<class F> F function(uintptr_t address){return reinterpret_cast<F>(resolve(address));}
 }
-
- 
- 
 inline bool beginDriverEntry(void*ped,void*vehicle,void*&task){
  void*intel=ped?game::field<void*>(ped,0x47C):nullptr;if(!intel||!vehicle)return false;
  task=entryNative::function<void*(__cdecl*)(unsigned)>(0x61A5A0)(0x50);if(!task)return false;
@@ -50,10 +47,7 @@ struct SpawnEntry {
   if(!playback.step(dt,paused,valid,seated,skip&&inputReleased,taskAlive)){lastStop=!valid?"entity/state/camera ownership changed":skip&&inputReleased?"skipped":seated?"driver seated":!taskAlive?"native entry task ended":"timeout";stop();return false;}if(!paused)frame(v);return true;
  }
 };
- 
- 
 inline bool updateEntryPresentation(SpawnEntry&entry,ReturnFade&reveal,double dt,bool paused,bool skip){
  if(!paused)reveal.step(dt);const bool active=entry.update(dt,paused,skip);if(!active)reveal.reset();return active;
 }
-
 }
