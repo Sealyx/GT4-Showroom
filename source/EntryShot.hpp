@@ -4,9 +4,6 @@ namespace gt4 {
 struct EntryCameraPose {V3 source,target,upOffset;float fov=50;};
 inline float entrySmooth(float x){x=std::clamp(x,0.f,1.f);return x*x*x*(x*(x*6-15)+10);}
 inline EntryCameraPose entryCameraPose(double age,V3 low,V3 high){
- // The reference settles rapidly from a lateral sweep, then gently pulls
- // back from a low front three-quarter view. Handheld drift is continuous
- // and low amplitude; block-matching noise is not a physical camera track.
  const float t=float(std::clamp(age,0.,3.)),settle=entrySmooth((t-.55f)/2.45f),pan=entrySmooth(t/.95f);
  const float length=std::max(1.f,high.y-low.y),width=std::max(.65f,high.x-low.x),height=std::max(.5f,high.z-low.z),scale=std::max(length/4.7f,width/2.1f);
  const V3 center=(low+high)*.5f;const float distance=scale*(4.05f+1.15f*settle);
