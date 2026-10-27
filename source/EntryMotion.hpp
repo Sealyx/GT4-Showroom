@@ -1,8 +1,6 @@
 #pragma once
 #include <array>
 namespace gt4 {
-// 60 Hz screen-space drift measured from a three-second camera reference,
-// with the broad pan separated from short-period handheld motion.
 inline constexpr std::array<std::array<float,3>,180> entryMotion{{
  {{0.00000000f,0.00000000f,0.00000000f}},
  {{0.00000000f,0.00000000f,0.00000000f}},
