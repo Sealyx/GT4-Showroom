@@ -5,10 +5,7 @@
 #include <random>
 #include <cstdint>
 namespace gt4 {
-struct TuningOption {int id=-1,slot=-1;bool effect=false;};
- 
- 
- 
+struct TuningOption {int id=-1,slot=-1;bool effect=false;}; 
 inline std::vector<int> chooseTuning(const std::vector<TuningOption>& options,uint32_t serial,int style){
  std::map<int,std::vector<int>> groups;std::set<int> seen;
  for(const auto& o:options)if(o.id>=0&&o.slot>=0&&o.slot<128&&seen.insert(o.id).second)groups[o.slot].push_back(o.id);
