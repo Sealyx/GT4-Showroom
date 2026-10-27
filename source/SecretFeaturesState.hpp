@@ -8,7 +8,6 @@ inline float failSmooth(float v){v=std::clamp(v,0.f,1.f);return v*v*(3-2*v);}
 struct SecretFeaturesLayout {
  FailRect scene,label,word,buttons[2];float labelAlpha=0,wordAlpha=0,buttonAlpha=0,backgroundAlpha=1,buttonTextHeight=0;
  SecretFeaturesLayout(float w,float h,double age){
-   
   const float t=failSmooth(float((age-.10)/.55));auto mix=[&](float a,float b){return a+(b-a)*t;};
   scene={mix(0,w*.0990f),mix(0,h*.2565f),mix(w,w*.4675f),mix(h,h*.4710f)};
   label={w*(1166.f/1920),h*(315.f/1080),h*(214.f/1080),h*(40.f/1080)};word={w*(1168.f/1920),h*(409.f/1080),h*(432.f/1080),h*(117.f/1080)};
@@ -39,7 +38,6 @@ public:
   previousUp=i.up;previousDown=i.down;previousAccept=i.accept;previousBack=i.back;previousClick=i.click;
   if(quarantine){if(!any)quarantine=false;return SecretFeaturesChoice::None;}
   if(i.mouseMoved){pointerX=std::clamp(i.mouseX,0.f,w);pointerY=std::clamp(i.mouseY,0.f,h);const int hit=l.hit(pointerX,pointerY);if(hit>=0){selected=hit;docking=false;}}
-   
   if(u||d||a||b){docking=true;if(u||d)selected=1-selected;}if(docking){const auto&r=l.buttons[selected];const float blend=1-std::exp(-24.f*float(std::max(0.,dt)));pointerX+=(r.x+r.w*.5f-pointerX)*blend;pointerY+=(r.y+r.h*.5f-pointerY)*blend;}
   if(!ready())return SecretFeaturesChoice::None;
   if(b){selected=1;accepted=true;return SecretFeaturesChoice::Exit;}
