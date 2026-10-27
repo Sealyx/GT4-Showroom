@@ -7,7 +7,6 @@
 #include <algorithm>
 #include "ModelNames.hpp"
 namespace gt4 {
- 
 inline constexpr const char* filterKeys[]={"Trailers","Planes","Helicopters","Boats","Custom","Trains"};
 inline constexpr const char* filterDefaults[]={
  "435,450,584,591,606,607,608,610,611",
