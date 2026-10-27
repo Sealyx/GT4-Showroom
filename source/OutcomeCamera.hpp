@@ -27,8 +27,6 @@ struct OutcomeCamera {
  void stop(bool reset=false){const bool restore=owns();owned=false;player={};actor={};if(restore&&!game::loading()&&OutcomeEntityRef::from(entryNative::function<void*(__cdecl*)(int)>(0x56E210)(-1)).get())entryNative::function<void(__thiscall*)(void*)>(reset?0x50BAB0:0x50B930)(camera());}
  static OutcomeEntityRef culprit(void*p,bool arrest){
   if(!arrest){void*damager=nullptr;if(gta::read(uintptr_t(p)+0x764,damager)&&damager!=p){auto ref=OutcomeEntityRef::from(damager);if(!ref.get())ref=OutcomeEntityRef::from(damager,true);if(ref.get())return ref;}}
-   
-   
   if(arrest){OutcomeEntityRef::Pool pool{};if(OutcomeEntityRef::pool(0xB74490,pool)){float best=30.f*30.f;OutcomeEntityRef found;const V3 center=game::position(p);for(int i=0;i<std::min(pool.count,4096);++i){uint8_t flag=0;if(!gta::read(pool.flags+size_t(i),flag)||(flag&0x80))continue;void*other=reinterpret_cast<void*>(pool.objects+size_t(i)*0x7C4);int type=0;float health=0;if(other==p||!gta::read(uintptr_t(other)+0x598,type)||type!=6||!gta::read(uintptr_t(other)+0x540,health)||health<=0)continue;auto ref=OutcomeEntityRef::from(other);if(!ref.get())continue;const V3 delta=game::position(other)-center;const float distance=dot(delta,delta);if(distance<best){best=distance;found=ref;}}return found;}}
   return {};
  }
