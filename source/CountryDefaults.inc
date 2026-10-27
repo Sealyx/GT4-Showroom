@@ -1,4 +1,4 @@
-// All 212 classic SA vehicle IDs, sorted by ID. Source/evidence: tools/country-origins.csv.
+// All 212 classic SA vehicle IDs, sorted by ID
 inline constexpr CountryDefault countryDefaults[]={
  {400,"landstal",Country::USA},
  {401,"bravura",Country::USA},
