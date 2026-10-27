@@ -12,7 +12,6 @@ inline int probingSeed=-1;inline bool available=false,metadataReady=false,prepar
 inline void scan(const Entry&e,bool force=false);
 inline const char* name(void*f){return reinterpret_cast<const char*(__cdecl*)(void*)>(0x72FB30)(f);}
 inline bool hasExtras(void*f,int depth=0){if(depth>64)return false;int budget=0;for(;f&&budget++<4096;f=game::field<void*>(f,0x9C)){const char*n=name(f);if(n&&std::strncmp(n,"f_extras",8)==0)return true;if(hasExtras(game::field<void*>(f,0x98),depth+1))return true;}return false;}
-
 inline uint64_t hashBytes(uint64_t h,const void*p,size_t n){const auto*b=static_cast<const uint8_t*>(p);for(size_t i=0;i<n;++i)h=(h^b[i])*1099511628211ull;return h;}
 struct Signature {std::vector<std::string> parts;bool valid=true;size_t atomics=0,bytes=0;};
 inline void* __cdecl signatureAtomic(void*a,void*data){
