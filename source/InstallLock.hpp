@@ -3,8 +3,6 @@
 #include <cstdio>
 #include <cwchar>
 namespace modding {
- 
- 
 struct InstallLock {
     HANDLE mutex=nullptr;
     bool acquired=false;
