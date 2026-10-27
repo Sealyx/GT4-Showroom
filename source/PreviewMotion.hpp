@@ -4,11 +4,8 @@
 #include <cmath>
 #include "Prize.hpp"
 namespace gt4 {
-inline constexpr float enthusiaFraming=1.32f; // normalized vehicle span versus measured reference screen width
+inline constexpr float enthusiaFraming=1.32f; 
 struct PreviewPose {float yaw=0,pitch=12,zoom=1,centerY=.43f;};
-// Measured from Enthusia.mp4, 598.70..607.20 s, with 30 Hz transition samples.
-// Yaw is deliberately unwrapped: the three whips together make two full turns.
-// The source changes selection before a full idle loop: the 8.5 s replay is ours.
 inline PreviewPose enthusiaPose(double seconds){
  struct Key{double t;PreviewPose p;bool whip;};
  static constexpr std::array<Key,8> keys={{{0,{2.18f,12,.90f,.43f},false},
