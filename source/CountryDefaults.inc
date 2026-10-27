@@ -1,5 +1,4 @@
- 
-inline constexpr CountryDefault countryDefaults[]={
+ inline constexpr CountryDefault countryDefaults[]={
  {400,"landstal",Country::USA},
  {401,"bravura",Country::USA},
  {402,"buffalo",Country::USA},
