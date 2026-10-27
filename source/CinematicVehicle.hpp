@@ -6,8 +6,6 @@
 #include <string_view>
 
 namespace gt4 {
- 
- 
 struct CinematicPoint {float x=0,y=0,z=0;};
 inline CinematicPoint operator+(CinematicPoint a,CinematicPoint b){return {a.x+b.x,a.y+b.y,a.z+b.z};}
 inline CinematicPoint operator-(CinematicPoint a,CinematicPoint b){return {a.x-b.x,a.y-b.y,a.z-b.z};}
@@ -63,8 +61,6 @@ inline CinematicTransform cinematicRotation(CinematicPoint pivot,CinematicPoint 
  axis=cinematicUnit(axis);const float c=std::cos(angle),s=std::sin(angle);auto rotate=[&](CinematicPoint p){return p*c+cinematicCross(axis,p)*s+axis*(cinematicDot(axis,p)*(1-c));};out.right=rotate({1,0,0});out.forward=rotate({0,1,0});out.up=rotate({0,0,1});out.position=pivot-out.vector(pivot);return out;
 }
 inline void cinematicHoodDirection(CinematicPart& hood){
-  
-  
  if(!hood.present)return;const float rise=cinematicRotation(hood.pivot,hood.axis,hood.openAngle).point(hood.anchor).z-hood.anchor.z;
  if(rise<-.01f&&cinematicRotation(hood.pivot,hood.axis,-hood.openAngle).point(hood.anchor).z-hood.anchor.z>.01f)hood.openAngle=-hood.openAngle;
 }
