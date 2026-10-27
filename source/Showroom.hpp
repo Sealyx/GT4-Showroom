@@ -110,8 +110,6 @@ inline void dockPointer(Model&s,const std::vector<Entry>&cars,float w,float h,do
  if(std::abs((s.pointerX-x)*w)+std::abs((s.pointerY-y)*h)<.3f&&std::abs(s.scrollTarget()-s.scroll)<.001f)s.ui.dock=false;
 }
 struct Camera {
-  
-  
  static constexpr V3 origin={100000,100000,1000};
  V3 eye={0,-12,3.4f},right={1,0,0},up,forward;float focal=1,w=1280,h=720;
  Camera(float width,float height,float span,float centerY=.48f):w(width),h(height){eye={0,-span*2.2f,span*.57f};const V3 target={0,0,span*.11f};forward=unit(target-eye);right=unit(cross(forward,{0,0,1}));up=cross(right,forward);focal=h*1.40f;cy=h*centerY;}
