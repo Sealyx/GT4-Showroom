@@ -23,8 +23,6 @@ inline bool configure(PrizePlan& plan){if(!gta::modelReady(plan.id))return false
  if(!plan.kitResolved){if(plan.modkit)plan.upgrades=chooseTuning(compatible(mi),plan.serial,plan.style);plan.kitResolved=true;}
  if(!plan.paintResolved){plan.remapTxd=-1;if(plan.enablePaintjob){int count=0;std::array<std::pair<int,int>,4> remaps{};for(int i=0;i<4;++i){const int id=extended16(static_cast<uint8_t*>(mi)+0x2FA+i*2);if(id>=0&&validTxdSlot(id))remaps[size_t(count++)]={i,id};}if(count){const auto choice=remaps[size_t(plan.paintjob%count)];plan.paintjob=choice.first;plan.remapTxd=choice.second;}}plan.paintResolved=true;}return true;
 }
- 
- 
 inline std::set<int> heldTxds,heldModels;
 template<class AddRef,class Request>bool queueTxdWith(int id,AddRef addRef,Request request){if(!validTxdSlot(id))return false;if(heldTxds.insert(id).second)addRef(id);request(id,prizeStreamingFlags);return true;}
 template<class RemoveRef>void releaseTxdsWith(RemoveRef removeRef){for(int id:heldTxds)if(validTxdSlot(id))removeRef(id);heldTxds.clear();}
@@ -59,7 +57,6 @@ struct AbilityBackend {
  void baseline(AbilityState& item){void* v=reinterpret_cast<void*>(item.pointer);item.mass=game::field<float>(v,0x8C);item.turnMass=game::field<float>(v,0x90);item.buoyancy=game::field<float>(v,0xA0);const uint32_t mask=item.ability==PrizeAbility::Proof?0x00840000u:1u;item.addedFlags=mask&~game::field<uint32_t>(v,0x40);}
  void enforce(AbilityState& item){void* v=reinterpret_cast<void*>(item.pointer);game::field<uint32_t>(v,0x40)|=item.ability==PrizeAbility::Proof?0x00840000u:1u;if(item.ability==PrizeAbility::HeavyRamming){game::field<float>(v,0x8C)=item.targetMass;game::field<float>(v,0x90)=item.targetTurnMass;game::field<float>(v,0xA0)=item.targetBuoyancy;}}
  void restore(const AbilityState& item){void* v=reinterpret_cast<void*>(item.pointer);game::field<uint32_t>(v,0x40)&=~item.addedFlags;if(item.ability==PrizeAbility::HeavyRamming){auto release=[&](size_t offset,float target,float baseline){float& value=game::field<float>(v,offset);if(value==target)value=baseline;};release(0x8C,item.targetMass,item.mass);release(0x90,item.targetTurnMass,item.turnMass);release(0xA0,item.targetBuoyancy,item.buoyancy);}}
-
 };
 inline AbilityBackend abilityBackend;inline PrizeAbilities<AbilityBackend> abilities;
 inline bool ability(void* vehicle,const PrizePlan& plan){return abilities.add(uintptr_t(vehicle),plan.id,plan.ability,abilityBackend);}
