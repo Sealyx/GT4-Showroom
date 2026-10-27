@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <cstring>
 namespace gt4 {
- 
 inline bool nativeKeyDown(const void* keyboard,int vk){
  if(!keyboard||vk<1||vk>255)return false;
  const auto* bytes=static_cast<const uint8_t*>(keyboard);
@@ -18,7 +17,6 @@ inline bool nativeKeyDown(const void* keyboard,int vk){
  case 0xA0:return at(0x25C);case 0xA1:return at(0x25E);case 0xA2:return at(0x262);case 0xA3:return at(0x264);
  case 0x12:return at(0x266)||at(0x268);
  default:
-   
   if(vk<0x20||(vk>=0x7C&&vk<=0x87))return false;
   return at(0x18+size_t(vk)*2);
  }
@@ -28,16 +26,12 @@ struct OpenGate {
  bool blocked()const{return gameState!=9||loadingData||menu||codePause||!focus||cutscene||inVehicle;}
  bool ready()const{return !blocked()&&!userPause&&alive&&!cutscene&&enex==0;}
 };
- 
- 
 struct FunctionKeyClaim {
  uint16_t mask=0;
  void claim(int vk){if(vk>=0x70&&vk<=0x7B)mask|=uint16_t(1u<<(vk-0x70));}
  void filter(void* keyboard,int vk,bool take,bool down){if(!keyboard||vk<0x70||vk>0x7B)return;const auto bit=uint16_t(1u<<(vk-0x70));if(take)claim(vk);if(!down){mask&=uint16_t(~bit);return;}if(mask&bit){const int16_t zero=0;std::memcpy(static_cast<uint8_t*>(keyboard)+size_t(vk-0x70)*2,&zero,2);}}
  template<class Down>void apply(void* keyboard,Down down){for(int i=0;i<12;++i)if(mask&(1u<<i))filter(keyboard,0x70+i,false,down(0x70+i));}
 };
- 
- 
 struct ScopedEscapePulse {
  uint8_t* current;uint8_t* previous;int16_t savedCurrent=0,savedPrevious=0;bool active;
  ScopedEscapePulse(void*now,void*old,bool enabled):current(static_cast<uint8_t*>(now)),previous(static_cast<uint8_t*>(old)),active(enabled&&now&&old){
