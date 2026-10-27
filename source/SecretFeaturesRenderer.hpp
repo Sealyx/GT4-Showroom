@@ -7,18 +7,13 @@ class SecretFeaturesRenderer {
  IDirect3DTexture9* scene=nullptr;UINT width=0,height=0;D3DFORMAT sceneFormat=D3DFMT_UNKNOWN;uint64_t capturedFrame=UINT64_MAX,drawnFrame=UINT64_MAX;bool cleanWorld=false;
  static void button(IDirect3DDevice9*d,Renderer&r,const FailRect&b,bool selected,float alpha){
   const auto&profile=selected?resultButtonGold:resultButtonGray;const float radius=std::min(b.h*.5f,b.w*.5f);
-   
-   
   for(size_t y=0;y<profile.size();++y){const float t=(float(y)+.5f)/float(profile.size()),dy=b.h*(t-.5f);const float inset=radius-std::sqrt(std::max(0.f,radius*radius-dy*dy));const float top=b.y+b.h*float(y)/float(profile.size()),bottom=b.y+b.h*float(y+1)/float(profile.size());r.rect(d,b.x+inset,top,b.w-2*inset,bottom-top,color(profile[y],alpha));}
  }
-
 public:
  ~SecretFeaturesRenderer(){reset();}SecretFeaturesRenderer()=default;SecretFeaturesRenderer(const SecretFeaturesRenderer&)=delete;SecretFeaturesRenderer&operator=(const SecretFeaturesRenderer&)=delete;
  bool ready()const{return true;}
  void reset(){releaseScene();}
  void releaseScene(){if(scene)scene->Release();scene=nullptr;width=height=0;sceneFormat=D3DFMT_UNKNOWN;capturedFrame=drawnFrame=UINT64_MAX;cleanWorld=false;}
-  
-  
  bool captureWorld(IDirect3DDevice9*d,uint64_t frame){
   if(!d||capturedFrame==frame)return cleanWorld&&capturedFrame==frame;
   cleanWorld=false;IDirect3DSurface9*current=nullptr;if(FAILED(d->GetRenderTarget(0,&current)))return false;
@@ -30,8 +25,6 @@ public:
  }
  bool hasWorld(uint64_t frame)const{return cleanWorld&&scene&&capturedFrame==frame;}
  bool draw(IDirect3DDevice9*d,Renderer&r,const SecretFeaturesState&s,uint64_t frame){
-   
-   
   if(!d||!s.active||!hasWorld(frame)||drawnFrame==frame)return false;
   r.ensureUiAssets(d);if(!r.uiTextReady())return false;D3DVIEWPORT9 vp{};if(FAILED(d->GetViewport(&vp)))return false;
   IDirect3DTexture9*shown=scene;
