@@ -9,8 +9,6 @@ inline bool ownedFixedInstance(void*self){
 }
 inline bool processFixedShot(FixedCameraNative original,void*self,const V3&nativeTarget,float a,float b,float c,const OwnedFixedPose*owned){
  if(!owned||!ownedFixedInstance(self)){original(self,nativeTarget,a,b,c);return false;}
-  
-  
  game::field<V3>(self,0x154)=owned->target;game::field<V3>(self,0x160)=owned->source;game::field<V3>(self,0x16C)=owned->upOffset;
  original(self,owned->target,a,b,c);game::field<float>(self,0xB4)=owned->fov;return true;
 }
