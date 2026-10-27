@@ -1,8 +1,6 @@
 #pragma once
 #include "SpawnEntry.hpp"
 namespace gt4 {
-// Native pool getters do not bounds-check an arbitrary handle. Validate pool
-// allocation, slot alignment and generation before ever reading an entity.
 struct OutcomeEntityRef {
  uintptr_t poolAddress=0,objects=0,flags=0;int index=-1;uint8_t generation=0;size_t stride=0;
  struct Pool {uintptr_t objects,flags;int count;};
@@ -17,8 +15,6 @@ struct OutcomeEntityRef {
  void*get()const{Pool p{};uint8_t flag=0;if(index<0||!pool(poolAddress,p)||p.objects!=objects||p.flags!=flags||index>=p.count||!gta::read(flags+size_t(index),flag)||flag!=generation||(flag&0x80))return nullptr;return reinterpret_cast<void*>(objects+size_t(index)*stride);}
 };
 inline EntryCameraPose outcomeCameraPose(double age,V3 cj,V3 direction,float yaw){
- // CJ remains the primary aim. The responsible actor influences the bearing,
- // never pulls the camera away from CJ. No time-scale or slow-motion writes.
  const float orbit=.13f*std::sin(float(age)*.34f),a=yaw+orbit;
  EntryCameraPose p;p.fov=55;p.source=cj+V3{4.3f*std::cos(a),4.3f*std::sin(a),2.15f+.1f*std::sin(float(age)*.45f)};
  const float n=std::sqrt(direction.x*direction.x+direction.y*direction.y);if(n>.01f)direction=direction*(.2f/n);else direction={};
@@ -31,8 +27,6 @@ struct OutcomeCamera {
  void stop(bool reset=false){const bool restore=owns();owned=false;player={};actor={};if(restore&&!game::loading()&&OutcomeEntityRef::from(entryNative::function<void*(__cdecl*)(int)>(0x56E210)(-1)).get())entryNative::function<void(__thiscall*)(void*)>(reset?0x50BAB0:0x50B930)(camera());}
  static OutcomeEntityRef culprit(void*p,bool arrest){
   if(!arrest){void*damager=nullptr;if(gta::read(uintptr_t(p)+0x764,damager)&&damager!=p){auto ref=OutcomeEntityRef::from(damager);if(!ref.get())ref=OutcomeEntityRef::from(damager,true);if(ref.get())return ref;}}
-  // The nearest live cop is a bounded fallback for an arrest. A random nearby
-  // civilian is never described as the killer when no damage source exists.
   if(arrest){OutcomeEntityRef::Pool pool{};if(OutcomeEntityRef::pool(0xB74490,pool)){float best=30.f*30.f;OutcomeEntityRef found;const V3 center=game::position(p);for(int i=0;i<std::min(pool.count,4096);++i){uint8_t flag=0;if(!gta::read(pool.flags+size_t(i),flag)||(flag&0x80))continue;void*other=reinterpret_cast<void*>(pool.objects+size_t(i)*0x7C4);int type=0;float health=0;if(other==p||!gta::read(uintptr_t(other)+0x598,type)||type!=6||!gta::read(uintptr_t(other)+0x540,health)||health<=0)continue;auto ref=OutcomeEntityRef::from(other);if(!ref.get())continue;const V3 delta=game::position(other)-center;const float distance=dot(delta,delta);if(distance<best){best=distance;found=ref;}}return found;}}
   return {};
  }
