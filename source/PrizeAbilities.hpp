@@ -3,9 +3,6 @@
 #include <vector>
 #include <memory>
 namespace gt4 {
- 
- 
- 
 struct AbilityState {
  int reference=-1,model=-1;uintptr_t pointer=0;PrizeAbility ability=PrizeAbility::None;
  float mass=0,turnMass=0,buoyancy=0,targetMass=0,targetTurnMass=0,targetBuoyancy=0;uint32_t addedFlags=0;
