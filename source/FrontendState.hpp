@@ -1,8 +1,6 @@
 #pragma once
 #include "RuntimeModels.hpp"
 namespace gt4 {
- 
- 
 inline constexpr uintptr_t frontendBase=0xBA6748;
 inline constexpr uintptr_t menuActiveAddress=frontendBase+0x5C;
 inline constexpr uintptr_t startLoadAddress=frontendBase+0x5D;
@@ -16,8 +14,6 @@ struct FrontendState {
 };
 inline FrontendState readFrontendState(){
  FrontendState s;
-  
-  
  s.valid=gta::read(menuActiveAddress,s.menuByte)&&gta::read(startLoadAddress,s.startLoadByte)&&gta::read(loadingDataAddress,s.loadingByte);
  return s;
 }
