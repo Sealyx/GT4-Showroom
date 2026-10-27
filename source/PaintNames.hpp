@@ -23,8 +23,6 @@ struct PaintNames {
  std::string name(int id,uint32_t rgb)const{
   const NamedColor*best=nullptr;for(const auto&row:rows)if(row.rgb==rgb&&row.id==id&&(!best||row.priority>=best->priority))best=&row;
   if(best)return best->name;
-  // Partial Mod Loader palettes can be appended at a different native index.
-  // Resolve by RGB only if all equally preferred matches agree on the name.
   bool ambiguous=false;for(const auto&row:rows)if(row.rgb==rgb){if(!best||row.priority>best->priority){best=&row;ambiguous=false;}else if(row.priority==best->priority&&lowerName(row.name)!=lowerName(best->name))ambiguous=true;}
   return best&&!ambiguous?best->name:"Color "+std::to_string(id);
  }
