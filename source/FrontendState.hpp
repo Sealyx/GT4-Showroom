@@ -16,8 +16,6 @@ struct FrontendState {
 };
 inline FrontendState readFrontendState(){
  FrontendState s;
- // Read engine memory as bytes and normalize. A bool reference to unrelated
- // storage can contain noncanonical values and cause undefined C++ behavior.
  s.valid=gta::read(menuActiveAddress,s.menuByte)&&gta::read(startLoadAddress,s.startLoadByte)&&gta::read(loadingDataAddress,s.loadingByte);
  return s;
 }
