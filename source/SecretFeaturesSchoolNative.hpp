@@ -18,13 +18,10 @@ class SecretFeaturesSchoolNative {
 public:
  SecretFeaturesSchoolScript script;
  void reset(){script.reset();copiedBase=0;}
-  
-  
  bool command(void*self,int command,uint64_t now){
   if(!script.enabled||!script.assetsReady)return false;
   if(command!=0x0050&&command!=0x00E1&&command!=0x0937&&command!=0x033E&&command!=0x045A&&command!=0x045B&&command!=0x038D)return false;
   SecretFeaturesCommand c;if(!snapshot(self,c))return false;
-   
   const size_t at=c.ip>=c.base?size_t(c.ip-c.base):copy.size();int args=0;switch(command){case 0x0050:args=1;break;case 0x00E1:args=2;break;case 0x0937:args=6;break;case 0x033E:args=3;break;case 0x045A:args=4;break;case 0x045B:args=5;break;case 0x038D:args=9;break;default:return false;}
   if(at+2>copy.size())return false;const size_t end=secretFeaturesArgumentEnd(copy.data(),copy.size(),at+2,args);std::array<uint8_t,256>live{};
   if(!end||end-at>live.size()||!gta::reader(c.ip,live.data(),end-at)||std::memcmp(live.data(),copy.data()+at,end-at)){reset();script.mismatch=true;return false;}
@@ -34,7 +31,6 @@ public:
   return true;
  }
  bool choose(SecretFeaturesChoice choice){
-   
   if(!script.state.active||!writable(globals+SecretFeaturesProfile::leaveGlobal,sizeof(int))||!writable(globals+SecretFeaturesProfile::confirmGlobal,sizeof(int)))return false;SecretFeaturesCommand c;
   if(!snapshot(reinterpret_cast<void*>(script.ownerAddress()),c)||!script.owns(c.owner,c.base)||!gta::reader(c.base,copy.data(),copy.size())||!SecretFeaturesProfile::match(copy.data(),copy.size())||c.test!=script.state.test||c.score>=70||c.leave!=0)return false;
   return script.choose(choice,[&](size_t offset,int value){if(!writable(globals+offset,sizeof(value)))return false;std::memcpy(reinterpret_cast<void*>(globals+offset),&value,sizeof(value));return true;});
