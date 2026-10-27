@@ -1,5 +1,3 @@
-// Included in namespace gt4 after ContextMenu. Geometry is shared by drawing,
-// mouse hit tests, drag constraints and controller cursor docking.
 inline void ContextMenu::monitorToggle(float px,float py,double now){
  if(open){finish(-1);return;}open=true;closeResult=0;sliderDrag=-1;sliderChanged=false;sub=countries=countryFocus=false;row=sortRow=countryRow=focusLevel=0;
  monitorPicker=monitorHover=monitorHeaderHover=monitorKeyboard=false;monitorDragLevel=monitorHelpLevel=monitorHelpIndex=monitorHoverLevel=monitorHoverIndex=monitorFooter=-1;monitorPlaced={};
