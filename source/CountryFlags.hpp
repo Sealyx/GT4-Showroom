@@ -2,7 +2,6 @@
 #include "Countries.hpp"
 #include <cmath>
 namespace gt4 {
-// Original procedural artwork. No Polyphony Digital texture rip is redistributed.
 inline bool flagStar(float x,float y,float cx,float cy,float radius,float rotation=0){
  bool inside=false;float ax=0,ay=0,bx=0,by=0;for(int i=0,j=9;i<10;j=i++){
   auto point=[&](int k,float&px,float&py){const float a=rotation-1.57079633f+k*.62831853f,r=radius*(k%2?.382f:1.f);px=cx+std::cos(a)*r;py=cy+std::sin(a)*r;};point(i,ax,ay);point(j,bx,by);
@@ -10,14 +9,13 @@ inline bool flagStar(float x,float y,float cx,float cy,float radius,float rotati
  }return inside;
 }
 inline bool malaysiaStar(float x,float y){
- // Fourteen-point federal star, kept distinct from the five-point country stars.
  const float dx=(x+.25f)*1.5f,dy=y+.46f;
  const float angle=std::atan2(dy,dx)+1.57079633f;
  const float sector=std::remainder(angle,6.28318531f/14);
  const float edge=.12f/(std::cos(sector)+1.7f*std::abs(std::sin(sector)));
  return dx*dx+dy*dy<edge*edge;
 }
-inline uint32_t flagColor(Country country,float x,float y){ // nominal 3:2 flag, coordinates -1..1
+inline uint32_t flagColor(Country country,float x,float y){ 
  constexpr uint32_t white=0xFFFFFF,red=0xC8102E,blue=0x16366C;
  switch(country){
  case Country::Unknown:return white;
