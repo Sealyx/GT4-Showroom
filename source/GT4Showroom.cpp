@@ -36,7 +36,6 @@ SecretFeatures secretFeatures;SecretFeaturesSchoolNative secretSchool;SecretFeat
 void blockOpenInput();
 void finishSettings();
 void log(const char*s){diagnostics.write(logFile,s);}
-
 void favorites(bool save){const std::wstring file=base+L"GT4Showroom\\favorites.ini";for(auto&e:entries){const auto key=std::to_wstring(e.id);if(save)WritePrivateProfileStringW(L"Favorites",key.c_str(),e.favorite?L"1":L"0",file.c_str());else e.favorite=GetPrivateProfileIntW(L"Favorites",key.c_str(),0,file.c_str())!=0;}}
 void refreshCountryMenu(){
  std::array<int,countryCount>counts{};std::array<int,classCount>classTotals{};
@@ -142,8 +141,6 @@ void updateStudio(){
  const auto pad=sampledPad;const auto gate=openState(focus);const bool blocked=gate.blocked();if(!state.open&&returnFade.active()){if(game::loading()||!gate.alive)returnFade.reset();else if(focus&&!gate.menu&&!gate.codePause&&!gate.userPause)returnFade.step(dt);}
  const bool reloadAllowed=showroomReloadAllowed(state.open,state.searching,focus,gate.menu,gate.codePause,gate.gameState,gate.loadingData,gate.cutscene,key(VK_CONTROL)||key(VK_MENU));const bool typedReloadRequest=typedReload.poll([](int v){return key(v);},tick,reloadAllowed);const bool padReloadRequest=reloadChord.poll(controllerReloadRequested(state.open,pad.view,pad.search),tick);if(!state.busy()&&reloadAllowed&&(typedReloadRequest||padReloadRequest)){reloadAll();blockOpenInput();return;}
  if(statusUntil&&tick>=statusUntil){state.status.clear();statusUntil=0;}
-  
-  
  const bool physicalOpen=studioOpenInput(key(hotkey),state.open,pad);const bool pressed=openKey.poll(physicalOpen&&(!state.searching||(hotkey>=VK_F1&&hotkey<=VK_F24)),tick);
  if(blocked){blockActions();openIntent.clear();}
  static bool first=true,readyLogged=false,catalogueLogged=false;
@@ -189,14 +186,11 @@ void updateStudio(){
 }
 void __cdecl process(){static bool first=true;if(first){first=false;log("Native game-process callback reached.");}if(!game::loading())prizeNative::abilities.maintain(prizeNative::abilityBackend);world2DComplete=false;originalProcess();if(!game::loading())prizeNative::abilities.maintain(prizeNative::abilityBackend);updateStudio();}
 void __fastcall frontend(void*self,void*){
-  
  static bool first=true;if(first){first=false;log("Native frontend callback reached.");}{const bool pulse=controllerPauseRequested&&(state.open||spawnEntry.playback.active||secretSchool.script.state.active||secretRecovery.view.active||secretRetryFade.active())&&focused()&&!game::loading();controllerPauseRequested=false;ScopedEscapePulse escape(reinterpret_cast<void*>(0xB73190),reinterpret_cast<void*>(0xB72F20),pulse);originalFrontend(self);}updateStudio();if(state.open)pause.maintain();
 }
 using Render2D=void(__cdecl*)();Render2D originalRender2D=nullptr,originalWorldEffects=nullptr;
 void __cdecl worldEffects(){
  originalWorldEffects();if(!game::loading()&&!game::menu())++worldGeneration;
-  
-  
  if(!game::loading()&&!game::menu()&&focused()){
   if(secretRecovery.view.active)secretRecoveryView.captureWorld(game::device(),frameSerial);
   if(secretSchool.script.state.active)secretSchoolView.captureWorld(game::device(),frameSerial);
@@ -213,7 +207,6 @@ void __fastcall fixedCamera(void*self,void*,const V3&target,float a,float b,floa
  else if(outcomeCamera.owns()){pose={outcomeCamera.source,outcomeCamera.target,{},outcomeCamera.desiredFov};owned=&pose;}
  if(processFixedShot(originalFixedCamera,self,target,a,b,c,owned)&&spawnEntry.playback.active){++spawnEntry.nativeFrames;if(spawnEntry.nativeFrames==1)log("SpawnInside: first owned active CCam position/target/roll/FOV update applied.");}
 }
-
 std::vector<void*> hooks;
 template<class F,class O> bool add(uintptr_t address,F fn,O&original){uintptr_t end=0;if(!qb::readableCode(address,5))return false;const uint8_t first=game::at<uint8_t>(address);if((first==0xE9&&!qb::validateEntryJump(address,end))||first==0xEB||first==0xCC)return false;const auto r=MH_CreateHook(reinterpret_cast<void*>(address),reinterpret_cast<void*>(fn),reinterpret_cast<void**>(&original));if(r!=MH_OK)return false;hooks.push_back(reinterpret_cast<void*>(address));return true;}
 int initialize(){wchar_t path[MAX_PATH]{};GetModuleFileNameW(module,path,MAX_PATH);base=path;base.resize(base.find_last_of(L"\\/")+1);logFile=base+L"GT4Showroom.log";ini=base+L"GT4Showroom.ini";state.ui.audioLevels=readAudioLevels(std::filesystem::path(base)/L"GT4Showroom/audio.dat");diagnostics.reload(ini,L"GT4Showroom");if(!game::supported()){log("Unsupported executable. Requires classic SA 1.0 US Hoodlum/Compact Win32. No hooks installed.");return 0;}HMODULE pin;GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_PIN,reinterpret_cast<LPCWSTR>(&initialize),&pin);studioConfig=readStudioConfig(ini);state.ui.sortMode=5;studioConfig.sort=menuSort(state.ui.sortMode);const auto keys=readHotkey(ini);hotkey=keys.vk;ctrl=keys.ctrl;if(keys.migrated)log("Legacy shipped Ctrl+G binding upgraded to F1 without modifying the INI. Set OpenKey explicitly to override.");if(keys.invalid)log("Invalid opening key; using F1 without Ctrl.");reloadSettings();reloadExclusions();renderer.setLogoRoot(std::filesystem::path(base)/L"GT4Showroom/assets/logos");const std::filesystem::path fontPath=std::filesystem::path(base)/L"GT4Showroom/assets/fonts/Michroma-Regular.ttf";state.random.seed(uint32_t(GetTickCount64())^GetCurrentProcessId());if(!renderer.loadPrize((std::filesystem::path(base)/L"GT4Showroom/assets/prize/congratulations.rgba").wstring()))log("Static prize backdrop unavailable; check the complete packaged asset folder.");if(!renderer.loadFont(fontPath.wstring(),L"Michroma"))log("Bundled font unavailable; using fallback. Check the asset folder.");else log("Bundled font loaded privately; no Windows installation needed.");if(!renderer.loadPrizeNameFont((fontPath.parent_path()/L"LiberationSans-Bold.ttf").wstring()))log("Bundled bold prize-name font unavailable; using Arial Bold fallback.");secretSchool.script.assetsReady=false;modding::InstallLock lock;if(!lock.acquired||MH_Initialize()!=MH_OK){log("Hook initialization unavailable.");return 0;}bool ok=add(0x53BEE0,process,originalProcess)&&add(0x541C40,padUpdate,originalPadUpdate)&&add(0x7EE180,render,originalRender)&&add(0x53E230,render2D,originalRender2D)&&add(0x53E170,worldEffects,originalWorldEffects)&&add(0x57B440,frontend,originalFrontend)&&add(0x53BCF0,reset,originalReset)&&add(0x7F7F70,video,originalVideo)&&add(0x534310,entityRender,originalEntityRender)&&add(0x51D470,fixedCamera,originalFixedCamera)&&add(0x465E60,school0,originalSchool0)&&add(0x469390,school2,originalSchool2)&&add(0x481300,school8,originalSchool8)&&add(0x483BD0,school9,originalSchool9)&&add(0x48A320,school11,originalSchool11)&&add(0x4762D0,school23,originalSchool23)&&add(0x58FAE0,secretFeaturesHudDraw,originalHudDraw);if(ok){ok=add(0x58CA50,secretFeaturesNativeText,originalSecretFeaturesText)&&add(0x442AD0,secretFeaturesRecoveryUpdate,originalSecretFeaturesRecovery);secretRecoveryAvailable=ok;}if(ok){for(auto*h:hooks)if(MH_QueueEnableHook(h)!=MH_OK)ok=false;if(ok&&MH_ApplyQueued()!=MH_OK)ok=false;}if(!ok){for(auto*h:hooks){MH_DisableHook(h);MH_RemoveHook(h);}hooks.clear();log("Hook transaction refused; owned hooks rolled back.");return 0;}initialized=true;log("GT4Showroom 2.4.1 initialized. Draggable settings, explicit cinematic controls, supported vehicle hotspots, preview lights/indicators and master/music/effect volume. Model-ID startup ordering; GTSPAWN reload outside the showroom. GInput uses native mapped input. SecretFeatures uses native school and Wasted/Busted recovery with covered Retry transitions. EnableLog defaults off.");return 1;}
