@@ -29,8 +29,6 @@ inline bool flag(uintptr_t address){return at<uint8_t>(address)!=0;}
 inline bool userPaused(){return flag(0xB7CB49);}
 inline bool codePaused(){return flag(0xB7CB48);}
 inline bool menu(){return readFrontendState().menuActive();}
-// +0x5D is a request to start loading, not the active loading flag.
-// Keep it in diagnostics; gate on current game state and actual loading data.
 inline bool loading(){return at<int>(0xC8D4C0)!=9||readFrontendState().loadingData();}
 struct OpenState:OpenGate{FrontendState frontend;};
 inline OpenState openState(bool focus){OpenState g;g.gameState=at<int>(0xC8D4C0);g.frontend=readFrontendState();g.loadingData=g.frontend.loadingData();g.menu=g.frontend.menuActive();g.userPause=userPaused();g.codePause=codePaused();g.focus=focus;g.cutscene=flag(0xB5F851)||flag(0xB5F852);g.enex=at<int>(0x96A7CC);if(g.gameState==9&&!g.loadingData){void*p=player();g.alive=p&&field<float>(p,0x540)>0;g.inVehicle=p&&(field<uint32_t>(p,0x46C)&0x100)!=0;}return g;}
@@ -51,7 +49,6 @@ inline void seedVehicle(void* vehicle,int id){if(auto module=GetModuleHandleW(L"
 inline int extraChoice=-2; // -2 native default, -1 none, otherwise actual model extra index
 struct ComponentChoiceScope{std::array<int8_t,2> saved;explicit ComponentChoiceScope(int model):saved{{at<int8_t>(0x8A6458),at<int8_t>(0x8A6459)}}{const int choice=model==extrasModel?extraChoice:-2;if(choice!=-2){at<int8_t>(0x8A6458)=int8_t(choice);at<int8_t>(0x8A6459)=-1;}else if(model==extrasModel&&extraComponents[0]!=-2){at<int8_t>(0x8A6458)=extraComponents[0];at<int8_t>(0x8A6459)=extraComponents[1];}}~ComponentChoiceScope(){at<int8_t>(0x8A6458)=saved[0];at<int8_t>(0x8A6459)=saved[1];}};
 inline void queue(int id){reinterpret_cast<void(__cdecl*)(int,int)>(0x4087E0)(id,0);}
-// CStreaming::Update exits while paused; progress its normal loading channels once.
 inline void pumpStreaming(){reinterpret_cast<void(__cdecl*)()>(0x40E3A0)();}
 inline void request(int id){queue(id);reinterpret_cast<void(__cdecl*)(bool)>(0x40EA10)(false);}
 struct Extract{Mesh* out;size_t count=0;bool(*visible)(void*)=nullptr;const std::unordered_map<void*,int>* paintSlots=nullptr;void*plateTexture=nullptr;void*plateMaterial=nullptr;const std::array<void*,cinematicComponentCount>* componentFrames=nullptr;int(*component)(void*,const std::array<void*,cinematicComponentCount>*)=nullptr;CinematicLamp(*namedLamp)(void*)=nullptr;const std::unordered_map<void*,CinematicLamp>* lampSlots=nullptr;};
@@ -69,7 +66,6 @@ inline void* __cdecl extractAtomic(void*atomic,void*data){
  if(!pos||!materials||nv<3||nv>500000||nm<1||nm>1024)return atomic;
  auto capture=[&](void*material,auto enumerate){
   if(!material||c.count>=120000)return;
-  // Only retain materials owned by this geometry's pinned material list.
   bool owned=false;for(int i=0;i<nm;++i)if(materials[i]==material){owned=true;break;}if(!owned)return;
   Batch b;void*tex=field<void*>(material,0);std::array<char,33> textureName{};if(tex)gta::read(uintptr_t(tex)+0x10,textureName);textureName[32]=0;const bool plate=blankPreviewPlate(textureName.data(),node,tex&&tex==c.plateTexture,material==c.plateMaterial);const uint32_t rgba=field<uint32_t>(material,4);
   const uint32_t rgb=((rgba&255)<<16)|(rgba&0xFF00)|((rgba>>16)&255);b.rgb=previewMaterialColor(rgb);b.alpha=float(rgba>>24)/255.f;b.component=c.component?c.component(f,c.componentFrames):-1;b.lamp=cinematicMarkerLamp(rgb);if(c.lampSlots){const auto slot=c.lampSlots->find(material);if(slot!=c.lampSlots->end())b.lamp=slot->second;}if(b.lamp==CinematicLamp::None&&c.namedLamp)b.lamp=c.namedLamp(f);
@@ -89,7 +85,6 @@ inline void* __cdecl extractAtomic(void*atomic,void*data){
   });
   if(b.vertices.empty()){if(b.texture)b.texture->Release();}else c.out->batches.push_back(std::move(b));
  };
- // RpMeshHeader/RpMesh layout verified against the classic 32-bit RW SDK.
  struct Header{uint32_t flags;uint16_t meshes,serial;uint32_t total,offset;};
  struct NativeMesh{uint16_t*indices;uint32_t count;void*material;};
  static_assert(sizeof(Header)==16&&sizeof(NativeMesh)==12,"32-bit RenderWare mesh layout");
@@ -101,7 +96,6 @@ inline void* __cdecl extractAtomic(void*atomic,void*data){
   if(total!=header->total)return atomic;
   for(unsigned i=0;i<header->meshes&&c.count<120000;++i){const auto&mesh=meshes[i];capture(mesh.material,[&](auto emit){previewTriangles(mesh.indices,mesh.count,header->flags,size_t(nv),120000-c.count,emit);});}
  }else{
-  // Some runtime-built geometry has no mesh header yet; use its triangle list.
   struct Tri{uint16_t v[3],m;};const int nt=field<int>(g,0x10);auto*tris=field<Tri*>(g,0x2C);if(!tris||nt<1||nt>120000)return atomic;
   for(int mi=0;mi<nm&&c.count<120000;++mi)capture(materials[mi],[&](auto emit){for(int ti=0;ti<nt&&c.count<120000;++ti){const auto&t=tris[ti];if(t.m==mi)emit(t.v[0],t.v[1],t.v[2]);}});
  }
