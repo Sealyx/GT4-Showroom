@@ -1,4 +1,4 @@
- inline constexpr CountryDefault countryDefaults[]={
+inline constexpr CountryDefault countryDefaults[]={
  {400,"landstal",Country::USA},
  {401,"bravura",Country::USA},
  {402,"buffalo",Country::USA},
@@ -213,4 +213,3 @@
  {611,"utiltr1",Country::USA},
 };
 static_assert(sizeof(countryDefaults)/sizeof(countryDefaults[0])==212);
-
