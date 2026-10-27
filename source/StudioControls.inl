@@ -1,4 +1,3 @@
- 
 inline Key previousCinematicHotspot,nextCinematicHotspot,pauseCinematic;
 void finishSettings(){
  auto&ui=state.ui;if(!ui.menuSnapshot||ui.menu.open)return;
