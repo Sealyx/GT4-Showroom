@@ -11,8 +11,6 @@ inline bool previewHighDetail(const char*node,uintptr_t callback=0){
  for(const char*tag:{"_vlo","_lod","_low","_lo","_dam"}){size_t p=0;const std::string t=tag;while((p=name.find(t,p))!=std::string::npos){const size_t end=p+t.size();if(end==name.size()||name[end]=='_'||std::isdigit(static_cast<unsigned char>(name[end])))return false;p=end;}}
  return true;
 }
- 
- 
 template<class Emit> size_t previewTriangles(const uint16_t* indices,size_t count,
  uint32_t primitive,size_t vertices,size_t budget,Emit emit){
  if(!indices||count>2000000||vertices<3||vertices>500000||!budget||(primitive!=0&&primitive!=1))return 0;
@@ -23,7 +21,6 @@ template<class Emit> size_t previewTriangles(const uint16_t* indices,size_t coun
  };
  if(primitive==0){for(size_t i=0;i+2<count&&emitted<budget;i+=3)triangle(indices[i],indices[i+1],indices[i+2]);}
  else{for(size_t i=2;i<count&&emitted<budget;++i){
-   
   if(i&1)triangle(indices[i-1],indices[i-2],indices[i]);
   else triangle(indices[i-2],indices[i-1],indices[i]);
  }}
