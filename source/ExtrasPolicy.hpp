@@ -5,10 +5,7 @@
 #include <string>
 #include <vector>
 namespace gt4 {
- 
 inline std::string extraOutcomeKey(std::vector<std::string> parts){if(parts.empty()||parts.size()>8192)return {};size_t bytes=0;for(const auto&p:parts){if(p.size()>2*1024*1024-bytes)return {};bytes+=p.size();}std::sort(parts.begin(),parts.end());uint64_t a=14695981039346656037ull,b=0x9E3779B97F4A7C15ull;for(const auto&p:parts){for(unsigned char c:p){a=(a^c)*1099511628211ull;b^=uint64_t(c)+0x9E3779B97F4A7C15ull+(b<<6)+(b>>2);}a=(a^255)*1099511628211ull;b^=p.size()+0x517CC1B727220A95ull+(b<<6)+(b>>2);}return std::to_string(parts.size())+":"+std::to_string(a)+":"+std::to_string(b);}
- 
- 
 struct VehFuncsVariant {int seed=1;std::string signature;};
 struct VehFuncsCatalogue {
  static constexpr size_t maxVariants=64,maxSamples=192,quietSamples=48;
