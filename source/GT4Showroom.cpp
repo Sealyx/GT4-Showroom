@@ -128,7 +128,6 @@ void __fastcall padUpdate(void*self,void*,int index){
   
  if(index==0&&claimView)game::field<int16_t>(self,0x1A)=0;
 }
-
 #include "StudioExtras.inl"
 void saveStudioAudioPreferences(){if(!saveAudioLevels(std::filesystem::path(base)/L"GT4Showroom/audio.dat",state.ui.audioLevels))log("Audio preferences could not be saved; current session levels remain active.");}
 #include "StudioControls.inl"
