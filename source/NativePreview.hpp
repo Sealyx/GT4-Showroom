@@ -7,9 +7,6 @@
 #include "SpecialComponentPose.hpp"
 #include "CinematicNative.hpp"
 namespace gt4::nativePreview {
-// VehFuncs assembles f_wheel variations in its vehicleRenderEvent.before,
-// reached through CVehicle::Render -> CEntity::Render. Capture at the latter
-// boundary and suppress only this private instance's actual world draw.
 inline void* target=nullptr;inline bool failedPath=false;inline VehFuncsFrames visibility;
 inline uint64_t prepared=0;inline int lastModel=-1,lastSources=0,lastRemaining=0,lastWheels=0;inline bool wheelMatrices=false;
 inline int sourceGroups(void* frame,int depth=0){if(!frame||depth>80)return 0;int count=0,budget=0;while(frame&&budget++<4096){const char*name=reinterpret_cast<const char*(__cdecl*)(void*)>(0x72FB30)(frame);if(name&&std::strncmp(name,"f_wheel",7)==0)++count;count+=sourceGroups(game::field<void*>(frame,0x98),depth+1);frame=game::field<void*>(frame,0x9C);}return count;}
