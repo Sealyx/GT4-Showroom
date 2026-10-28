@@ -1,4 +1,4 @@
- 
+
 using SecretFeaturesNativeText=void(__cdecl*)();using SecretFeaturesNativeUpdate=void(__cdecl*)();
 SecretFeaturesNativeText originalSecretFeaturesText=nullptr;SecretFeaturesNativeUpdate originalSecretFeaturesRecovery=nullptr;
 SecretFeaturesRecoveryState secretRecovery;SecretFeaturesRenderer secretRecoveryView;RecoveryFade secretRetryFade;bool secretRecoveryAvailable=false;
@@ -9,7 +9,7 @@ void __cdecl secretFeaturesRecoveryUpdate(){
  const uint8_t status=eligible?game::at<uint8_t>(0x96A8B0):0;const uint32_t event=eligible?game::at<uint32_t>(0x96A8AC):0;
  const bool suspended=!focused()||game::menu()||game::codePaused()||game::userPaused();
  if(secretRetryFade.waiting()&&secretFeatures.enabled&&eligible&&secretRecovery.view.active)return;
- if(secretRecovery.hold(now,status,event,secretFeatures.enabled&&eligible,suspended))return
+ if(secretRecovery.hold(now,status,event,secretFeatures.enabled&&eligible,suspended))return;
  const bool recovering=(status==1||status==2);
  if(recovering){outcomeCamera.stop();secretFeaturesReleaseGraphics();if(secretRecovery.view.active)secretRecovery.resume();}
  originalSecretFeaturesRecovery();

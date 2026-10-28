@@ -186,7 +186,7 @@ public:
  }
  void monitorSettings(IDirect3DDevice9*d,float W,float H,const Model&s){
   const auto&m=s.ui.menu;const float scale=H/720.f;const float alpha=ease(float((s.clock-m.began)/.12));const auto boxes=m.monitorPanels(W,H);
-  auto window=[&](int level,bool single){const auto r=boxes[size_t(level)];rect(d,r.x+3*scale,r.y+3*scale,r.w,r.h,color(0,.26f*alpha));rect(d,r.x,r.y,r.w,r.h,color(0x67696E,alpha));rect(d,r.x+scale,r.y+scale,r.w-2*scale,r.h-2*scale,color(0xB6B6BB,alpha));rect(d,r.x,r.y,r.w,21*scale,color(0x17130A,alpha));text(d,m.monitorTitle(level),r.x+r.w*.5f,r.y+1*scale,fitted(m.monitorTitle(level),13*scale,r.w-20*scale,true),color(0xD0D0D2,alpha),true,0,true);
+  auto window=[&](int level,bool single){const auto r=boxes[size_t(level)];rect(d,r.x+3*scale,r.y+3*scale,r.w,r.h,color(0,.26f*alpha));rect(d,r.x,r.y,r.w,r.h,color(0x67696E,alpha));rect(d,r.x+scale,r.y+scale,r.w-2*scale,r.h-2*scale,color(0xB6B6BB,alpha));rect(d,r.x,r.y,r.w,21*scale,color(0x17130A,alpha));text(d,m.monitorTitle(level),r.x+r.w*.5f,r.y+(level==0?3:1)*scale,fitted(m.monitorTitle(level),13*scale,r.w-20*scale,true),color(0xD0D0D2,alpha),true,0,true);
    const auto rows=m.items(level);const int count=single?1:int(rows.size());for(int i=0;i<count;++i){const float yy=r.y+(22+28*i)*scale;rect(d,r.x+2*scale,yy,r.w-4*scale,28*scale,color(i%2?0xACACB1:0xB4B4B9,alpha));const auto field=m.monitorField(level,i,W,H);std::string caption,value;if(single){const auto b=m.thirdBranch();caption=b==MenuBranch::Countries?"Country":b==MenuBranch::Classes?"Class":"Selection";const auto options=m.items(2);if(!options.empty())value=options[size_t(std::clamp(m.countryRow,0,int(options.size())-1))].label;}else{caption=rows[size_t(i)].label;if(level==0&&i==1)caption="Favorites";if(level==0&&i==2)caption="Cinematic";value=m.monitorValue(level,i);}
     text(d,caption,r.x+12*scale,yy+4*scale,fitted(caption,13.5f*scale,field.x-r.x-22*scale,true),color(0x08080C,alpha),false,0,true);
     if(level==1&&m.sliderWindow()){
@@ -269,5 +269,3 @@ public:
  }
 };
 }
-
-

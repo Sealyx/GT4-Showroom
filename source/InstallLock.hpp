@@ -4,18 +4,28 @@
 #include <cwchar>
 namespace modding {
 struct InstallLock {
-    HANDLE mutex=nullptr;
+    HANDLE mutexes[2]{};
+    unsigned held=0;
     bool acquired=false;
     InstallLock() {
-        wchar_t name[80];
-        std::swprintf(name,80,L"Local\\GTA-SA-Native-Hook-Install-%lu",GetCurrentProcessId());
-        mutex=CreateMutexW(nullptr,FALSE,name);
-        if(mutex) {
-            const DWORD result=WaitForSingleObject(mutex,5000);
-            acquired=result==WAIT_OBJECT_0 || result==WAIT_ABANDONED;
+        const wchar_t* formats[2]={L"Local\\GTA-SA-Native-Hook-Install-%lu",L"Local\\GTA-SA-Codex-Hook-Install-%lu"};
+        for(unsigned i=0;i<2;++i) {
+            wchar_t name[80]{};
+            std::swprintf(name,80,formats[i],GetCurrentProcessId());
+            mutexes[i]=CreateMutexW(nullptr,FALSE,name);
+            if(!mutexes[i])return;
+            const DWORD result=WaitForSingleObject(mutexes[i],5000);
+            if(result!=WAIT_OBJECT_0 && result!=WAIT_ABANDONED)return;
+            ++held;
+        }
+        acquired=true;
+    }
+    ~InstallLock() {
+        for(unsigned i=2;i>0;--i)if(mutexes[i-1]) {
+            if(i<=held)ReleaseMutex(mutexes[i-1]);
+            CloseHandle(mutexes[i-1]);
         }
     }
-    ~InstallLock() { if(mutex) { if(acquired) ReleaseMutex(mutex); CloseHandle(mutex); } }
     InstallLock(const InstallLock&)=delete;
     InstallLock& operator=(const InstallLock&)=delete;
 };
