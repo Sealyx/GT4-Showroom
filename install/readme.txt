@@ -60,8 +60,8 @@ Most of my interests are guided by my dad and the communities I'm in, the people
 A lot of what I can do now and have learned are influnced by people who have done the same things before me.
 It's my own natural way to expand and grow. All the media I consumed, friends I've made, it's all what made me to who I am today.
 
-And to anyone reading this till the end, thank you again for your time to read this. I know it's super long but sometimes I just
-felt that It's a bit unreal that I got to the point that I'm making things that I've always wanted to make.
-All dreams are achievable. 
+And to anyone reading this till the end, thank you again for taking your time to read this. 
+I know it's super long but sometimes I just felt that It's a bit unreal that I got to the point that 
+I'm making things that I've always wanted to make. All dreams are achievable. 
 
 If you put your mind to it, you can accomplish anything!
