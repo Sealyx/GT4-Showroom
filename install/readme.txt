@@ -30,7 +30,7 @@ they do spawn but the preview is what's bugging me until around October 2025.
 I revisited the project again, learning again. It's only around November-December I got something close 
 to what I wanted but not quite right, this is when my dad told me about Claude how it's helpful to help me 
 if I have any issues with my coding. Claude revised some of my codes, it was mostly just to fix the performance.
-I rewrote and rephrased what the codes that Claude supervised, then I put it in the script myself. 
+I rewrote and rephrased all the codes that Claude supervised, then I put it in the script myself. 
 
 It's only after July 2026 I revisited this project and try to finish it slowly. Making the designs, applying more sound effects,
 learn how to animate small UI elements, getting VehFuncs & IVF cars to look right and so on. 
