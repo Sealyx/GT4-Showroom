@@ -4,7 +4,6 @@
 #include <cmath>
 #include <cstdint>
 #include <string_view>
-
 namespace gt4 {
 struct CinematicPoint {float x=0,y=0,z=0;};
 inline CinematicPoint operator+(CinematicPoint a,CinematicPoint b){return {a.x+b.x,a.y+b.y,a.z+b.z};}

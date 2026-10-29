@@ -1,7 +1,6 @@
 #pragma once
 #include "Game.hpp"
 #include "CinematicVehicle.hpp"
-
 namespace gt4::cinematicNative {
 struct DoorFields {float open,closed;uint16_t direction;uint8_t axis,state;float angle,previous,speed;};
 static_assert(sizeof(DoorFields)==0x18,"classic CDoor layout");
