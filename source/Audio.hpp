@@ -16,7 +16,6 @@
 #include <cstring>
 namespace gt4 {
 struct PcmClip {WAVEFORMATEX format{};std::vector<char> bytes;};
-
 inline bool readPcm(const std::filesystem::path& name,size_t limit,PcmClip& clip){
  clip={};std::ifstream f(name,std::ios::binary|std::ios::ate);if(!f)return false;
  const auto length=f.tellg();if(length<12||uint64_t(length)>limit+65536)return false;f.seekg(0);
