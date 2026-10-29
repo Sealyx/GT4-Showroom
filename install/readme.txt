@@ -24,7 +24,7 @@ to learn C++ around late 2024 to early 2025, this was when I started to experime
 
 At first it was challenging, I didn't want to show anything back then cause I was genuinely terrible at it. 
 I only did make one car spawner with some GT4 assets I've been given (they're mostly just sound effects & music), 
-it has the same kind of 3D preview from this mod but I can't never get the texture of the cars to look right in the preview, 
+it has the same kind of 3D preview from this mod but I can never get the texture of the cars to look right in the preview, 
 they do spawn but the preview is what's bugging me until around October 2025.
 
 I revisited the project again, learning again. It's only around November-December I got something close 
