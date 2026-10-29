@@ -1,12 +1,16 @@
 inline void ContextMenu::monitorToggle(float px,float py,double now){
  if(open){finish(-1);return;}open=true;closeResult=0;sliderDrag=-1;sliderChanged=false;sub=countries=countryFocus=false;row=sortRow=countryRow=focusLevel=0;
- monitorPicker=monitorHover=monitorHeaderHover=monitorKeyboard=false;monitorDragLevel=monitorHelpLevel=monitorHelpIndex=monitorHoverLevel=monitorHoverIndex=monitorFooter=-1;monitorPlaced={};
+ monitorPicker=monitorHover=monitorHeaderHover=monitorKeyboard=false;monitorDragLevel=monitorHelpLevel=monitorHelpIndex=monitorHoverLevel=monitorHoverIndex=monitorFooter=-1;monitorPlaced={};monitorFirst={};
  x=px;y=py;began=monitorChanged=now;
 }
-inline int ContextMenu::monitorStart(int level,float h)const{
+inline int ContextMenu::monitorStart(int level,float h,float listHeight)const{
  const int rows=std::max(1,int(items(level).size()));
- const int visible=std::max(1,int((h*.76f)/(26*(h/720.f))));
- return std::clamp(current(level)-visible+1,0,std::max(0,rows-visible));
+ const float scale=h/720.f,edge=std::max(.6f,scale);
+ const int visible=std::max(1,int(((listHeight>0?listHeight:h*.76f)-2*edge)/(26*scale)+.001f));
+ auto&first=monitorFirst[size_t(level)];first=std::clamp(first,0,std::max(0,rows-visible));
+ const int selected=std::clamp(current(level),0,rows-1);
+ if(selected<first)first=selected;else if(selected>=first+visible)first=selected-visible+1;
+ return first;
 }
 inline std::array<UIRect,3> ContextMenu::monitorPanels(float w,float h)const{
  const float s=h/720.f,margin=8*s;
@@ -16,7 +20,7 @@ inline std::array<UIRect,3> ContextMenu::monitorPanels(float w,float h)const{
  const auto parent=out[0];
  const float childX=parent.x-372*s>=margin?parent.x-372*s:parent.x+parent.w+12*s;
  if(monitorSubWindow())out[1]=bound({childX,parent.y+22*s,360*s,(22+28*std::max(size_t(1),items(1).size())+35)*s});
- else out[1]=bound({parent.x+parent.w*.49f,parent.y+(22+28*row)*s, parent.w*.49f,std::min(h*.76f,(2+26*std::max(size_t(1),items(1).size()))*s)});
+ else out[1]=bound({parent.x+parent.w*.49f,parent.y+(46+28*row)*s,parent.w*.51f-12*s,std::min(h*.76f,(2+26*std::max(size_t(1),items(1).size()))*s)});
  out[2]=bound({childX,parent.y+(22+28*row)*s,370*s,88*s});
  for(int i=1;i<3;++i)if(monitorPlaced[size_t(i)]){out[size_t(i)].x=monitorX[size_t(i)]*w;out[size_t(i)].y=monitorY[size_t(i)]*h;out[size_t(i)]=bound(out[size_t(i)]);}
  return out;
@@ -38,9 +42,10 @@ inline bool ContextMenu::monitorButtonSelected(int level,int which)const{
 }
 inline UIRect ContextMenu::monitorDropdown(float w,float h)const{
  const auto r=monitorField(monitorSubWindow()?1:2,monitorSubWindow()?sortRow:0,w,h);const float s=h/720.f;
- const float hh=std::min(h*.76f,(2+26*std::max(size_t(1),items(2).size()))*s);
+ const float edge=std::max(.6f,s),yy=r.y+r.h;
+ const int visible=std::max(1,int((std::min(h*.76f,h*.9f-8*s-yy)-2*edge)/(26*s)+.001f));
+ const float hh=2*edge+26*s*std::min(size_t(visible),std::max(size_t(1),items(2).size()));
  const float ww=std::max(r.w,220*s),xx=std::clamp(r.x,8*s,std::max(8*s,w-ww-8*s));
- float yy=r.y+r.h;if(yy+hh>h*.9f)yy=std::max(8*s,r.y-hh);
  return {xx,yy,ww,hh};
 }
 inline UIRect ContextMenu::pointerTarget(float w,float h)const{
@@ -110,7 +115,7 @@ inline std::string ContextMenu::help()const{
 }
 inline UIRect ContextMenu::monitorListRow(UIRect list,int level,int index,float h)const {
  const float edge=std::max(.6f,h/720.f),slot=26*h/720.f;
- const float top=list.y+edge+(index-monitorStart(level,h))*slot;
+ const float top=list.y+edge+(index-monitorStart(level,h,list.h))*slot;
  const float bottom=std::min(top+slot,list.y+list.h-edge);
  if(top<list.y+edge-.01f||bottom<=top)return {};
  return {list.x+edge,top,std::max(0.f,list.w-2*edge),bottom-top};
@@ -152,7 +157,7 @@ inline void ContextMenu::monitorPoint(float px,float py,float w,float h) {
  auto list=[&](UIRect box,int level){
   if(!box.contains(px,py))return false;
   const auto rows=items(level);
-  for(int i=monitorStart(level,h);i<int(rows.size());++i)if(monitorListRow(box,level,i,h).contains(px,py)){
+  for(int i=monitorStart(level,h,box.h);i<int(rows.size());++i)if(monitorListRow(box,level,i,h).contains(px,py)){
    if(level==2){countryRow=i;countryFocus=true;}else{sortRow=i;countryFocus=false;}
    focusLevel=level;monitorHover=true;monitorHoverLevel=level;monitorHoverIndex=i;return true;
   }
@@ -226,7 +231,7 @@ inline StudioAction ContextMenu::monitorActivate(bool favorites){
 }
 inline StudioAction ContextMenu::monitorClick(float px,float py,float w,float h,bool favorites){
  if(!open)return StudioAction::None;monitorPoint(px,py,w,h);const float s=h/720.f;const auto boxes=monitorPanels(w,h);
- auto pick=[&](UIRect box,int level){const auto rows=items(level);for(int i=monitorStart(level,h);i<int(rows.size());++i)if(monitorListRow(box,level,i,h).contains(px,py)){if(level==2){countryRow=i;countryFocus=true;}else{sortRow=i;countryFocus=false;}focusLevel=level;return true;}return false;};
+ auto pick=[&](UIRect box,int level){const auto rows=items(level);for(int i=monitorStart(level,h,box.h);i<int(rows.size());++i)if(monitorListRow(box,level,i,h).contains(px,py)){if(level==2){countryRow=i;countryFocus=true;}else{sortRow=i;countryFocus=false;}focusLevel=level;return true;}return false;};
  if(monitorPicker&&pick(monitorDropdown(w,h),2))return monitorActivate(favorites);
  if(monitorSelectorWindow()){
   if(monitorField(2,0,w,h).contains(px,py)){monitorPicker=!monitorPicker;return StudioAction::None;}

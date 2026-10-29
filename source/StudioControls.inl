@@ -78,10 +78,10 @@ void interaction(const PadActions&pad,float W,float H,double dt,uint64_t tick){
   if(goBack){v.endWheelDrag();state.back();blockActions();return;}
   const Mesh*mesh=entries.empty()?nullptr:lookup(entries[state.selected].id);
   const bool hasHotspots=mesh&&v.hotspots&&mesh->cinematic.any();
-  if(hasHotspots&&(previousHotspot||nextHotspot)){const auto points=renderer.hotspots(*mesh,v);v.focus=points.cycle(v.focus,previousHotspot?-1:1);state.ui.dock=true;state.ui.pointerMoved=state.clock;state.cue=Cue::Move;}
+  if(hasHotspots&&(previousHotspot||nextHotspot)){const auto points=renderer.hotspots(*mesh,v);v.focus=points.cycle(v.focus,previousHotspot?-1:1);state.ui.dock=true;state.ui.pointerMoved=state.clock;}
   const bool wheelFocused=hasHotspots&&v.focus>=6&&mesh->cinematic.supported(v.focus);
-  if(accept){if(hasHotspots&&v.focus>=0){if(v.activate(v.focus,mesh->cinematic)){state.ui.pointerMoved=state.clock;state.cue=Cue::Accept;}}else c.toggle(state.clock);}if(pauseView)c.toggle(state.clock);
-  bool hotspotClicked=false;if(click&&hasHotspots){const int hit=renderer.hitHotspot(*mesh,v,state.pointerX*W,state.pointerY*H);if(hit>=0){hotspotClicked=hit>=6?v.beginWheelDrag(hit,mesh->cinematic,state.pointerX*W):v.activate(hit,mesh->cinematic);state.ui.pointerMoved=state.clock;state.cue=hotspotClicked?Cue::Accept:Cue::Error;}}
+  if(accept){if(hasHotspots&&v.focus>=0){if(v.activate(v.focus,mesh->cinematic))state.ui.pointerMoved=state.clock;}else c.toggle(state.clock);}if(pauseView)c.toggle(state.clock);
+  bool hotspotClicked=false;if(click&&hasHotspots){const int hit=renderer.hitHotspot(*mesh,v,state.pointerX*W,state.pointerY*H);if(hit>=0){hotspotClicked=hit>=6?v.beginWheelDrag(hit,mesh->cinematic,state.pointerX*W):v.activate(hit,mesh->cinematic);state.ui.pointerMoved=state.clock;}}
   if(!lDown||!hasHotspots)v.endWheelDrag();
   if(v.wheelDrag>=0){v.dragWheel(state.pointerX*W,W);c.grabbed=false;state.ui.dock=false;state.ui.pointerMoved=state.clock;return;}
   if(click&&!hotspotClicked&&mesh&&renderer.hitCar(*mesh,state.pointerX*W,state.pointerY*H)){c.toggle(state.clock);c.grabbed=true;c.dragged=false;c.grabX=state.pointerX*W;c.grabY=state.pointerY*H;}

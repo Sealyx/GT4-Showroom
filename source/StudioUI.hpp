@@ -28,6 +28,7 @@ inline int classIndex(int value){return value>=0&&value<12?value:12;}
 struct ContextMenu{
  bool monitorPicker=false,monitorHover=false,monitorHeaderHover=false,monitorKeyboard=false;int monitorDragLevel=-1,monitorHelpLevel=-1,monitorHelpIndex=-1,monitorHoverLevel=-1,monitorHoverIndex=-1,monitorFooter=-1,monitorFooterLevel=0;float monitorDragX=0,monitorDragY=0;std::array<float,3> monitorX{},monitorY{};std::array<bool,3> monitorPlaced{};double monitorChanged=0;int closeResult=0,sliderDrag=-1;bool sliderChanged=false;AudioLevels volumes;bool hotspots=true,lights=false;int indicators=0;
  bool open=false,sub=false,countries=false,countryFocus=false;int row=0,sortRow=0,countryRow=0,choice=-1,focusLevel=0;float x=.5f,y=.5f;double began=0;
+ mutable std::array<int,3> monitorFirst{};
  std::vector<int> available{-1},classes{-1};std::array<int,countryCount> counts{};std::array<int,classCount> classCounts{};
  std::array<std::vector<std::string>,2> extras;std::array<int,2> extraChoice{{0,0}};bool favoriteView=false,cinematicView=false,shadows=true,carLogo=false,brandLogo=false,displayModelId=false,displayModelName=false;int order=0,countryFilter=-1,classFilter=-1;
  void sync(bool f,bool c,int o,int country,int cls,bool shadow,bool car,bool brand,bool showId=false,bool showName=false){favoriteView=f;cinematicView=c;order=o;countryFilter=country;classFilter=cls;shadows=shadow;carLogo=car;brandLogo=brand;displayModelId=showId;displayModelName=showName;}
@@ -110,7 +111,7 @@ struct ContextMenu{
  bool monitorSubWindow()const{const auto b=childBranch();return b==MenuBranch::Logos||b==MenuBranch::Extras||b==MenuBranch::Display||b==MenuBranch::Volume||b==MenuBranch::CinematicControls;}
  bool monitorSelectorWindow()const{return sub&&focus()==2&&!monitorSubWindow();}
  void monitorToggle(float px,float py,double now);
- int monitorStart(int level,float h)const;
+ int monitorStart(int level,float h,float listHeight=0)const;
  std::array<UIRect,3> monitorPanels(float w,float h)const;
  UIRect monitorField(int level,int index,float w,float h)const;
  UIRect monitorDropdown(float w,float h)const;

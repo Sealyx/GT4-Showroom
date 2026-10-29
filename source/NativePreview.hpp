@@ -35,10 +35,10 @@ inline bool onEntityRender(void* entity){
  return false;
 }
 inline bool enabledFor(int id){void*mi=gta::modelInfo(id);if(!game::vehicleInfo(mi))return false;const int kind=game::field<int>(mi,0x3C);return !failedPath&&(kind>=0&&kind<=11);}
-template<class Device,class State>bool beginCaptureState(Device*device,State*&saved){saved=nullptr;return device&&SUCCEEDED(device->CreateStateBlock(D3DSBT_ALL,&saved))&&saved;}
+template<class Device,class State>bool beginCaptureState(Device*device,State*&saved){saved=nullptr;if(!device)return false;const HRESULT hr=device->CreateStateBlock(D3DSBT_ALL,&saved);if(FAILED(hr)||!saved){if(saved)saved->Release();saved=nullptr;return false;}return true;}
 inline std::unique_ptr<Mesh> captureVehicle(void* vehicle,int id,void(*prepare)(void*)=nullptr){
  if(!vehicle||target)return nullptr;void*clump=game::field<void*>(vehicle,0x18);if(!clump)return nullptr;
- IDirect3DStateBlock9* saved=nullptr;if(!beginCaptureState(game::device(),saved))return nullptr;
+ auto*device=game::device();IDirect3DStateBlock9* saved=nullptr;if(!beginCaptureState(device,saved))return nullptr;RenderTargets targets(device);if(!targets.valid()){saved->Release();return nullptr;}targets.track();
  if(prepare)prepare(vehicle);
  markerSlots.clear();lampSlots.clear();Pins pins;reinterpret_cast<void*(__cdecl*)(void*,void*(__cdecl*)(void*,void*),void*)>(0x749B70)(clump,pinAtomic,&pins);for(const auto&p:pins.values){const auto rgba=p.color;const auto lamp=cinematicMarkerLamp(((rgba&255)<<16)|(rgba&0xFF00)|((rgba>>16)&255));if(lamp!=CinematicLamp::None)lampSlots.emplace(p.material,lamp);}
   if(!pins.valid){for(auto&p:pins.values){reinterpret_cast<bool(__cdecl*)(void*)>(0x74DA20)(p.material);if(p.texture)reinterpret_cast<bool(__cdecl*)(void*)>(0x7F3820)(p.texture);}saved->Apply();saved->Release();return nullptr;}
@@ -46,10 +46,10 @@ inline std::unique_ptr<Mesh> captureVehicle(void* vehicle,int id,void(*prepare)(
  if(copyGeometry&&game::field<int>(gta::modelInfo(id),0x3C)==0)for(int node:{2,5,4,7,3,6})if(game::field<void*>(vehicle,0x648+size_t(node)*4))++lastWheels;
  target=vehicle;result.reset();reached=false;
  previewMaterialCycle(vehicle,reinterpret_cast<void(__thiscall*)(void*)>(0x6D64F0),reinterpret_cast<void(__thiscall*)(void*)>(0x6D0E60),reinterpret_cast<void(__thiscall*)(void*)>(0x6D0E20));target=nullptr;markerSlots.clear();lampSlots.clear();
- if(saved){saved->Apply();saved->Release();}
+ if(saved){saved->Apply();saved->Release();}const bool graphicsRestored=targets.restore();
  restore(pins.values);
  if(reached)retired=std::move(pins.values);else{failedPath=true;retired.insert(retired.end(),pins.values.begin(),pins.values.end());}
- if(result){result->compact();result->bounds();if(!result->empty())return std::move(result);result.reset();}return nullptr;
+ if(!graphicsRestored){result.reset();return nullptr;}if(result){result->compact();result->bounds();if(!result->empty())return std::move(result);result.reset();}return nullptr;
 }
 inline std::unique_ptr<Mesh> snapshot(int id,void(*prepare)(void*)=nullptr){
  const bool plugin=GetModuleHandleW(L"VehFuncs.asi")||GetModuleHandleW(L"ImVehFt.asi")||GetModuleHandleW(L"IVF.asi");auto fallback=[&]()->std::unique_ptr<Mesh>{return plugin?nullptr:game::snapshot(id);};
