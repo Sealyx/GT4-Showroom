@@ -1,6 +1,0 @@
-Static GT4 congratulations artwork retained from1.9.1 at user request.
-Supplied source:K:/Videos/.others/Kuruma References/Congratulations.mp4.
-Clean3.5s frame, cropx240..1680. PNG/BGRA bytes unchanged; title proportions,
-native-width wings and lower-floor UV raise. Car/name/reflection/button/footer
-are separate current draws. No new3D prize map. Underlying GT4 art belongs to
-its owners. See tools/prize-framing-v192.md and current previews/provenance.json.
