@@ -3,6 +3,8 @@
 #include <cstddef>
 
 namespace gt4
+// this is mostly of what controls the vehicle viewer's extra controls and performance stability
+// all of this is codex's codes so credits to mr. ai for fixing the performance
 {
     inline constexpr std::size_t viewerPatternColumns = 33;
 

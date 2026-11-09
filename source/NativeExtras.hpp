@@ -150,7 +150,7 @@ namespace gt4::nativeExtras
             scan(e, true);
             preparedScan = true;
         }
-        // keep the first real pair even without a vehfuncs catalog. tuning is not an extras lottery.
+        // keep the first real pair without vehfuncs catalog. tuning ain't extras lottery
         if (!probing && defaultComponents == std::array<int8_t, 2>{{-2, -2}}) {
             defaultComponents = {{game::field<int8_t>(v, 0x438), game::field<int8_t>(v, 0x439)}};
         }

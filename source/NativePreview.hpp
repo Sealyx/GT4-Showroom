@@ -78,7 +78,7 @@ namespace gt4::nativePreview
 
     inline std::vector<MaterialPin> retired;
 
-    // these materials might still be on a plugin's to-do list. retire them at the next render boundary.
+    // materials might still be on a to-do list. might retire them idk
     inline void releaseRetired()
     {
         for (auto& p : retired) {
@@ -209,7 +209,7 @@ namespace gt4::nativePreview
         return false;
     }
 
-    // let the plugins render first. if they skip our entity hook, grab this same prepared car here.
+    // mihgt need it to render first. if it needs an entity hook, grab the same prepared car here
     template <class Render> void renderForCapture(void* vehicle, Render render)
     {
         render(vehicle);
@@ -321,7 +321,7 @@ namespace gt4::nativePreview
         previewMaterialPasses(
             vehicle, reinterpret_cast<void(__thiscall*)(void*)>(0x6D64F0),
             [&](void* subject) {
-                // modelextras waits eleven callbacks before its material pass. let it finish before copying textures.
+                // modelextras waits callbacks before its material pass. let it finish before copying textures
                 const int passes = !materialsWarmed && GetModuleHandleW(L"ModelExtras.asi") ? 12 : 1;
                 renderMaterialFrames(subject, reinterpret_cast<void(__thiscall*)(void*)>(0x6D0E60), passes);
                 materialsWarmed = true;
@@ -331,7 +331,7 @@ namespace gt4::nativePreview
                 if (!clean || !reached) {
                     return false;
                 }
-                // same car, same parts, just clean this time. rebuild the textures after the plugins have settled.
+                // same car, same parts, just clean this time. rebuild the textures after the script settles
                 result.reset();
                 reached = false;
                 game::field<float>(subject, 0x4B0) = 0.f;
@@ -439,4 +439,4 @@ namespace gt4::nativePreview
         captureVehicle(vehicle, id);
         return reached;
     }
-} // namespace gt4::nativePreview
+} 

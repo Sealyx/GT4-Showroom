@@ -365,7 +365,6 @@ namespace gt4::customizationNative
         prepared = initialized && applied;
     }
 
-    // washing changes captured textures, so it belongs in the same identity as paint and upgrades.
     inline bool update(const Entry& entry, size_t paint, int livery, int txd, bool clean = false)
     {
         if (!begin(entry)) {
@@ -399,4 +398,4 @@ namespace gt4::customizationNative
         }
         return tune(vehicle, plan(livery, txd), false);
     }
-} // namespace gt4::customizationNative
+} 

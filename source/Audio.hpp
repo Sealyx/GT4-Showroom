@@ -300,7 +300,9 @@ namespace gt4
         Audio(const Audio&) = delete;
         Audio& operator=(const Audio&) = delete;
         bool enabled = true, running = false, focused = true;
-        // gta owns the volume now; saved showroom trims stay out of playback.
+        
+		// game owns the volume now. saved showroom trims stay out of playback
+		
         unsigned bedVolume = 100, cueVolume = 100, masterVolume = 100;
 
         const AudioFault* nextFault()
@@ -322,7 +324,6 @@ namespace gt4
             }
         }
 
-        // the showroom sliders trim the game's own buses; zero in the pause menu really means quiet.
         void setGameLevels(unsigned effects, unsigned music)
         {
             const unsigned nextEffects = std::min(effects, 64u);

@@ -6,7 +6,6 @@
 namespace gt4
 // self explanatory, handles countries applied to vehicles
 // country is for add-on stuff, vanillacountries is well.. for vanilla
-
 {
     enum class Country
     {

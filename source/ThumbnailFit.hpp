@@ -2,6 +2,7 @@
 #include "Showroom.hpp"
 
 namespace gt4
+// adaptive sizing: to make sure big cars don't look too small and small cars don't look too big
 {
     inline bool compactThumbnail(const Entry& e)
     {

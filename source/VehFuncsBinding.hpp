@@ -3,6 +3,7 @@
 #include <array>
 
 namespace gt4
+// forked from vehfuncs sources, they handle extras mostly
 {
     inline bool hideExportLayout(const uint8_t* b, size_t n)
     {

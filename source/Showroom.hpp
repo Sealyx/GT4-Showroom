@@ -14,6 +14,8 @@
 #include "TransFender.hpp"
 
 namespace gt4
+// main showroom controller
+// mostly to maintain main controls, favorites, car's classes, ids, etc
 {
     constexpr float pi = 3.14159265358979323846f;
 

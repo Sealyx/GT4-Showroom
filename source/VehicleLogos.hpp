@@ -9,6 +9,8 @@
 #include <vector>
 
 namespace gt4
+// i originally didn't want to include logos for this mod until someone recommended it
+// brands are still complicated for 3d era lore so i'd keep this optional and you can add the logos and names yourself
 {
     class VehicleLogos
     {

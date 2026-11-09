@@ -3,6 +3,8 @@
 #include "ViewerPatternData.hpp"
 
 namespace gt4
+// vehicle's viewer main studio controller
+// reflections, shadows etc
 {
     inline constexpr float viewerReflectionOpacity = .23f;
 

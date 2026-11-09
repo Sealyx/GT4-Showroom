@@ -6,6 +6,8 @@
 #include <vector>
 
 namespace gt4
+// or customization feature
+// can be accessed when you have chosen your colors/liveries from cinematic
 {
     enum class ShopPage
     {

@@ -5,6 +5,7 @@
 #include <cstdint>
 
 namespace gt4
+// vehicle viewer's main setup: inspired by gran turismo 7 spec iv update's car viewer
 {
     enum class ViewerScene
     {

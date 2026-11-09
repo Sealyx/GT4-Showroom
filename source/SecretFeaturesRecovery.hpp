@@ -2,6 +2,7 @@
 #include "SecretFeaturesState.hpp"
 
 namespace gt4
+// recovery system helped by codex
 {
     struct SecretFeaturesRecoveryState
     {

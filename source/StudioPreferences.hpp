@@ -8,7 +8,7 @@ namespace gt4
     {
         int sortMode = 5, countryFilter = -1, classFilter = -1;
         bool carLogo = false, brandLogo = false, displayModelId = false, displayModelName = false;
-        // legacy bytes keep existing settings readable; playback uses gta's sliders.
+        // bytes keep existing settings readable. playback uses gta's sliders
         AudioLevels audio;
 
         bool valid() const

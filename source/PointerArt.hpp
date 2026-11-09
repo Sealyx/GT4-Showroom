@@ -4,6 +4,7 @@
 #include <cmath>
 
 namespace gt4
+// funny pointer based on gt4's pointer
 {
     struct ArrowPoint
     {

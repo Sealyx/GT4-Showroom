@@ -33,7 +33,6 @@
 namespace gt4
 // a lot of the important shit are in here basically deals with main renderer, cinematics, ui etc
 // read and analyze carefully if you want to steal
-
 {
     HMODULE module = nullptr;
     std::wstring base, logFile, ini;

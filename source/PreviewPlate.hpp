@@ -2,6 +2,7 @@
 #include <string>
 
 namespace gt4
+// i think its cooler to have all plates to be blank or white idk
 {
     inline bool previewPlateName(const char* name)
     {

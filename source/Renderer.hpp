@@ -31,6 +31,8 @@
 #include "NativeStudio/EnvironmentMap.hpp"
 
 namespace gt4
+// custom vehicle renderer for gt4 showroom's animated cubemap
+// can't make this compatible with skygfx sorry, tried my best
 {
     struct Vertex
     {

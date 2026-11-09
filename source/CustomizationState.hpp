@@ -7,8 +7,7 @@
 namespace gt4
 // customization state for customization
 // i combined front, rear, skirts, bonnet into one for easier navigation
-// no you don't get hydraulics, stero and nitrous 
-
+// no you don't get hydraulics, stereo and nitrous
 {
     inline const char* customizationSlotName(int slot)
     {
