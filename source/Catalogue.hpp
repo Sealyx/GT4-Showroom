@@ -73,10 +73,11 @@ namespace gt4
                             const std::vector<Entry>& all,
                             SortSettings order,
                             Hidden hidden,
-                            IsFavorite favorite)
+                            IsFavorite favorite,
+                            int preferredModel = -1)
     {
         const size_t previous = state.selected;
-        const int id = out.empty() ? -1 : out[std::min(previous, out.size() - 1)].id;
+        const int previousModel = out.empty() ? -1 : out[std::min(previous, out.size() - 1)].id;
         std::array<int, countryCount> countryTotals{};
         std::array<int, classCount> classTotals{};
         out.clear();
@@ -99,15 +100,19 @@ namespace gt4
         state.ui.menu.setClasses(classTotals);
         sortCatalogue(out, order);
         state.selected = out.empty() ? 0 : std::min(previous, out.size() - 1);
-        bool retained = false;
-        for (size_t i = 0; i < out.size(); ++i) {
-            if (out[i].id == id) {
-                state.selected = i;
-                retained = true;
-                break;
-            }
+        const auto findModelId = [&](int id) {
+            return std::find_if(out.begin(), out.end(), [id](const Entry& entry) {
+                return entry.id == id;
+            });
+        };
+        auto selected = preferredModel >= 0 ? findModelId(preferredModel) : out.end();
+        if (selected == out.end() && previousModel >= 0) {
+            selected = findModelId(previousModel);
         }
-        if (id >= 0 && !retained) {
+        if (selected != out.end()) {
+            state.selected = size_t(selected - out.begin());
+        }
+        if (previousModel >= 0 && (selected == out.end() || selected->id != previousModel)) {
             state.page = Page::Cars;
             state.paint = 0;
             state.spawn = false;

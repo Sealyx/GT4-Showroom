@@ -56,9 +56,7 @@ namespace gt4::nativePreview
         }
         const int kind = game::field<int>(mi, 0x3C);
         wheelMatrices = prepareWheelPose(
-            vehicle,
-            kind,
-            game::field<int16_t>(vehicle, 0x22),
+            vehicle, kind, game::field<int16_t>(vehicle, 0x22),
             [&](int node) {
                 return game::field<void*>(vehicle, 0x648 + size_t(node) * 4) != nullptr;
             },
@@ -69,7 +67,6 @@ namespace gt4::nativePreview
     inline void (*observeVehicle)(void*) = nullptr;
     inline bool copyGeometry = true, reached = false;
     inline std::unordered_map<void*, int> markerSlots;
-    inline std::unordered_map<void*, CinematicLamp> lampSlots;
 
     struct MaterialPin
     {
@@ -81,6 +78,7 @@ namespace gt4::nativePreview
 
     inline std::vector<MaterialPin> retired;
 
+    // these materials might still be on a plugin's to-do list. retire them at the next render boundary.
     inline void releaseRetired()
     {
         for (auto& p : retired) {
@@ -179,8 +177,7 @@ namespace gt4::nativePreview
             if (clump) {
                 restWheelMatrices(entity);
                 prepareCementPose(
-                    entity,
-                    game::field<int16_t>(entity, 0x22),
+                    entity, game::field<int16_t>(entity, 0x22),
                     [&](int node) {
                         return game::field<void*>(entity, 0x648 + size_t(node) * 4);
                     },
@@ -196,8 +193,6 @@ namespace gt4::nativePreview
                 game::Extract extract{result.get(), 0, frameVisible, &markerSlots};
                 extract.componentFrames = &frames;
                 extract.component = cinematicNative::component;
-                extract.namedLamp = cinematicNative::namedLamp;
-                extract.lampSlots = &lampSlots;
                 extract.plateTexture = game::field<void*>(entity, 0x588);
                 if (mi) {
                     extract.plateMaterial = game::field<void*>(mi, 0x24);
@@ -214,6 +209,32 @@ namespace gt4::nativePreview
         return false;
     }
 
+    // let the plugins render first. if they skip our entity hook, grab this same prepared car here.
+    template <class Render> void renderForCapture(void* vehicle, Render render)
+    {
+        render(vehicle);
+        if (!reached && target == vehicle) {
+            onEntityRender(vehicle);
+        }
+    }
+
+    template <class Render> void renderMaterialFrames(void* vehicle, Render render, int passes)
+    {
+        struct RestoreCopy
+        {
+            bool saved = copyGeometry;
+            ~RestoreCopy()
+            {
+                copyGeometry = saved;
+            }
+        } restore;
+        for (int pass = 0; pass < passes; ++pass) {
+            copyGeometry = restore.saved && pass == passes - 1;
+            reached = false;
+            renderForCapture(vehicle, render);
+        }
+    }
+
     inline bool enabledFor(int id)
     {
         void* mi = gta::modelInfo(id);
@@ -221,7 +242,7 @@ namespace gt4::nativePreview
             return false;
         }
         const int kind = game::field<int>(mi, 0x3C);
-        return !failedPath && (kind >= 0 && kind <= 11);
+        return kind >= 0 && kind <= 11;
     }
 
     template <class Device, class State> bool beginCaptureState(Device* device, State*& saved)
@@ -241,7 +262,8 @@ namespace gt4::nativePreview
         return true;
     }
 
-    inline std::unique_ptr<Mesh> captureVehicle(void* vehicle, int id, void (*prepare)(void*) = nullptr)
+    inline std::unique_ptr<Mesh> captureVehicle(void* vehicle, int id, void (*prepare)(void*) = nullptr,
+                                                bool clean = false)
     {
         if (!vehicle || target) {
             return nullptr;
@@ -256,7 +278,7 @@ namespace gt4::nativePreview
             return nullptr;
         }
         RenderTargets targets(device);
-        if (!targets.valid()) {
+        if (!targets.valid() || !game::renderCamera()) {
             saved->Release();
             return nullptr;
         }
@@ -265,17 +287,9 @@ namespace gt4::nativePreview
             prepare(vehicle);
         }
         markerSlots.clear();
-        lampSlots.clear();
         Pins pins;
-        reinterpret_cast<void*(__cdecl*)(void*, void*(__cdecl*)(void*, void*), void*)>(0x749B70)(
-            clump, pinAtomic, &pins);
-        for (const auto& p : pins.values) {
-            const auto rgba = p.color;
-            const auto lamp = cinematicMarkerLamp(((rgba & 255) << 16) | (rgba & 0xFF00) | ((rgba >> 16) & 255));
-            if (lamp != CinematicLamp::None) {
-                lampSlots.emplace(p.material, lamp);
-            }
-        }
+        reinterpret_cast<void*(__cdecl*)(void*, void*(__cdecl*)(void*, void*), void*)>(0x749B70)(clump, pinAtomic,
+                                                                                                 &pins);
         if (!pins.valid) {
             for (auto& p : pins.values) {
                 reinterpret_cast<bool(__cdecl*)(void*)>(0x74DA20)(p.material);
@@ -303,19 +317,35 @@ namespace gt4::nativePreview
         target = vehicle;
         result.reset();
         reached = false;
-        previewMaterialCycle(vehicle,
-                             reinterpret_cast<void(__thiscall*)(void*)>(0x6D64F0),
-                             reinterpret_cast<void(__thiscall*)(void*)>(0x6D0E60),
-                             reinterpret_cast<void(__thiscall*)(void*)>(0x6D0E20));
+        bool materialsWarmed = false;
+        previewMaterialPasses(
+            vehicle, reinterpret_cast<void(__thiscall*)(void*)>(0x6D64F0),
+            [&](void* subject) {
+                // modelextras waits eleven callbacks before its material pass. let it finish before copying textures.
+                const int passes = !materialsWarmed && GetModuleHandleW(L"ModelExtras.asi") ? 12 : 1;
+                renderMaterialFrames(subject, reinterpret_cast<void(__thiscall*)(void*)>(0x6D0E60), passes);
+                materialsWarmed = true;
+            },
+            reinterpret_cast<void(__thiscall*)(void*)>(0x6D0E20),
+            [&](void* subject) {
+                if (!clean || !reached) {
+                    return false;
+                }
+                // same car, same parts, just clean this time. rebuild the textures after the plugins have settled.
+                result.reset();
+                reached = false;
+                game::field<float>(subject, 0x4B0) = 0.f;
+                return true;
+            });
         target = nullptr;
         markerSlots.clear();
-        lampSlots.clear();
         if (saved) {
             saved->Apply();
             saved->Release();
         }
         const bool graphicsRestored = targets.restore();
         restore(pins.values);
+        failedPath = !reached;
         if (reached) {
             retired = std::move(pins.values);
         } else {
@@ -337,12 +367,12 @@ namespace gt4::nativePreview
         return nullptr;
     }
 
-    inline std::unique_ptr<Mesh> snapshot(int id, void (*prepare)(void*) = nullptr)
+    inline std::unique_ptr<Mesh> snapshot(int id, void (*prepare)(void*) = nullptr, bool clean = false)
     {
-        const bool plugin =
-            GetModuleHandleW(L"VehFuncs.asi") || GetModuleHandleW(L"ImVehFt.asi") || GetModuleHandleW(L"IVF.asi");
+        const bool plugin = GetModuleHandleW(L"VehFuncs.asi") || GetModuleHandleW(L"ImVehFt.asi") ||
+                            GetModuleHandleW(L"IVF.asi") || GetModuleHandleW(L"ModelExtras.asi");
         auto fallback = [&]() -> std::unique_ptr<Mesh> {
-            return plugin ? nullptr : game::snapshot(id);
+            return plugin || clean ? nullptr : game::snapshot(id);
         };
         if (!enabledFor(id) && !prepare) {
             return copyGeometry ? fallback() : nullptr;
@@ -373,7 +403,7 @@ namespace gt4::nativePreview
         if (!vehicle) {
             return prepare || !copyGeometry ? nullptr : fallback();
         }
-        auto mesh = captureVehicle(vehicle, id, prepare);
+        auto mesh = captureVehicle(vehicle, id, prepare, clean);
         auto** vt = game::field<void**>(vehicle, 0);
         reinterpret_cast<void*(__thiscall*)(void*, unsigned)>(vt[0])(vehicle, 1);
         return mesh ? std::move(mesh) : prepare || !copyGeometry ? nullptr : fallback();
@@ -409,4 +439,4 @@ namespace gt4::nativePreview
         captureVehicle(vehicle, id);
         return reached;
     }
-}
+} // namespace gt4::nativePreview

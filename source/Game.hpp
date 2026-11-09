@@ -109,6 +109,19 @@ namespace gt4::game
         return flag(0xB7CB48);
     }
 
+    inline bool externalCamera()
+    {
+        constexpr uintptr_t cameraController = 0xB6F0D8;
+        constexpr uintptr_t gameTimeScale = 0xB7CB64;
+        return at<uint32_t>(cameraController) != 0 || at<float>(gameTimeScale) <= 0.f;
+    }
+
+    inline void* renderCamera()
+    {
+        auto** current = at<void**>(0xC97B24);
+        return current ? *current : nullptr;
+    }
+
     inline bool menu()
     {
         return readFrontendState().menuActive();
@@ -137,6 +150,7 @@ namespace gt4::game
         g.cutscene = flag(0xB5F851) || flag(0xB5F852);
         g.enex = at<int>(0x96A7CC);
         if (g.gameState == 9 && !g.loadingData) {
+            g.externalCamera = externalCamera();
             void* p = player();
             g.alive = p && field<float>(p, 0x540) > 0;
             g.inVehicle = p && (field<uint32_t>(p, 0x46C) & 0x100) != 0;
@@ -225,6 +239,27 @@ namespace gt4::game
         }
     }
 
+    // let the plugins finish their first render, then put all four chosen colors back. no surprise respray, please.
+    template <class Prepare, class Apply>
+    bool finalizeVehicleAppearance(void* vehicle, const Entry& entry, size_t choice, Prepare prepare, Apply apply)
+    {
+        if (!vehicle) {
+            return false;
+        }
+        Paint selected;
+        const bool hasPaint = !entry.paints.empty();
+        if (hasPaint) {
+            const auto& paint = entry.paints[std::min(choice, entry.paints.size() - 1)];
+            std::copy(std::begin(paint.ids), std::end(paint.ids), std::begin(selected.ids));
+        }
+        const bool prepared = prepare(vehicle, entry.id);
+        apply(vehicle);
+        if (hasPaint) {
+            writePaint(vehicle, selected);
+        }
+        return prepared;
+    }
+
     inline int extrasModel = -1, extrasSeed = -1;
     inline std::array<int8_t, 2> extraComponents{{-2, -2}};
 
@@ -243,7 +278,7 @@ namespace gt4::game
         }
     }
 
-    inline int extraChoice = -2;
+    inline int extraChoice = -2, extraSecondChoice = -2;
 
     struct ComponentChoiceScope
     {
@@ -252,13 +287,16 @@ namespace gt4::game
         explicit ComponentChoiceScope(int model)
             : saved{{at<int8_t>(0x8A6458), at<int8_t>(0x8A6459)}}
         {
-            const int choice = model == extrasModel ? extraChoice : -2;
-            if (choice != -2) {
-                at<int8_t>(0x8A6458) = int8_t(choice);
-                at<int8_t>(0x8A6459) = -1;
-            } else if (model == extrasModel && extraComponents[0] != -2) {
-                at<int8_t>(0x8A6458) = extraComponents[0];
-                at<int8_t>(0x8A6459) = extraComponents[1];
+            if (model != extrasModel) {
+                return;
+            }
+            const std::array<int, 2> choices{{extraChoice, extraSecondChoice}};
+            for (size_t slot = 0; slot < choices.size(); ++slot) {
+                if (choices[slot] != -2) {
+                    at<int8_t>(0x8A6458 + slot) = int8_t(choices[slot]);
+                } else if (extraComponents[slot] != -2) {
+                    at<int8_t>(0x8A6458 + slot) = extraComponents[slot];
+                }
             }
         }
 
@@ -295,8 +333,6 @@ namespace gt4::game
         void* plateMaterial = nullptr;
         const std::array<void*, cinematicComponentCount>* componentFrames = nullptr;
         int (*component)(void*, const std::array<void*, cinematicComponentCount>*) = nullptr;
-        CinematicLamp (*namedLamp)(void*) = nullptr;
-        const std::unordered_map<void*, CinematicLamp>* lampSlots = nullptr;
     };
 
     inline void* __cdecl extractAtomic(void* atomic, void* data)
@@ -364,16 +400,6 @@ namespace gt4::game
             b.rgb = previewMaterialColor(rgb);
             b.alpha = float(rgba >> 24) / 255.f;
             b.component = c.component ? c.component(f, c.componentFrames) : -1;
-            b.lamp = cinematicMarkerLamp(rgb);
-            if (c.lampSlots) {
-                const auto slot = c.lampSlots->find(material);
-                if (slot != c.lampSlots->end()) {
-                    b.lamp = slot->second;
-                }
-            }
-            if (b.lamp == CinematicLamp::None && c.namedLamp) {
-                b.lamp = c.namedLamp(f);
-            }
             constexpr uint32_t markers[] = {0x3CFF00, 0xFF00AF, 0x00FFFF, 0xFF00FF};
             for (int j = 0; j < 4; ++j) {
                 if (rgb == markers[j]) {
@@ -413,6 +439,16 @@ namespace gt4::game
             if (bound.texture) {
                 b.texture = bound.texture;
                 b.texture->AddRef();
+                std::array<void*, 16> dirtTextures{};
+                if (gta::read(0xC02BD0, dirtTextures) && dirtTextures[0] &&
+                    std::find(dirtTextures.begin(), dirtTextures.end(), tex) != dirtTextures.end()) {
+                    const auto clean = nativeTexture(dirtTextures[0], at<int>(0xB4E9E0));
+                    if (clean.texture && clean.uScale == bound.uScale && clean.vScale == bound.vScale &&
+                        clean.uOffset == bound.uOffset && clean.vOffset == bound.vOffset) {
+                        b.cleanTexture = clean.texture;
+                        b.cleanTexture->AddRef();
+                    }
+                }
             }
             enumerate([&](uint16_t ia, uint16_t ib, uint16_t ic) {
                 if (c.count >= 120000 || ia >= nv || ib >= nv || ic >= nv || ia == ib || ib == ic || ia == ic) {
@@ -447,6 +483,9 @@ namespace gt4::game
             if (b.vertices.empty()) {
                 if (b.texture) {
                     b.texture->Release();
+                }
+                if (b.cleanTexture) {
+                    b.cleanTexture->Release();
                 }
             } else {
                 c.out->batches.push_back(std::move(b));

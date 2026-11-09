@@ -83,23 +83,6 @@ namespace gt4
         }
         return a + ab * (vb / sum) + ac * (vc / sum);
     }
-    enum class IndicatorMode : uint8_t
-    {
-        Off,
-        Left,
-        Right,
-        Hazards
-    };
-    enum class CinematicLamp : uint8_t
-    {
-        None,
-        HeadLeft,
-        HeadRight,
-        TailLeft,
-        TailRight,
-        IndicatorLeft,
-        IndicatorRight
-    };
     enum class CinematicComponent : uint8_t
     {
         Bonnet,
@@ -167,7 +150,6 @@ namespace gt4
     {
         std::array<CinematicPart, cinematicComponentCount> parts{};
         bool allWheelSteering = false;
-        uint8_t lampMask = 0;
 
         bool supported(int component) const
         {
@@ -188,10 +170,10 @@ namespace gt4
 
     struct CinematicVehicleState
     {
-        bool hotspots = true, lights = false;
-        IndicatorMode indicators = IndicatorMode::Off;
+        bool hotspots = true;
         std::array<float, 6> doors{}, doorTargets{};
         float steering = 0, steeringTarget = 0;
+        float rearSteering = 0, rearSteeringTarget = 0;
         int focus = -1, boundModel = -1, wheelDrag = -1;
         float wheelGrabX = 0, wheelGrabSteering = 0;
 
@@ -222,10 +204,39 @@ namespace gt4
                     doors[i] = doorTargets[i];
                 }
             }
-            steering += (steeringTarget - steering) * k;
-            if (std::abs(steeringTarget - steering) < .0005f) {
-                steering = steeringTarget;
+            updateSteering(steering, steeringTarget, k);
+            updateSteering(rearSteering, rearSteeringTarget, k);
+        }
+
+        static void updateSteering(float& angle, float target, float amount)
+        {
+            angle += (target - angle) * amount;
+            if (std::abs(target - angle) < .0005f) {
+                angle = target;
             }
+        }
+
+        float& steeringGoal(int component)
+        {
+            if (component >= int(CinematicComponent::RearLeftWheel)) {
+                return rearSteeringTarget;
+            }
+            return steeringTarget;
+        }
+
+        float steeringAngle(int component) const
+        {
+            if (component >= int(CinematicComponent::RearLeftWheel)) {
+                return rearSteering;
+            }
+            return steering;
+        }
+
+        void centerWheels()
+        {
+            steering = steeringTarget = 0;
+            rearSteering = rearSteeringTarget = 0;
+            endWheelDrag();
         }
 
         bool activate(int component, const CinematicCapabilities& caps)
@@ -242,6 +253,21 @@ namespace gt4
             return true;
         }
 
+        void togglePanels(const CinematicCapabilities& caps)
+        {
+            bool allOpen = true;
+            for (size_t i = 0; i < doorTargets.size(); ++i) {
+                if (caps.supported(int(i)) && doorTargets[i] < .5f) {
+                    allOpen = false;
+                }
+            }
+            for (size_t i = 0; i < doorTargets.size(); ++i) {
+                if (caps.supported(int(i))) {
+                    doorTargets[i] = allOpen ? 0.f : 1.f;
+                }
+            }
+        }
+
         bool beginWheelDrag(int component, const CinematicCapabilities& caps, float x)
         {
             if (component < 6 || !caps.supported(component) || !std::isfinite(x)) {
@@ -249,7 +275,7 @@ namespace gt4
             }
             wheelDrag = focus = component;
             wheelGrabX = x;
-            wheelGrabSteering = steeringTarget;
+            wheelGrabSteering = steeringGoal(component);
             return true;
         }
 
@@ -258,7 +284,8 @@ namespace gt4
             if (wheelDrag < 0 || !std::isfinite(x) || !std::isfinite(width) || width <= 0) {
                 return;
             }
-            steeringTarget = std::clamp(wheelGrabSteering + (x - wheelGrabX) / width * 2.4f, -.52f, .52f);
+            auto& target = steeringGoal(wheelDrag);
+            target = std::clamp(wheelGrabSteering + (x - wheelGrabX) / width * 2.4f, -.52f, .52f);
         }
 
         void endWheelDrag()
@@ -269,20 +296,9 @@ namespace gt4
         void steer(float direction, double dt)
         {
             if (std::isfinite(direction) && std::isfinite(dt) && dt > 0) {
-                steeringTarget = std::clamp(steeringTarget + direction * float(std::min(dt, .1)) * 1.2f, -.52f, .52f);
+                auto& target = steeringGoal(focus);
+                target = std::clamp(target + direction * float(std::min(dt, .1)) * 1.2f, -.52f, .52f);
             }
-        }
-
-        bool indicatorOn(bool left, double clock) const
-        {
-            if (!std::isfinite(clock) || indicators == IndicatorMode::Off) {
-                return false;
-            }
-            if (indicators != IndicatorMode::Hazards &&
-                indicators != (left ? IndicatorMode::Left : IndicatorMode::Right)) {
-                return false;
-            }
-            return std::fmod(std::max(0., clock), .86) < .43;
         }
 
         bool animating() const
@@ -292,7 +308,7 @@ namespace gt4
                     return true;
                 }
             }
-            return steering != steeringTarget;
+            return steering != steeringTarget || rearSteering != rearSteeringTarget;
         }
     };
 
@@ -349,91 +365,8 @@ namespace gt4
             return {};
         }
         const auto& p = caps.parts[size_t(component)];
-        return cinematicRotation(
-            p.pivot, p.axis, component < 6 ? p.openAngle * state->doors[size_t(component)] : state->steering);
-    }
-
-    inline bool cinematicLampLeft(CinematicLamp lamp)
-    {
-        return lamp == CinematicLamp::HeadLeft || lamp == CinematicLamp::TailLeft ||
-               lamp == CinematicLamp::IndicatorLeft;
-    }
-
-    inline bool cinematicLampIndicator(CinematicLamp lamp)
-    {
-        return lamp == CinematicLamp::IndicatorLeft || lamp == CinematicLamp::IndicatorRight;
-    }
-
-    struct CinematicLampState
-    {
-        bool on = false, indicator = false;
-        uint32_t color = 0xFFFFFF;
-    };
-
-    inline CinematicLampState cinematicLampState(CinematicLamp lamp, const CinematicVehicleState* state, double clock)
-    {
-        if (!state || lamp == CinematicLamp::None) {
-            return {};
-        }
-        const bool blink = state->indicatorOn(cinematicLampLeft(lamp), clock);
-        if (blink) {
-            return {true, true, 0xFFBA35};
-        }
-        if (cinematicLampIndicator(lamp)) {
-            return {};
-        }
-        return {state->lights,
-                false,
-                lamp == CinematicLamp::TailLeft || lamp == CinematicLamp::TailRight ? 0xFF4A38u : 0xFFF3D8u};
-    }
-
-    inline CinematicLamp cinematicMarkerLamp(uint32_t rgb)
-    {
-        const unsigned r = (rgb >> 16) & 255, g = (rgb >> 8) & 255, b = rgb & 255;
-        if (r == 255 && b == 0 && g >= 173 && g <= 175) {
-            return CinematicLamp::HeadLeft;
-        }
-        if (r == 0 && g == 255 && b >= 198 && b <= 200) {
-            return CinematicLamp::HeadRight;
-        }
-        if (g == 255 && b == 0 && r >= 181 && r <= 185) {
-            return CinematicLamp::TailLeft;
-        }
-        if (r == 255 && b == 0 && g >= 56 && g <= 60) {
-            return CinematicLamp::TailRight;
-        }
-        return CinematicLamp::None;
-    }
-
-    inline CinematicLamp cinematicNamedLamp(std::string_view name)
-    {
-        auto contains = [&](std::string_view p) {
-            if (name.size() < p.size()) {
-                return false;
-            }
-            for (size_t i = 0; i + p.size() <= name.size(); ++i) {
-                size_t k = 0;
-                for (; k < p.size(); ++k) {
-                    char c = name[i + k];
-                    if (c >= 'A' && c <= 'Z') {
-                        c = char(c + 'a' - 'A');
-                    }
-                    if (c != p[k]) {
-                        break;
-                    }
-                }
-                if (k == p.size()) {
-                    return true;
-                }
-            }
-            return false;
-        };
-        if (contains("indicator_l") || contains("turn_l") || contains("turnlight_l")) {
-            return CinematicLamp::IndicatorLeft;
-        }
-        if (contains("indicator_r") || contains("turn_r") || contains("turnlight_r")) {
-            return CinematicLamp::IndicatorRight;
-        }
-        return CinematicLamp::None;
+        const float angle = component < 6 ? p.openAngle * state->doors[size_t(component)]
+                                          : state->steeringAngle(component);
+        return cinematicRotation(p.pivot, p.axis, angle);
     }
 }

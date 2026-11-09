@@ -4,6 +4,9 @@
 #include <cstring>
 
 namespace gt4
+// a lot of the handling for how i replaced wasted & busted screens is all here
+// spoiler: not all of them is handled by me, hand a little help from codex
+
 {
     struct SecretFeaturesKnownPatches
     {

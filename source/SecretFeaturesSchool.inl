@@ -76,7 +76,7 @@ bool updateSecretSchool(uint64_t tick, double dt, bool focus)
         secretSchoolMusicPlayed = false;
         secretSchoolPending = SecretFeaturesChoice::None;
         secretSchoolClosing = 0;
-        audio.initFailure(gameWindow(), base + L"GT4Showroom/assets/audio/");
+        audio.initFailure(gameWindow(), base + L"GT4Showroom/audio/");
         blockActions();
     }
     audio.focus(active);

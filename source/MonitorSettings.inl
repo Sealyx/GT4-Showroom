@@ -133,22 +133,25 @@ inline UIRect ContextMenu::pointerTarget(float w, float h) const
 inline std::string ContextMenu::monitorTitle(int level) const
 {
     if (level == 0) {
-        return "Showroom Settings";
+        switch (settingsView) {
+            case SettingsView::Cinematic:
+                return "Cinematic Settings";
+            case SettingsView::VehicleViewer:
+                return "Vehicle Viewer";
+            default:
+                return "Showroom Settings";
+        }
     }
     const auto branch = level == 1 ? childBranch() : thirdBranch();
     switch (branch) {
-        case MenuBranch::Volume:
-            return "Volume";
-        case MenuBranch::CinematicControls:
-            return "Cinematic Controls";
         case MenuBranch::Countries:
             return "Countries";
         case MenuBranch::Classes:
             return "Vehicle Classes";
         case MenuBranch::Logos:
-            return "Logo Settings";
+            return "Logos";
         case MenuBranch::Extras:
-            return "Extra Settings";
+            return "Extras";
         case MenuBranch::Display:
             return "Display Settings";
         case MenuBranch::BrandLogo:
@@ -156,8 +159,10 @@ inline std::string ContextMenu::monitorTitle(int level) const
         case MenuBranch::CarLogo:
             return "Car Name Logo";
         case MenuBranch::Extra1:
-            return "Vanilla Extras";
+            return "Extras 1";
         case MenuBranch::Extra2:
+            return "Extras 2";
+        case MenuBranch::VehFuncsExtra:
             return "VehFuncs Extras";
         default:
             return "Settings";
@@ -175,7 +180,7 @@ inline std::string ContextMenu::monitorValue(int level, int index) const
     if (branch != MenuBranch::None) {
         if (branch == MenuBranch::Sort) {
             static const char* labels[] = {
-                "Ascending A - Z", "Descending Z - A", "Class", "Top Speed", "Countries", "Model ID"};
+                "Ascending", "Descending", "Class", "Top Speed", "Countries", "Model ID"};
             return labels[std::clamp(order, 0, 5)];
         }
         if (branch == MenuBranch::Countries) {
@@ -186,21 +191,34 @@ inline std::string ContextMenu::monitorValue(int level, int index) const
         if (branch == MenuBranch::Classes) {
             return classFilter < 0 ? "All Classes" : classNames[size_t(classFilter)];
         }
-        if (branch == MenuBranch::Cinematic) {
-            return cinematicView ? "On" : "Off";
+        if (branch == MenuBranch::ViewerIdle) {
+            return viewerSettings.idleEnabled ? "On" : "Off";
         }
-        if (branch == MenuBranch::Favorites) {
-            return favoriteView ? "Favorites" : "All Cars";
+        if (branch == MenuBranch::ViewerScene) {
+            auto settings = viewerSettings;
+            settings.validate();
+            return viewerSceneNames[size_t(settings.scene)];
+        }
+        if (branch == MenuBranch::ViewerColor) {
+            return viewerSurfaceName(viewerSettings.wallColor);
+        }
+        if (branch == MenuBranch::ViewerFloor) {
+            return viewerSurfaceName(viewerSettings.floorColor);
+        }
+        if (branch == MenuBranch::ViewerPalette) {
+            return viewerSettings.lighting().name;
+        }
+        if (branch == MenuBranch::ViewerReflections) {
+            return viewerSettings.reflections ? "On" : "Off";
+        }
+        if (branch == MenuBranch::ViewerShadows) {
+            return viewerSettings.shadows ? "On" : "Off";
+        }
+        if (branch == MenuBranch::ViewerPause) {
+            return viewerPaused ? "Paused" : "Playing";
         }
         if (branch == MenuBranch::Hotspots) {
             return hotspots ? "On" : "Off";
-        }
-        if (branch == MenuBranch::Lights) {
-            return lights ? "On" : "Off";
-        }
-        if (branch == MenuBranch::Indicators) {
-            static const char* modes[] = {"Off", "Left", "Right", "Hazard"};
-            return modes[std::clamp(indicators, 0, 3)];
         }
         if (branch == MenuBranch::Shadows) {
             return shadows ? "On" : "Off";
@@ -217,19 +235,20 @@ inline std::string ContextMenu::monitorValue(int level, int index) const
         if (branch == MenuBranch::DisplayModelName) {
             return displayModelName ? "On" : "Off";
         }
-        if (branch == MenuBranch::Extra1 || branch == MenuBranch::Extra2) {
-            const size_t group = branch == MenuBranch::Extra2 ? 1 : 0;
+        const int extraGroup = extraBranchGroup(branch);
+        if (extraGroup >= 0) {
+            const size_t group = size_t(extraGroup);
             const auto& values = extras[group];
             return values.empty() ? "Default"
                                   : values[size_t(std::clamp(extraChoice[group], 0, int(values.size()) - 1))];
         }
         return "Settings";
     }
-    if (item.action == StudioAction::Favorites || item.action == StudioAction::AllCars) {
-        return favoriteView ? "Favorites" : "All Cars";
+    if (item.action == StudioAction::EnterTransFender) {
+        return customizationEnabled ? "Enter" : "Unavailable";
     }
-    if (item.action == StudioAction::Cinematic) {
-        return cinematicView ? "On" : "Off";
+    if (item.action == StudioAction::ViewerEnter || item.action == StudioAction::Cinematic) {
+        return "Enter";
     }
     return item.label;
 }
@@ -255,29 +274,11 @@ inline std::string ContextMenu::help() const
     }
     const auto item = rows[size_t(index)];
     const auto branch = item.child;
-    if (branch == MenuBranch::Volume) {
-        return "Adjust master, music and sound effect volume";
-    }
-    if (childBranch() == MenuBranch::Volume) {
-        return "Drag the slider or use Left / Right to adjust volume";
-    }
-    if (branch == MenuBranch::CinematicControls) {
-        return "Adjust cinematic hotspots, lights and indicators";
+    if (item.action == StudioAction::ViewerEnter) {
+        return "Enter Vehicle Viewer";
     }
     if (branch == MenuBranch::Hotspots) {
-        return "Show interactive vehicle hotspots in cinematic mode";
-    }
-    if (branch == MenuBranch::Lights) {
-        return "Switch vehicle lights on or off without starting the engine";
-    }
-    if (branch == MenuBranch::Indicators) {
-        return "Choose left, right or hazard indicators";
-    }
-    if (branch == MenuBranch::Cinematic) {
-        return "Enable or disable cinematic mode; keep settings open until OK or Cancel";
-    }
-    if (branch == MenuBranch::Favorites) {
-        return "Switch between favorites and the complete vehicle list";
+        return "Show interactive hotspots on the vehicle";
     }
     if (branch == MenuBranch::Sort) {
         return "Choose the order of the vehicle list";
@@ -312,10 +313,14 @@ inline std::string ContextMenu::help() const
     if (branch == MenuBranch::Extras) {
         return "Drag a slider to preview and select an available extra configuration";
     }
-    if (branch == MenuBranch::Extra1 || item.action == StudioAction::Extra1) {
-        return "Preview and apply an available vanilla extra";
+    if (item.action == StudioAction::EnterTransFender) {
+        return "Open TransFender to preview and select parts";
     }
-    if (branch == MenuBranch::Extra2 || item.action == StudioAction::Extra2) {
+    if (branch == MenuBranch::Extra1 || branch == MenuBranch::Extra2 || item.action == StudioAction::Extra1 ||
+        item.action == StudioAction::Extra2) {
+        return "Preview and apply this native extra category";
+    }
+    if (branch == MenuBranch::VehFuncsExtra || item.action == StudioAction::VehFuncsExtra) {
         return "Preview and apply one VehFuncs extra configuration";
     }
     switch (item.action) {
@@ -355,8 +360,10 @@ inline bool ContextMenu::fieldOpensWindow(int level, int index) const
         return false;
     }
     const auto b = rows[size_t(index)].child;
-    return b == MenuBranch::Display || b == MenuBranch::Logos || b == MenuBranch::Extras || b == MenuBranch::Volume ||
-           b == MenuBranch::CinematicControls;
+    return b == MenuBranch::Display || b == MenuBranch::Logos || b == MenuBranch::Extras ||
+           rows[size_t(index)].action == StudioAction::EnterTransFender ||
+           rows[size_t(index)].action == StudioAction::ViewerEnter ||
+           rows[size_t(index)].action == StudioAction::Cinematic;
 }
 
 inline int ContextMenu::audibleTarget() const
@@ -382,7 +389,7 @@ inline UIRect ContextMenu::monitorSlider(int index, float w, float h) const
     const float scale = h / 720.f;
     return {field.x + 9 * scale,
             field.y + 3 * scale,
-            std::max(1.f, childBranch() == MenuBranch::Volume ? field.w - 60 * scale : field.w * .5f - 14 * scale),
+            std::max(1.f, field.w - 18 * scale),
             field.h - 6 * scale};
 }
 
@@ -498,7 +505,8 @@ inline void ContextMenu::monitorPoint(float px, float py, float w, float h)
                 monitorHeaderHover = py < box.y + 22 * scale;
                 monitorHover = monitorHeaderHover;
                 const int i = int((py - box.y - 22 * scale) / (28 * scale));
-                if (py >= box.y + 22 * scale && i >= 0 && size_t(i) < items(1).size()) {
+                if (py >= box.y + 22 * scale && py < box.y + box.h - 35 * scale &&
+                    i >= 0 && size_t(i) < items(1).size()) {
                     monitorHelpLevel = 1;
                     monitorHelpIndex = i;
                     monitorHover = true;
@@ -597,7 +605,7 @@ inline void ContextMenu::monitorMove(int dx, int dy)
         return;
     }
     if (level == 1 && sliderWindow() && dx) {
-        setSliderValue(sortRow, sliderValue(sortRow) + dx * (childBranch() == MenuBranch::Volume ? 5 : 1));
+        setSliderValue(sortRow, sliderValue(sortRow) + dx);
         return;
     }
     if (dx < 0) {
@@ -624,7 +632,7 @@ inline void ContextMenu::monitorMove(int dx, int dy)
         const auto rows = items(level);
         const int index = current(level);
         if (index >= 0 && size_t(index) < rows.size() && rows[size_t(index)].child != MenuBranch::None) {
-            monitorActivate(favoriteView);
+            monitorActivate();
         }
         return;
     }
@@ -654,9 +662,8 @@ inline void ContextMenu::monitorMove(int dx, int dy)
     }
 }
 
-inline StudioAction ContextMenu::monitorActivate(bool favorites)
+inline StudioAction ContextMenu::monitorActivate()
 {
-    favoriteView = favorites;
     if (!open) {
         return StudioAction::None;
     }
@@ -687,6 +694,9 @@ inline StudioAction ContextMenu::monitorActivate(bool favorites)
         return StudioAction::None;
     }
     const auto item = rows[size_t(index)];
+    if (item.action == StudioAction::EnterTransFender && !customizationEnabled) {
+        return StudioAction::None;
+    }
     if (item.child != MenuBranch::None) {
         if (level == 0) {
             sub = true;
@@ -722,11 +732,6 @@ inline StudioAction ContextMenu::monitorActivate(bool favorites)
         return StudioAction::None;
     }
     choice = item.value;
-    if (item.action == StudioAction::Cinematic) {
-        sub = countryFocus = monitorPicker = false;
-        focusLevel = 0;
-        return item.action;
-    }
     if (level == 2 && monitorSubWindow()) {
         monitorPicker = false;
         countryFocus = false;
@@ -741,7 +746,7 @@ inline StudioAction ContextMenu::monitorActivate(bool favorites)
     return item.action;
 }
 
-inline StudioAction ContextMenu::monitorClick(float px, float py, float w, float h, bool favorites)
+inline StudioAction ContextMenu::monitorClick(float px, float py, float w, float h)
 {
     if (!open) {
         return StudioAction::None;
@@ -767,7 +772,7 @@ inline StudioAction ContextMenu::monitorClick(float px, float py, float w, float
         return false;
     };
     if (monitorPicker && pick(monitorDropdown(w, h), 2)) {
-        return monitorActivate(favorites);
+        return monitorActivate();
     }
     if (monitorSelectorWindow()) {
         if (monitorField(2, 0, w, h).contains(px, py)) {
@@ -776,7 +781,7 @@ inline StudioAction ContextMenu::monitorClick(float px, float py, float w, float
         }
         for (int i = 0; i < 2; ++i) {
             if (monitorButton(2, i, w, h).contains(px, py)) {
-                return monitorActivate(favorites);
+                return monitorActivate();
             }
         }
         if (boxes[2].contains(px, py)) {
@@ -790,19 +795,19 @@ inline StudioAction ContextMenu::monitorClick(float px, float py, float w, float
                     sortRow = int(i);
                     focusLevel = 1;
                     countryFocus = false;
-                    return monitorActivate(favorites);
+                    return monitorActivate();
                 }
             }
             for (int i = 0; i < 2; ++i) {
                 if (monitorButton(1, i, w, h).contains(px, py)) {
-                    return monitorActivate(favorites);
+                    return monitorActivate();
                 }
             }
             if (boxes[1].contains(px, py)) {
                 return StudioAction::None;
             }
         } else if (!monitorSelectorWindow() && pick(boxes[1], 1)) {
-            return monitorActivate(favorites);
+            return monitorActivate();
         }
     }
     for (size_t i = 0; i < rootItems().size(); ++i) {
@@ -810,12 +815,12 @@ inline StudioAction ContextMenu::monitorClick(float px, float py, float w, float
             row = int(i);
             focusLevel = 0;
             countryFocus = sub = monitorPicker = false;
-            return monitorActivate(favorites);
+            return monitorActivate();
         }
     }
     for (int i = 0; i < 2; ++i) {
         if (monitorButton(0, i, w, h).contains(px, py)) {
-            return monitorActivate(favorites);
+            return monitorActivate();
         }
     }
     if (boxes[0].contains(px, py)) {

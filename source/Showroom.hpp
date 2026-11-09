@@ -10,6 +10,8 @@
 #include "PreviewMotion.hpp"
 #include "Countries.hpp"
 #include "StudioUI.hpp"
+#include "VehicleViewer.hpp"
+#include "TransFender.hpp"
 
 namespace gt4
 {
@@ -136,12 +138,117 @@ namespace gt4
         Open,
         Spawn,
         Error,
-        Slider
+        Slider,
+        WashSpin,
+        WashComplete
     };
+
+    enum class SpawnReview
+    {
+        None,
+        Initial,
+        Cinematic,
+        Viewer,
+        LiveryWarning,
+        ShopExit,
+        ShopReset
+    };
+
+    enum class ReviewChoice
+    {
+        Cinematic,
+        Exit,
+        Spawn,
+        Dismiss
+    };
+
+    inline UIRect spawnReviewPanel(float width, float height)
+    {
+        const float scale = height / 720.f;
+        const float panelWidth = std::min(560 * scale, width * .88f);
+        return {(width - panelWidth) * .5f, height * .37f, panelWidth, 156 * scale};
+    }
+
+    inline UIRect spawnReviewButton(float width, float height, int index, int count)
+    {
+        const auto panel = spawnReviewPanel(width, height);
+        const float scale = height / 720.f;
+        const float buttonWidth = panel.w * (count == 3 ? .284f : .365f);
+        const float spacing = panel.w * (count == 3 ? .308f : .525f);
+        const float left = panel.x + panel.w * .055f + spacing * index;
+        return {left, panel.y + 114 * scale, buttonWidth, 25 * scale};
+    }
 
     struct Model
     {
         StudioUI ui;
+        VehicleViewer viewer;
+        CinematicView beforeViewer;
+        VehicleViewer menuViewer;
+        TransFender shop;
+        bool viewerSnapshot = false, postSelectionCinematic = false, appearanceReady = true;
+        double viewerBegan = 0;
+        SpawnReview spawnReview = SpawnReview::None;
+        ReviewMotion review;
+        int pendingReviewChoice = -1;
+        bool whitePaintRequested = false;
+        int whitePaintModel = -1;
+        int shopResetGroup = -1;
+        size_t whitePaintIndex = 0;
+
+        void clearWhitePaint(std::vector<Entry>& cars)
+        {
+            for (auto& entry : cars) {
+                if (entry.id == whitePaintModel && entry.paints.size() == whitePaintIndex + 1) {
+                    entry.paints.pop_back();
+                    if (paint == whitePaintIndex) {
+                        paint = 0;
+                    }
+                    break;
+                }
+            }
+            whitePaintModel = -1;
+            whitePaintRequested = false;
+        }
+
+        void syncWhitePaint(std::vector<Entry>& cars, uint32_t white)
+        {
+            if (selected >= cars.size()) {
+                clearWhitePaint(cars);
+                return;
+            }
+            if (whitePaintModel >= 0 && (page == Page::Cars || cars[selected].id != whitePaintModel)) {
+                clearWhitePaint(cars);
+            }
+            if (!whitePaintRequested) {
+                return;
+            }
+            whitePaintRequested = false;
+            auto& entry = cars[selected];
+            Paint color = entry.paints.empty() ? Paint{} : entry.paints[std::min(paint, entry.paints.size() - 1)];
+            color.ids[0] = 1;
+            color.rgb[0] = white;
+            color.name = "White";
+            if (whitePaintModel == entry.id) {
+                entry.paints[whitePaintIndex] = color;
+            } else {
+                whitePaintModel = entry.id;
+                whitePaintIndex = entry.paints.size();
+                entry.paints.push_back(color);
+            }
+            paint = whitePaintIndex;
+        }
+
+        float reviewReveal() const
+        {
+            return review.reveal(clock);
+        }
+
+        float reviewOffset(float height) const
+        {
+            return review.offset(clock, height);
+        }
+        int reviewChoice = 0;
         std::vector<Livery> liveries;
         size_t livery = 0;
         int liveriesModel = -1;
@@ -177,7 +284,7 @@ namespace gt4
 
         bool busy() const
         {
-            return fade.action != CloseAction::None || ui.transition.active();
+            return fade.action != CloseAction::None || ui.transition.active() || viewer.transitioning();
         }
 
         void recovered()
@@ -191,12 +298,162 @@ namespace gt4
         {
             fade.presented(clock);
             ui.transition.presented(clock);
+            viewer.presented(clock);
+        }
+
+        void rememberViewerCamera()
+        {
+            if (!viewerSnapshot && (viewer.active || viewer.targetActive)) {
+                beforeViewer = ui.cinematic;
+                viewerBegan = clock;
+                viewerSnapshot = true;
+            }
+        }
+
+        bool hotspotsEnabled() const
+        {
+            return viewer.active ? viewer.hotspots : ui.vehicle.hotspots;
+        }
+
+        float entryAudioGain() const
+        {
+            const float viewerFade = viewer.entryAudio ? viewer.opacity(clock) : 0.f;
+            return 1.f - std::max(viewerFade, shop.fade(clock));
+        }
+
+        bool startCinematic()
+        {
+            if (!open || !count || busy() || ui.cinematic.active || page == Page::Prize) {
+                return false;
+            }
+            ui.cinematic.enter(clock, enthusia ? enthusiaPose(clock - motionBegan).yaw : heading() + pi);
+            appearanceReady = !postSelectionCinematic;
+            viewer.lastActivity = clock;
+            return true;
+        }
+
+        bool startViewer(bool automatic = false)
+        {
+            if (!open || !count || busy() || spawnReview != SpawnReview::None || page == Page::Prize ||
+                (automatic && !ui.cinematic.active) || (postSelectionCinematic && !appearanceReady)) {
+                return false;
+            }
+            if (!viewer.request(true, automatic, clock)) {
+                return false;
+            }
+            if (ui.cinematic.active) {
+                rememberViewerCamera();
+            }
+            return true;
+        }
+
+        void requestSpawn()
+        {
+            spawnReview = SpawnReview::None;
+            spawn = true;
+            dragging = false;
+            fade.request(CloseAction::Spawn, clock, blackAlpha());
+            cue = Cue::Spawn;
+        }
+
+        void returnToCarSelection()
+        {
+            shop = {};
+            shopResetGroup = -1;
+            viewer.reset(clock);
+            viewerSnapshot = false;
+            postSelectionCinematic = false;
+            appearanceReady = true;
+            ui.cinematic.leave();
+            ui.vehicle.doorTargets.fill(0);
+            ui.vehicle.doors.fill(0);
+            ui.vehicle.focus = -1;
+            ui.vehicle.centerWheels();
+            page = Page::Cars;
+            paint = livery = 0;
+            paintMix = 0;
+            dragging = false;
+            status.clear();
+            stripChanged = clock;
+        }
+
+        int reviewButtons() const
+        {
+            if (spawnReview == SpawnReview::LiveryWarning) {
+                return 2;
+            }
+            return spawnReview == SpawnReview::Initial || spawnReview == SpawnReview::ShopExit ||
+                           spawnReview == SpawnReview::ShopReset || postSelectionCinematic
+                       ? 3
+                       : 2;
+        }
+
+        void chooseSpawnReview(ReviewChoice choice)
+        {
+            if (spawnReview == SpawnReview::None || busy() || (choice == ReviewChoice::Spawn && reviewButtons() != 3)) {
+                return;
+            }
+            if (pendingReviewChoice < 0) {
+                pendingReviewChoice = int(choice);
+                review.dismiss(clock);
+            }
+        }
+
+        void finishSpawnReview(ReviewChoice choice)
+        {
+            pendingReviewChoice = -1;
+            const auto review = spawnReview;
+            spawnReview = SpawnReview::None;
+            if (choice == ReviewChoice::Dismiss) {
+                return;
+            }
+            if (review == SpawnReview::ShopReset) {
+                if (choice != ReviewChoice::Exit) {
+                    shopResetGroup = choice == ReviewChoice::Cinematic ? 0 : 1;
+                }
+                cue = choice == ReviewChoice::Exit ? Cue::Back : Cue::Accept;
+                return;
+            }
+            if (review == SpawnReview::LiveryWarning) {
+                whitePaintRequested = choice == ReviewChoice::Exit;
+                page = Page::Livery;
+                stripChanged = clock;
+                cue = Cue::Accept;
+                return;
+            }
+            if (review == SpawnReview::ShopExit && choice == ReviewChoice::Cinematic) {
+                shop.request(ShopPage::Closed, clock);
+                cue = Cue::Back;
+                return;
+            }
+            if (review == SpawnReview::ShopExit && choice == ReviewChoice::Spawn) {
+                shop.page = shop.destination = ShopPage::Closed;
+                shop.transitionStart = -1.;
+            }
+            if (choice == ReviewChoice::Exit) {
+                returnToCarSelection();
+                cue = Cue::Back;
+                return;
+            }
+            if (choice == ReviewChoice::Spawn) {
+                requestSpawn();
+                return;
+            }
+            if (review == SpawnReview::Viewer) {
+                viewer.request(false, false, clock);
+            } else if (review == SpawnReview::Initial) {
+                postSelectionCinematic = true;
+                startCinematic();
+            }
+            dragging = false;
+            cue = Cue::Accept;
         }
 
         bool open = false, spawn = false, dragging = false;
         float dragGrip = 0;
         Page page = Page::Cars;
         size_t selected = 0, paint = 0;
+        int beforeFavoritesModel = -1;
         double clock = 0, changed = 0, opened = 0, stripChanged = 0;
         float scroll = 0, paintMix = 0;
         size_t count = 0;
@@ -215,6 +472,10 @@ namespace gt4
             }
             ui.menu.open = false;
             ui.cinematic.leave();
+            viewer.reset(clock);
+            viewerSnapshot = postSelectionCinematic = false;
+            spawnReview = SpawnReview::None;
+            appearanceReady = true;
             leavePrize();
             searching = true;
             query.clear();
@@ -297,7 +558,14 @@ namespace gt4
                 return;
             }
             count = total;
+            shop = {};
+            shopResetGroup = -1;
+            beforeFavoritesModel = -1;
             ui.resetTransient();
+            viewer.reset(clock);
+            viewerSnapshot = postSelectionCinematic = false;
+            spawnReview = SpawnReview::None;
+            appearanceReady = true;
             ui.pointerMoved = clock;
             livery = 0;
             liveries.clear();
@@ -329,9 +597,33 @@ namespace gt4
         {
             seconds = std::isfinite(seconds) ? std::clamp(seconds, 0., 1.) : 0;
             clock += seconds;
+            if (spawnReview != SpawnReview::None && pendingReviewChoice >= 0 && review.finished(clock)) {
+                finishSpawnReview(static_cast<ReviewChoice>(pendingReviewChoice));
+            }
+            const bool washing = shop.washStart >= 0.;
+            shop.step(clock);
+            if (washing && shop.washStart < 0.) {
+                cue = Cue::WashComplete;
+            }
             ui.cinematic.step(seconds);
             ui.vehicle.step(seconds);
             ui.transition.step(clock);
+            viewer.step(clock,
+                        open && ui.cinematic.active && !ui.modal() && !shop.open() && !searching &&
+                            spawnReview == SpawnReview::None && fade.action == CloseAction::None &&
+                            !ui.transition.active() && (!postSelectionCinematic || appearanceReady));
+            if (viewer.active && !ui.cinematic.active) {
+                ui.cinematic.enter(clock, enthusia ? enthusiaPose(clock - motionBegan).yaw : heading() + pi);
+            }
+            if (ui.cinematic.active) {
+                rememberViewerCamera();
+            }
+            if (!viewer.active && !viewer.targetActive && viewerSnapshot && viewer.phase == ViewerPhase::FadeIn) {
+                ui.cinematic = beforeViewer;
+                ui.cinematic.began += clock - viewerBegan;
+                ui.cinematic.lightBegan += clock - viewerBegan;
+                viewerSnapshot = false;
+            }
             scroll += (scrollTarget() - scroll) * float(1 - std::exp(-seconds * 14));
             const float target = (page == Page::Paint || page == Page::Livery) ? 1.f : 0.f;
             paintMix += (target - paintMix) * float(1 - std::exp(-seconds * 18));
@@ -344,6 +636,12 @@ namespace gt4
             }
             count = cars.size();
             selected = index;
+            shop = {};
+            shopResetGroup = -1;
+            viewer.reset(clock);
+            viewerSnapshot = postSelectionCinematic = false;
+            spawnReview = SpawnReview::None;
+            appearanceReady = true;
             paint = livery = 0;
             changed = motionBegan = clock;
             status.clear();
@@ -401,6 +699,10 @@ namespace gt4
             if (!open || busy() || cars.empty()) {
                 return;
             }
+            if (spawnReview != SpawnReview::None) {
+                chooseSpawnReview(static_cast<ReviewChoice>(reviewChoice));
+                return;
+            }
             if (page == Page::Prize) {
                 if (prizeReady && clock - prizeBegan >= prizeReadyTime) {
                     spawn = true;
@@ -414,14 +716,24 @@ namespace gt4
                 stripChanged = clock;
                 cue = Cue::Accept;
             } else if (page == Page::Paint && liveries.size() > 1) {
-                page = Page::Livery;
-                stripChanged = clock;
+                const auto& paints = cars[selected].paints;
+                if (paints.empty() || paints[std::min(paint, paints.size() - 1)].ids[0] != 1) {
+                    spawnReview = SpawnReview::LiveryWarning;
+                    review = {clock};
+                    pendingReviewChoice = -1;
+                    reviewChoice = 0;
+                } else {
+                    page = Page::Livery;
+                    stripChanged = clock;
+                }
                 cue = Cue::Accept;
             } else {
-                spawn = true;
                 dragging = false;
-                fade.request(CloseAction::Spawn, clock, blackAlpha());
-                cue = Cue::Spawn;
+                spawnReview = SpawnReview::Initial;
+                review = {clock};
+                pendingReviewChoice = -1;
+                reviewChoice = 0;
+                cue = Cue::Accept;
             }
         }
 
@@ -430,13 +742,27 @@ namespace gt4
             if (!open || busy()) {
                 return;
             }
+            if (spawnReview != SpawnReview::None) {
+                if (spawnReview == SpawnReview::Viewer || spawnReview == SpawnReview::ShopExit) {
+                    chooseSpawnReview(ReviewChoice::Cinematic);
+                } else if (spawnReview == SpawnReview::Cinematic) {
+                    chooseSpawnReview(ReviewChoice::Exit);
+                } else if (pendingReviewChoice < 0) {
+                    pendingReviewChoice = int(ReviewChoice::Dismiss);
+                    review.dismiss(clock);
+                }
+                cue = Cue::Back;
+                return;
+            }
             if (ui.menu.open) {
                 ui.menu.open = false;
                 return;
             }
             if (ui.cinematic.active) {
-                ui.cinematic.leave();
-                stripChanged = clock;
+                spawnReview = viewer.active ? SpawnReview::Viewer : SpawnReview::Cinematic;
+                review = {clock};
+                pendingReviewChoice = -1;
+                reviewChoice = 0;
                 cue = Cue::Back;
                 return;
             }
@@ -507,8 +833,9 @@ namespace gt4
 
         float blackAlpha() const
         {
-            return std::max(fade.action != CloseAction::None ? fade.opacity(clock) : 1 - opening(),
-                            ui.transition.alpha(clock));
+            return std::max({fade.action != CloseAction::None ? fade.opacity(clock) : 1 - opening(),
+                             ui.transition.alpha(clock),
+                             viewer.opacity(clock)});
         }
     };
 

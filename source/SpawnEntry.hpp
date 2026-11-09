@@ -36,6 +36,22 @@ namespace gt4
         return true;
     }
 
+    inline bool seatPlayerAsDriver(void* ped, void* vehicle)
+    {
+        void* intel = ped ? game::field<void*>(ped, 0x47C) : nullptr;
+        if (!intel || !vehicle || game::field<float>(ped, 0x540) <= 0 ||
+            game::field<void*>(vehicle, 0x460)) {
+            return false;
+        }
+
+        entryNative::function<void(__thiscall*)(void*, bool)>(0x601640)(intel, false);
+        runDriverTask(ped,
+                      vehicle,
+                      entryNative::function<DriverCtor>(0x6470E0),
+                      entryNative::function<DriverProcess>(0x64B950));
+        return game::field<void*>(vehicle, 0x460) == ped && game::field<void*>(ped, 0x58C) == vehicle;
+    }
+
     struct SpawnEntry
     {
         EntryPlayback playback;

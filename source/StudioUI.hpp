@@ -6,7 +6,10 @@
 #include <vector>
 #include "Countries.hpp"
 #include "AudioLevels.hpp"
+#include "StudioPreferences.hpp"
 #include "CinematicVehicle.hpp"
+#include "VehicleViewer.hpp"
+#include "CustomizationState.hpp"
 
 namespace gt4
 {
@@ -39,15 +42,42 @@ namespace gt4
         BrandLogo,
         Extra1,
         Extra2,
+        VehFuncsExtra,
         DisplayModelId,
         DisplayModelName,
         Hotspots,
-        Lights,
-        Indicators,
-        VolumeMaster,
-        VolumeMusic,
-        VolumeEffects
+        ViewerEnter,
+        ViewerIdle,
+        ViewerScene,
+        ViewerColor,
+        ViewerFloor,
+        ViewerPalette,
+        ViewerReflections,
+        ViewerShadows,
+        ViewerPause,
+        EnterTransFender
     };
+
+    inline int extraActionGroup(StudioAction action)
+    {
+        switch (action) {
+            case StudioAction::Extra1:
+                return 0;
+            case StudioAction::Extra2:
+                return 1;
+            case StudioAction::VehFuncsExtra:
+                return 2;
+            default:
+                return -1;
+        }
+    }
+
+    inline StudioAction extraGroupAction(size_t group)
+    {
+        static constexpr std::array<StudioAction, 3> actions{
+            {StudioAction::Extra1, StudioAction::Extra2, StudioAction::VehFuncsExtra}};
+        return group < actions.size() ? actions[group] : StudioAction::None;
+    }
 
     struct ViewTransition
     {
@@ -73,18 +103,23 @@ namespace gt4
             return true;
         }
 
+        double fadeDuration() const
+        {
+            return .16;
+        }
+
         float alpha(double now) const
         {
-            const float t = float((now - began) / .16);
+            const float t = float((now - began) / fadeDuration());
             const float x = std::clamp(t, 0.f, 1.f), v = x * x * (3 - 2 * x);
             return phase == 1 ? v : phase == 2 ? 1.f : phase == 3 ? 1 - v : 0;
         }
 
         void step(double now)
         {
-            if (phase == 1 && now - began >= .16) {
+            if (phase == 1 && now - began >= fadeDuration()) {
                 phase = 2;
-            } else if (phase == 3 && now - began >= .16) {
+            } else if (phase == 3 && now - began >= fadeDuration()) {
                 phase = 0;
                 action = StudioAction::None;
                 black = false;
@@ -93,12 +128,12 @@ namespace gt4
 
         void presented(double now)
         {
-            if (phase == 2 || (phase == 1 && now - began >= .16)) {
+            if (phase == 2 || (phase == 1 && now - began >= fadeDuration())) {
                 black = true;
             }
         }
 
-        bool ready() const
+        bool ready(double) const
         {
             return phase == 2 && black;
         }
@@ -122,17 +157,34 @@ namespace gt4
         Extras,
         Extra1,
         Extra2,
+        VehFuncsExtra,
         Display,
         DisplayModelId,
         DisplayModelName,
-        Cinematic,
-        Favorites,
-        CinematicControls,
         Hotspots,
-        Lights,
-        Indicators,
-        Volume
+        ViewerIdle,
+        ViewerScene,
+        ViewerColor,
+        ViewerFloor,
+        ViewerPalette,
+        ViewerReflections,
+        ViewerShadows,
+        ViewerPause
     };
+
+    inline int extraBranchGroup(MenuBranch branch)
+    {
+        switch (branch) {
+            case MenuBranch::Extra1:
+                return 0;
+            case MenuBranch::Extra2:
+                return 1;
+            case MenuBranch::VehFuncsExtra:
+                return 2;
+            default:
+                return -1;
+        }
+    }
 
     struct MenuItem
     {
@@ -141,6 +193,14 @@ namespace gt4
         int value = -1;
         MenuBranch child = MenuBranch::None;
         bool checked = false;
+    };
+
+    struct CustomizationMenuRow
+    {
+        std::string label;
+        std::vector<std::string> options;
+        std::vector<int> partModels;
+        int choice = 0, slot = -1;
     };
 
     inline constexpr size_t classCount = 13;
@@ -163,6 +223,13 @@ namespace gt4
         return value >= 0 && value < 12 ? value : 12;
     }
 
+    enum class SettingsView
+    {
+        Showroom,
+        Cinematic,
+        VehicleViewer
+    };
+
     struct ContextMenu
     {
         bool monitorPicker = false, monitorHover = false, monitorHeaderHover = false, monitorKeyboard = false;
@@ -174,9 +241,14 @@ namespace gt4
         double monitorChanged = 0;
         int closeResult = 0, sliderDrag = -1;
         bool sliderChanged = false;
-        AudioLevels volumes;
-        bool hotspots = true, lights = false;
-        int indicators = 0;
+        bool hotspots = true;
+        ViewerSettings viewerSettings;
+        SettingsView settingsView = SettingsView::Showroom;
+        bool viewerPaused = false;
+        bool customizationEnabled = false;
+        int customizationModel = -1;
+        uint64_t customizationGeneration = 0, customizationRevision = 0;
+        std::vector<CustomizationMenuRow> customizations;
         bool open = false, sub = false, countries = false, countryFocus = false;
         int row = 0, sortRow = 0, countryRow = 0, choice = -1, focusLevel = 0;
         float x = .5f, y = .5f;
@@ -185,15 +257,13 @@ namespace gt4
         std::vector<int> available{-1}, classes{-1};
         std::array<int, countryCount> counts{};
         std::array<int, classCount> classCounts{};
-        std::array<std::vector<std::string>, 2> extras;
-        std::array<int, 2> extraChoice{{0, 0}};
-        bool favoriteView = false, cinematicView = false, shadows = true, carLogo = false, brandLogo = false,
+        std::array<std::vector<std::string>, 3> extras;
+        std::array<int, 3> extraChoice{{0, 0, 0}};
+        bool shadows = true, carLogo = false, brandLogo = false,
              displayModelId = false, displayModelName = false;
         int order = 0, countryFilter = -1, classFilter = -1;
 
-        void sync(bool f,
-                  bool c,
-                  int o,
+        void sync(int o,
                   int country,
                   int cls,
                   bool shadow,
@@ -202,8 +272,6 @@ namespace gt4
                   bool showId = false,
                   bool showName = false)
         {
-            favoriteView = f;
-            cinematicView = c;
             order = o;
             countryFilter = country;
             classFilter = cls;
@@ -270,31 +338,87 @@ namespace gt4
             }
         }
 
-        void setExtras(const std::vector<std::string>& native, const std::vector<std::string>& vehfuncs)
+        void setExtras(const std::vector<std::string>& first,
+                       const std::vector<std::string>& second,
+                       const std::vector<std::string>& vehfuncs)
         {
-            if (extras[0] == native && extras[1] == vehfuncs) {
+            if (extras[0] == first && extras[1] == second && extras[2] == vehfuncs) {
                 return;
             }
-            extras[0] = native;
-            extras[1] = vehfuncs;
+            extras[0] = first;
+            extras[1] = second;
+            extras[2] = vehfuncs;
             row = std::min(row, int(rootItems().size()) - 1);
+        }
+
+        void setCustomization(const CustomizationState& source, bool enabled)
+        {
+            customizationEnabled = enabled && source.model >= 0 && source.groups.size() <= 32;
+            if (source.model != customizationModel || source.generation != customizationGeneration) {
+                customizations.clear();
+                if (source.groups.size() <= 32) {
+                    customizations.reserve(source.groups.size());
+                    for (const auto& group : source.groups) {
+                        CustomizationMenuRow menu;
+                        menu.label = group.label;
+                        menu.choice = group.choice;
+                        menu.slot = group.slot;
+                        menu.options.reserve(group.options.size());
+                        for (const auto& option : group.options) {
+                            menu.options.push_back(option.label);
+                            menu.partModels.push_back(option.parts.empty() ? -1 : option.parts.front());
+                        }
+                        customizations.push_back(std::move(menu));
+                    }
+                }
+                customizationModel = source.model;
+                customizationGeneration = source.generation;
+                customizationRevision = source.revision;
+            } else if (source.revision != customizationRevision && source.groups.size() == customizations.size()) {
+                for (size_t i = 0; i < customizations.size(); ++i) {
+                    customizations[i].choice = source.groups[i].choice;
+                }
+                customizationRevision = source.revision;
+            }
         }
 
         std::vector<MenuItem> rootItems() const
         {
+            if (settingsView == SettingsView::VehicleViewer) {
+                std::vector<MenuItem> rows{{"Idle", StudioAction::None, -1, MenuBranch::ViewerIdle},
+                                           {"Background", StudioAction::None, -1, MenuBranch::ViewerScene}};
+                if (viewerSettings.scene != ViewerScene::Custom) {
+                    rows.push_back({"Color", StudioAction::None, -1, MenuBranch::ViewerColor});
+                    rows.push_back({"Floor", StudioAction::None, -1, MenuBranch::ViewerFloor});
+                    rows.push_back({"Lighting", StudioAction::None, -1, MenuBranch::ViewerPalette});
+                    rows.push_back({"Reflections", StudioAction::None, -1, MenuBranch::ViewerReflections});
+                }
+                rows.push_back({"Shadows", StudioAction::None, -1, MenuBranch::ViewerShadows});
+                rows.push_back({"Rotation", StudioAction::None, -1, MenuBranch::ViewerPause});
+                rows.push_back({"Hotspots", StudioAction::None, -1, MenuBranch::Hotspots});
+                if (customizationEnabled) {
+                    rows.push_back({"Customization", StudioAction::EnterTransFender});
+                }
+                return rows;
+            }
+            if (settingsView == SettingsView::Cinematic) {
+                std::vector<MenuItem> rows{{"Hotspots", StudioAction::None, -1, MenuBranch::Hotspots},
+                                           {"Shadows", StudioAction::None, -1, MenuBranch::Shadows}};
+                if (customizationEnabled) {
+                    rows.push_back({"Customization", StudioAction::EnterTransFender});
+                }
+                rows.push_back({"Vehicle Viewer", StudioAction::ViewerEnter});
+                return rows;
+            }
             std::vector<MenuItem> rows{{"Sort by", StudioAction::None, -1, MenuBranch::Sort},
-                                       {"Favorites", StudioAction::None, -1, MenuBranch::Favorites},
-                                       {"Cinematic", StudioAction::None, -1, MenuBranch::Cinematic},
                                        {"Display", StudioAction::None, -1, MenuBranch::Display},
-                                       {"Shadows", StudioAction::None, -1, MenuBranch::Shadows},
-                                       {"Logos", StudioAction::None, -1, MenuBranch::Logos}};
-            if (!extras[0].empty() || !extras[1].empty()) {
+                                       {"Logos", StudioAction::None, -1, MenuBranch::Logos},
+                                       {"Shadows", StudioAction::None, -1, MenuBranch::Shadows}};
+            if (!extras[0].empty() || !extras[1].empty() || !extras[2].empty()) {
                 rows.push_back({"Extras", StudioAction::None, -1, MenuBranch::Extras});
             }
-            rows.push_back({"Volume", StudioAction::None, -1, MenuBranch::Volume});
-            if (cinematicView) {
-                rows.push_back({"Cinematic controls", StudioAction::None, -1, MenuBranch::CinematicControls});
-            }
+            rows.push_back({"Cinematic", StudioAction::Cinematic});
+            rows.push_back({"Vehicle Viewer", StudioAction::ViewerEnter});
             return rows;
         }
 
@@ -302,8 +426,8 @@ namespace gt4
         {
             switch (branch) {
                 case MenuBranch::Sort:
-                    return {{"Ascending  A - Z", StudioAction::SortAscending, 0, MenuBranch::None, order == 0},
-                            {"Descending  Z - A", StudioAction::SortDescending, 1, MenuBranch::None, order == 1},
+                    return {{"Ascending", StudioAction::SortAscending, 0, MenuBranch::None, order == 0},
+                            {"Descending", StudioAction::SortDescending, 1, MenuBranch::None, order == 1},
                             {"Class", StudioAction::None, -1, MenuBranch::Classes, classFilter >= 0},
                             {"Top Speed", StudioAction::SortSpeed, 3, MenuBranch::None, order == 3},
                             {"Countries", StudioAction::None, -1, MenuBranch::Countries, countryFilter >= 0},
@@ -330,31 +454,60 @@ namespace gt4
                     }
                     return r;
                 }
-                case MenuBranch::Cinematic:
-                    return {{"On", StudioAction::Cinematic, 1, MenuBranch::None, cinematicView},
-                            {"Off", StudioAction::Cinematic, 0, MenuBranch::None, !cinematicView}};
-                case MenuBranch::Favorites:
-                    return {{"All Cars", StudioAction::AllCars, 0, MenuBranch::None, !favoriteView},
-                            {"Favorites", StudioAction::Favorites, 1, MenuBranch::None, favoriteView}};
-                case MenuBranch::CinematicControls:
-                    return {{"Hotspots", StudioAction::None, -1, MenuBranch::Hotspots, hotspots},
-                            {"Lights", StudioAction::None, -1, MenuBranch::Lights, lights},
-                            {"Indicators", StudioAction::None, -1, MenuBranch::Indicators, indicators != 0}};
                 case MenuBranch::Hotspots:
                     return {{"On", StudioAction::Hotspots, 1, MenuBranch::None, hotspots},
                             {"Off", StudioAction::Hotspots, 0, MenuBranch::None, !hotspots}};
-                case MenuBranch::Lights:
-                    return {{"On", StudioAction::Lights, 1, MenuBranch::None, lights},
-                            {"Off", StudioAction::Lights, 0, MenuBranch::None, !lights}};
-                case MenuBranch::Indicators:
-                    return {{"Off", StudioAction::Indicators, 0, MenuBranch::None, indicators == 0},
-                            {"Left", StudioAction::Indicators, 1, MenuBranch::None, indicators == 1},
-                            {"Right", StudioAction::Indicators, 2, MenuBranch::None, indicators == 2},
-                            {"Hazard", StudioAction::Indicators, 3, MenuBranch::None, indicators == 3}};
-                case MenuBranch::Volume:
-                    return {{"Master", StudioAction::VolumeMaster, volumes.value[0]},
-                            {"Music", StudioAction::VolumeMusic, volumes.value[1]},
-                            {"Sound effects", StudioAction::VolumeEffects, volumes.value[2]}};
+                case MenuBranch::ViewerIdle:
+                    return {{"On", StudioAction::ViewerIdle, 1, MenuBranch::None, viewerSettings.idleEnabled},
+                            {"Off", StudioAction::ViewerIdle, 0, MenuBranch::None, !viewerSettings.idleEnabled}};
+                case MenuBranch::ViewerScene: {
+                    std::vector<MenuItem> rows;
+                    for (size_t i = 0; i < viewerSceneNames.size(); ++i) {
+                        if (!viewerSceneNames[i]) {
+                            continue;
+                        }
+                        rows.push_back({viewerSceneNames[i], StudioAction::ViewerScene, int(i), MenuBranch::None,
+                                        int(viewerSettings.scene) == int(i)});
+                    }
+                    return rows;
+                }
+                case MenuBranch::ViewerColor:
+                case MenuBranch::ViewerFloor: {
+                    const bool wall = branch == MenuBranch::ViewerColor;
+                    const auto action = wall ? StudioAction::ViewerColor : StudioAction::ViewerFloor;
+                    const int selection = wall ? viewerSettings.wallColor : viewerSettings.floorColor;
+                    std::vector<MenuItem> rows;
+                    rows.reserve(size_t(viewerWhite + 2));
+                    const auto addColor = [&](int id) {
+                        rows.push_back({viewerSurfaceName(id), action, id, MenuBranch::None, selection == id});
+                    };
+                    addColor(-1);
+                    addColor(viewerBlack);
+                    for (int i = 0; i < viewerBlack; ++i) {
+                        addColor(i);
+                        if (std::string_view(viewerPalettes[size_t(i)].name) == "White") {
+                            addColor(viewerWhite);
+                        }
+                    }
+                    return rows;
+                }
+                case MenuBranch::ViewerPalette: {
+                    std::vector<MenuItem> rows;
+                    for (size_t i = 0; i < viewerPalettes.size(); ++i) {
+                        rows.push_back({viewerPalettes[i].name, StudioAction::ViewerPalette, int(i), MenuBranch::None,
+                                        viewerSettings.palette == int(i)});
+                    }
+                    return rows;
+                }
+                case MenuBranch::ViewerReflections:
+                    return {{"On", StudioAction::ViewerReflections, 1, MenuBranch::None, viewerSettings.reflections},
+                            {"Off", StudioAction::ViewerReflections, 0, MenuBranch::None, !viewerSettings.reflections}};
+                case MenuBranch::ViewerShadows:
+                    return {{"On", StudioAction::ViewerShadows, 1, MenuBranch::None, viewerSettings.shadows},
+                            {"Off", StudioAction::ViewerShadows, 0, MenuBranch::None, !viewerSettings.shadows}};
+                case MenuBranch::ViewerPause:
+                    return {{"Playing", StudioAction::ViewerPause, 0, MenuBranch::None, !viewerPaused},
+                            {"Paused", StudioAction::ViewerPause, 1, MenuBranch::None, viewerPaused}};
                 case MenuBranch::Shadows:
                     return {{"On", StudioAction::Shadows, 1, MenuBranch::None, shadows},
                             {"Off", StudioAction::Shadows, 0, MenuBranch::None, !shadows}};
@@ -379,20 +532,24 @@ namespace gt4
                 case MenuBranch::Extras: {
                     std::vector<MenuItem> r;
                     if (!extras[0].empty()) {
-                        r.push_back({"Vanilla", StudioAction::Extra1, extraChoice[0]});
+                        r.push_back({"Extras 1", StudioAction::Extra1, extraChoice[0]});
                     }
                     if (!extras[1].empty()) {
-                        r.push_back({"VehFuncs", StudioAction::Extra2, extraChoice[1]});
+                        r.push_back({"Extras 2", StudioAction::Extra2, extraChoice[1]});
+                    }
+                    if (!extras[2].empty()) {
+                        r.push_back({"VehFuncs", StudioAction::VehFuncsExtra, extraChoice[2]});
                     }
                     return r;
                 }
                 case MenuBranch::Extra1:
-                case MenuBranch::Extra2: {
-                    const int group = branch == MenuBranch::Extra1 ? 0 : 1;
+                case MenuBranch::Extra2:
+                case MenuBranch::VehFuncsExtra: {
+                    const int group = extraBranchGroup(branch);
                     std::vector<MenuItem> r;
                     for (size_t i = 0; i < extras[size_t(group)].size(); ++i) {
                         r.push_back({extras[size_t(group)][i],
-                                     group ? StudioAction::Extra2 : StudioAction::Extra1,
+                                     extraGroupAction(size_t(group)),
                                      int(i),
                                      MenuBranch::None,
                                      extraChoice[size_t(group)] == int(i)});
@@ -416,8 +573,7 @@ namespace gt4
                 return MenuBranch::None;
             }
             const auto branch = childBranch();
-            if ((branch == MenuBranch::Logos || branch == MenuBranch::Extras || branch == MenuBranch::Display ||
-                 branch == MenuBranch::CinematicControls || branch == MenuBranch::Volume) &&
+            if ((branch == MenuBranch::Logos || branch == MenuBranch::Extras || branch == MenuBranch::Display) &&
                 focus() == 0) {
                 return MenuBranch::None;
             }
@@ -430,13 +586,14 @@ namespace gt4
             return level == 0 ? rootItems() : branchItems(level == 1 ? childBranch() : thirdBranch());
         }
 
-        std::array<int, 2> previewExtras() const
+        std::array<int, 3> previewExtras() const
         {
             auto selected = extraChoice;
             if (open && focus() == 2) {
                 const auto branch = thirdBranch();
-                if (branch == MenuBranch::Extra1 || branch == MenuBranch::Extra2) {
-                    const size_t group = branch == MenuBranch::Extra2 ? 1 : 0;
+                const int branchGroup = extraBranchGroup(branch);
+                if (branchGroup >= 0) {
+                    const size_t group = size_t(branchGroup);
                     if (countryRow >= 0 && size_t(countryRow) < extras[group].size()) {
                         selected[group] = countryRow;
                     }
@@ -518,21 +675,20 @@ namespace gt4
             monitorMove(dx, dy);
         }
 
-        StudioAction activate(bool favorites)
+        StudioAction activate(bool)
         {
-            return monitorActivate(favorites);
+            return monitorActivate();
         }
 
-        StudioAction click(float px, float py, float w, float h, bool favorites)
+        StudioAction click(float px, float py, float w, float h, bool)
         {
-            return monitorClick(px, py, w, h, favorites);
+            return monitorClick(px, py, w, h);
         }
 
         bool monitorSubWindow() const
         {
             const auto b = childBranch();
-            return b == MenuBranch::Logos || b == MenuBranch::Extras || b == MenuBranch::Display ||
-                   b == MenuBranch::Volume || b == MenuBranch::CinematicControls;
+            return b == MenuBranch::Logos || b == MenuBranch::Extras || b == MenuBranch::Display;
         }
 
         bool monitorSelectorWindow() const
@@ -552,59 +708,38 @@ namespace gt4
 
         bool sliderWindow() const
         {
-            return childBranch() == MenuBranch::Volume || childBranch() == MenuBranch::Extras;
+            return childBranch() == MenuBranch::Extras;
         }
 
         int extraGroup(int index) const
         {
             const auto rows = items(1);
-            return index >= 0 && size_t(index) < rows.size()
-                       ? (rows[size_t(index)].action == StudioAction::Extra1   ? 0
-                          : rows[size_t(index)].action == StudioAction::Extra2 ? 1
-                                                                               : -1)
-                       : -1;
+            return index >= 0 && size_t(index) < rows.size() ? extraActionGroup(rows[size_t(index)].action) : -1;
         }
 
         int sliderMaximum(int index) const
         {
             const int group = extraGroup(index);
-            return childBranch() == MenuBranch::Volume ? 100
-                   : group >= 0                        ? std::max(0, int(extras[size_t(group)].size()) - 1)
-                                                       : 0;
+            return group >= 0 ? std::max(0, int(extras[size_t(group)].size()) - 1) : 0;
         }
 
         int sliderValue(int index) const
         {
             const int group = extraGroup(index);
-            return childBranch() == MenuBranch::Volume && index >= 0 && index < 3 ? volumes.value[size_t(index)]
-                   : group >= 0                                                   ? extraChoice[size_t(group)]
-                                                                                  : 0;
+            return group >= 0 ? extraChoice[size_t(group)] : 0;
         }
 
         bool setSliderValue(int index, int value)
         {
             value = std::clamp(value, 0, sliderMaximum(index));
             const int group = extraGroup(index);
-            int* target = childBranch() == MenuBranch::Volume && index >= 0 && index < 3 ? &volumes.value[size_t(index)]
-                          : group >= 0                                                   ? &extraChoice[size_t(group)]
-                                                                                         : nullptr;
+            int* target = group >= 0 ? &extraChoice[size_t(group)] : nullptr;
             if (!target || *target == value) {
                 return false;
             }
             *target = value;
             sliderChanged = true;
             return true;
-        }
-
-        std::string sliderLabel(int index) const
-        {
-            if (childBranch() == MenuBranch::Volume) {
-                return std::to_string(sliderValue(index)) + "%";
-            }
-            const int group = extraGroup(index);
-            return group >= 0 && !extras[size_t(group)].empty()
-                       ? extras[size_t(group)][size_t(std::clamp(sliderValue(index), 0, sliderMaximum(index)))]
-                       : "Default";
         }
 
         bool fieldOpensWindow(int level, int index) const;
@@ -626,14 +761,19 @@ namespace gt4
         void monitorPoint(float px, float py, float w, float h);
         void monitorMove(int dx, int dy);
         void monitorBack();
-        StudioAction monitorActivate(bool favorites);
-        StudioAction monitorClick(float px, float py, float w, float h, bool favorites);
+        StudioAction monitorActivate();
+        StudioAction monitorClick(float px, float py, float w, float h);
         bool monitorDrag(float px, float py, float w, float h, bool down, bool pressed);
 
         void selectedAction()
         {
             monitorPicker = false;
             monitorFooter = -1;
+            if (!sub) {
+                countryFocus = false;
+                focusLevel = 0;
+                return;
+            }
             if (focus() == 2) {
                 countryFocus = false;
                 focusLevel = monitorSubWindow() ? 1 : 0;
@@ -761,7 +901,10 @@ namespace gt4
         ContextMenu menu;
         CinematicView cinematic, menuCinematic;
         CinematicVehicleState vehicle, menuVehicle;
-        AudioLevels audioLevels, menuAudio;
+        AudioLevels audioLevels;
+        StudioPreferences menuPreferences;
+        std::array<int, 3> menuExtras{{0, 0, 0}};
+        bool menuShadows = true;
         bool menuSnapshot = false;
         ControllerKeyboard keyboard;
         ViewTransition transition;
@@ -770,6 +913,37 @@ namespace gt4
         bool shadows = true, carLogo = false, brandLogo = false, displayModelId = false, displayModelName = false;
         double pointerMoved = 0;
         bool dock = false;
+
+        StudioPreferences preferences() const
+        {
+            StudioPreferences result;
+            result.sortMode = sortMode;
+            result.countryFilter = countryFilter;
+            result.classFilter = classFilter;
+            result.carLogo = carLogo;
+            result.brandLogo = brandLogo;
+            result.displayModelId = displayModelId;
+            result.displayModelName = displayModelName;
+            result.audio = audioLevels;
+            return result;
+        }
+
+        void applyPreferences(const StudioPreferences& preferences)
+        {
+            sortMode = preferences.sortMode;
+            countryFilter = preferences.countryFilter;
+            classFilter = preferences.classFilter;
+            carLogo = preferences.carLogo;
+            brandLogo = preferences.brandLogo;
+            displayModelId = preferences.displayModelId;
+            displayModelName = preferences.displayModelName;
+            audioLevels = preferences.audio;
+        }
+
+        bool countryNotice(Country country, bool searching, bool searchResult) const
+        {
+            return country == Country::Unknown && !cinematic.active && !searching && !searchResult;
+        }
 
         bool modal() const
         {

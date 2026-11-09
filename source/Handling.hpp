@@ -5,6 +5,8 @@
 #include <string>
 
 namespace gt4
+// reads in-game actual handling files whether its in your modloader or vanilla depends
+
 {
     struct Handling
     {

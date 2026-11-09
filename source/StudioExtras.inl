@@ -18,7 +18,7 @@ bool selectStudioExtra(int group, int option)
     }
     const int id = entries[state.selected].id;
     state.ui.menu.extraChoice = nativeExtras::choice;
-    state.ui.menu.setExtras(nativeExtras::labels(0), nativeExtras::labels(1));
+    state.ui.menu.setExtras(nativeExtras::labels(0), nativeExtras::labels(1), nativeExtras::labels(2));
     selectedExtras[id] = state.ui.menu.extraChoice;
     if (before != nativeExtras::choice) {
         invalidateStudioExtraPreview(id);
@@ -33,12 +33,12 @@ void syncStudioExtraPreview()
     }
     const auto wanted = state.ui.menu.previewExtras();
     const auto before = nativeExtras::choice;
-    for (int group = 0; group < 2; ++group) {
+    for (int group = 0; group < 3; ++group) {
         if (wanted[size_t(group)] != before[size_t(group)]) {
             nativeExtras::select(group, wanted[size_t(group)]);
         }
     }
-    state.ui.menu.setExtras(nativeExtras::labels(0), nativeExtras::labels(1));
+    state.ui.menu.setExtras(nativeExtras::labels(0), nativeExtras::labels(1), nativeExtras::labels(2));
     if (before != nativeExtras::choice) {
         invalidateStudioExtraPreview(extrasModel);
     }

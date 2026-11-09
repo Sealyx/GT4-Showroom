@@ -128,4 +128,66 @@ namespace gt4
             return ok;
         }
     };
+
+    inline bool readBackBufferSize(IDirect3DDevice9* device, IDirect3DSwapChain9* swapChain, D3DSURFACE_DESC& output)
+    {
+        IDirect3DSurface9* buffer = nullptr;
+        const HRESULT acquired = swapChain ? swapChain->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, &buffer)
+                                           : device->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &buffer);
+        if (FAILED(acquired) || !buffer) {
+            return false;
+        }
+        const bool valid = SUCCEEDED(buffer->GetDesc(&output)) && output.Width && output.Height;
+        buffer->Release();
+        return valid;
+    }
+
+    template <class Draw>
+    bool drawToBackBuffer(IDirect3DDevice9* device, IDirect3DSwapChain9* swapChain, bool sceneActive, Draw&& draw)
+    {
+        RenderTargets targets(device);
+        if (!targets.valid()) {
+            return false;
+        }
+
+        IDirect3DSurface9* backBuffer = nullptr;
+        const HRESULT acquired = swapChain ? swapChain->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, &backBuffer)
+                                           : device->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &backBuffer);
+        if (FAILED(acquired) || !backBuffer) {
+            return false;
+        }
+        D3DSURFACE_DESC format{};
+        bool selected = false;
+        if (SUCCEEDED(backBuffer->GetDesc(&format)) && format.Width && format.Height) {
+            const D3DVIEWPORT9 viewport{0, 0, format.Width, format.Height, 0, 1};
+            selected = targets.select(backBuffer, nullptr, viewport);
+        }
+        backBuffer->Release();
+        if (!selected || (!sceneActive && FAILED(device->BeginScene()))) {
+            return false;
+        }
+
+        struct Scene
+        {
+            IDirect3DDevice9* device;
+
+            ~Scene()
+            {
+                if (device) {
+                    device->EndScene();
+                }
+            }
+
+            bool finish()
+            {
+                const bool ended = !device || SUCCEEDED(device->EndScene());
+                device = nullptr;
+                return ended;
+            }
+        } scene{sceneActive ? nullptr : device};
+
+        const bool drawn = draw(format.Width, format.Height);
+        const bool ended = scene.finish();
+        return targets.restore() && ended && drawn;
+    }
 }

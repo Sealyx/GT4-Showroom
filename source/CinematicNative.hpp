@@ -104,26 +104,4 @@ namespace gt4::cinematicNative
         }
         return -1;
     }
-
-    inline CinematicLamp namedLamp(void* frame)
-    {
-        for (int depth = 0; frame && depth < 96; ++depth) {
-            const char* name = reinterpret_cast<const char*(__cdecl*)(void*)>(0x72FB30)(frame);
-            if (name) {
-                const size_t length = strnlen(name, 128);
-                if (length < 128) {
-                    const auto lamp = cinematicNamedLamp(std::string_view(name, length));
-                    if (lamp != CinematicLamp::None) {
-                        return lamp;
-                    }
-                }
-            }
-            void* parent = nullptr;
-            if (!gta::read(uintptr_t(frame) + 4, parent)) {
-                break;
-            }
-            frame = parent;
-        }
-        return CinematicLamp::None;
-    }
 }

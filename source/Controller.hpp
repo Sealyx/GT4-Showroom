@@ -13,6 +13,7 @@ namespace gt4
              left = false, right = false, view = false, search = false;
         float orbitX = 0, orbitY = 0, zoom = 0;
         bool previousHotspot = false, nextHotspot = false, zoomFromShoulders = false;
+        bool togglePanels = false;
     };
 
     inline float deadAxis(int v, int limit, int zone)
@@ -47,6 +48,7 @@ namespace gt4
         o.orbitY = a(3);
         o.previousHotspot = b(0x8);
         o.nextHotspot = b(0xC);
+        o.togglePanels = o.previousHotspot && o.nextHotspot;
         o.zoom = (b(0xE) ? 1.f : 0.f) - (b(0xA) ? 1.f : 0.f);
         if (!o.zoom) {
             o.zoom = (b(0xC) ? 1.f : 0.f) - (b(0x8) ? 1.f : 0.f);

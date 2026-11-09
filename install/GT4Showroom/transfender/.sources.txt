@@ -1,0 +1,8 @@
+TransFender mark from GTA San Andreas. Logo raster derived from TransFender-GTASA-Logo.svg.
+
+menu.png, wheels.png, components.png, suspension.png and car-wash.png:
+Individual detail crops from their corresponding Gran Turismo 4 GT Auto screens.
+Gran Turismo 4 artwork belongs to its respective rights holders.
+
+stroke.png
+Original hand-drawn white brushstroke artwork.

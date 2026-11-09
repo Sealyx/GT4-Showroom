@@ -1,0 +1,3 @@
+Piazza San Marco HDRI by Greg Zaal, Poly Haven, CC0. https://polyhaven.com/a/piazza_san_marco
+custom.png is a 2048 x 1024 tonemapped sRGB conversion from the 4K EXR.
+To change Custom Studio, export a 2:1 equirectangular HDRI as an sRGB PNG and replace custom.png.

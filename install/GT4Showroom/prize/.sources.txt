@@ -1,0 +1,7 @@
+Asset: congratulations.png and congratulations.rgba
+Content: static congratulations artwork from Gran Turismo 4.
+Source media: Congratulations.mp4, frame at 3.5 seconds, horizontal crop 240..1680.
+The PNG and BGRA artwork bytes remain unchanged. Car, name, reflection, buttons
+and footer are separate renderer draws; no new 3D prize map is included.
+Underlying Gran Turismo 4 artwork belongs to Sony/Polyphony Digital and its
+respective rights holders. No open redistribution license is assigned here.

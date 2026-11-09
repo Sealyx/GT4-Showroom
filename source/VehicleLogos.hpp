@@ -12,12 +12,14 @@ namespace gt4
 {
     class VehicleLogos
     {
+    public:
         struct Image
         {
             IDirect3DTexture9* texture = nullptr;
             unsigned width = 0, height = 0;
         };
 
+    private:
         std::filesystem::path root;
         std::map<uint32_t, std::filesystem::path> folders;
         std::map<std::pair<uint32_t, bool>, Image> cache;
@@ -30,7 +32,8 @@ namespace gt4
             p = nullptr;
         }
 
-        static Image load(IDirect3DDevice9* d, const std::filesystem::path& file)
+    public:
+        static Image load(IDirect3DDevice9* d, const std::filesystem::path& file, UINT maxDimension = 512)
         {
             Image out;
             std::error_code ec;
@@ -53,7 +56,7 @@ namespace gt4
                 UINT w = 0, h = 0;
                 if (SUCCEEDED(frame->GetSize(&w, &h)) && w && h && w <= 16384 && h <= 16384 &&
                     uint64_t(w) * h <= 100000000) {
-                    const double ratio = std::min(1., 512. / double(std::max(w, h)));
+                    const double ratio = std::min(1., double(maxDimension) / std::max(w, h));
                     const UINT ow = std::max(1u, UINT(w * ratio)), oh = std::max(1u, UINT(h * ratio));
                     IWICBitmapSource* source = frame;
                     if ((ow != w || oh != h) && SUCCEEDED(factory->CreateBitmapScaler(&scaler)) &&
@@ -69,7 +72,7 @@ namespace gt4
                                                       WICBitmapPaletteTypeCustom))) {
                         UINT cw = 0, ch = 0;
                         convert->GetSize(&cw, &ch);
-                        if (cw && ch && cw <= 512 && ch <= 512) {
+                        if (cw && ch && cw <= maxDimension && ch <= maxDimension) {
                             std::vector<BYTE> pixels(size_t(cw) * ch * 4);
                             if (SUCCEEDED(convert->CopyPixels(nullptr, cw * 4, UINT(pixels.size()), pixels.data())) &&
                                 SUCCEEDED(d->CreateTexture(
@@ -104,6 +107,11 @@ namespace gt4
         }
 
     public:
+        static IDirect3DTexture9* loadPanorama(IDirect3DDevice9* device, const std::filesystem::path& file)
+        {
+            return load(device, file, 2048).texture;
+        }
+
         ~VehicleLogos()
         {
             reset();

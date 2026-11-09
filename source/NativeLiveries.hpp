@@ -7,12 +7,12 @@ namespace gt4::liveryNative
     inline std::unique_ptr<Mesh> preview;
     inline int capturedModel = -1, capturedLivery = -2, capturedPaint = -1;
 
-    inline void clear(Model& s)
+    inline void releaseGraphics(Model& s)
     {
         preview.reset();
-        s.liveries.clear();
-        s.liveriesModel = -1;
-        s.livery = 0;
+        for (auto& livery : s.liveries) {
+            livery.texture.reset();
+        }
         capturedModel = -1;
         capturedLivery = -2;
         capturedPaint = -1;
@@ -22,6 +22,14 @@ namespace gt4::liveryNative
             }
         }
         held.clear();
+    }
+
+    inline void clear(Model& s)
+    {
+        releaseGraphics(s);
+        s.liveries.clear();
+        s.liveriesModel = -1;
+        s.livery = 0;
     }
 
     inline void scan(Model& s, int model)

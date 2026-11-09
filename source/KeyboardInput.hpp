@@ -74,11 +74,12 @@ namespace gt4
     {
         int gameState = 0, enex = 0;
         bool loadingData = false, menu = false, codePause = false, userPause = false, focus = false, alive = false,
-             cutscene = false, inVehicle = false;
+             cutscene = false, inVehicle = false, externalCamera = false;
 
         bool blocked() const
         {
-            return gameState != 9 || loadingData || menu || codePause || !focus || cutscene || inVehicle;
+            return gameState != 9 || loadingData || menu || codePause || !focus || cutscene || inVehicle ||
+                   externalCamera;
         }
 
         bool ready() const

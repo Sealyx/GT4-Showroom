@@ -3,14 +3,15 @@
 #include "ExtrasPolicy.hpp"
 #include <map>
 #include <set>
+#include <tuple>
 
 namespace gt4::nativeExtras
 {
     inline int model = -1;
-    inline std::array<int, 2> choice{{0, 0}};
-    inline std::vector<int> nativeIndices;
-    inline std::vector<std::string> nativeLabels, vehfuncsLabels;
-    inline std::map<std::pair<int, int>, VehFuncsCatalogue> catalogues;
+    inline std::array<int, 3> choice{{0, 0, 0}};
+    inline std::vector<int> nativeIndices, secondIndices;
+    inline std::vector<std::string> nativeLabels, secondLabels, vehfuncsLabels;
+    inline std::map<std::tuple<int, int, int>, VehFuncsCatalogue> catalogues;
     inline VehFuncsCatalogue* active = nullptr;
     inline VehFuncsCatalogue* probing = nullptr;
     inline int probingSeed = -1;
@@ -121,8 +122,8 @@ namespace gt4::nativeExtras
             return {};
         }
         Signature s;
-        reinterpret_cast<void*(__cdecl*)(void*, void*(__cdecl*)(void*, void*), void*)>(0x749B70)(
-            c, signatureAtomic, &s);
+        reinterpret_cast<void*(__cdecl*)(void*, void*(__cdecl*)(void*, void*), void*)>(0x749B70)(c, signatureAtomic,
+                                                                                                 &s);
         if (!s.valid || s.parts.empty()) {
             return {};
         }
@@ -136,6 +137,8 @@ namespace gt4::nativeExtras
         return get ? get(v) : -1;
     }
 
+    inline std::array<int8_t, 2> defaultComponents{{-2, -2}};
+
     inline void observe(void* v)
     {
         if (!v || game::field<int16_t>(v, 0x22) != model) {
@@ -146,6 +149,10 @@ namespace gt4::nativeExtras
             e.id = model;
             scan(e, true);
             preparedScan = true;
+        }
+        // keep the first real pair even without a vehfuncs catalog. tuning is not an extras lottery.
+        if (!probing && defaultComponents == std::array<int8_t, 2>{{-2, -2}}) {
+            defaultComponents = {{game::field<int8_t>(v, 0x438), game::field<int8_t>(v, 0x439)}};
         }
         auto* c = probing ? probing : active;
         if (!c || (!probing && !c->variants.empty())) {
@@ -169,18 +176,19 @@ namespace gt4::nativeExtras
     {
         if (available && active) {
             vehfuncsLabels = active->labels();
-            if (size_t(choice[1]) >= vehfuncsLabels.size()) {
-                choice[1] = 0;
+            if (size_t(choice[2]) >= vehfuncsLabels.size()) {
+                choice[2] = 0;
             }
             game::extraComponents = active->components;
-            game::extrasSeed = active->seed(size_t(choice[1]), game::previewSeed(model));
+            game::extrasSeed = active->seed(size_t(choice[2]), game::previewSeed(model));
         } else {
             vehfuncsLabels.clear();
-            choice[1] = 0;
+            choice[2] = 0;
             game::extrasSeed = -1;
-            game::extraComponents = {{-2, -2}};
+            game::extraComponents = defaultComponents;
         }
         game::extraChoice = choice[0] == 0 ? -2 : choice[0] == 1 ? -1 : nativeIndices[size_t(choice[0] - 2)];
+        game::extraSecondChoice = choice[1] == 0 ? -2 : choice[1] == 1 ? -1 : secondIndices[size_t(choice[1] - 2)];
     }
 
     inline void activate()
@@ -190,10 +198,10 @@ namespace gt4::nativeExtras
             updateSelection();
             return;
         }
-        const auto key = std::make_pair(model, choice[0]);
+        const auto key = std::make_tuple(model, choice[0], choice[1]);
         if (!catalogues.count(key) && catalogues.size() >= 128) {
             for (auto it = catalogues.begin(); it != catalogues.end(); ++it) {
-                if (it->first.first != model) {
+                if (std::get<0>(it->first) != model) {
                     catalogues.erase(it);
                     break;
                 }
@@ -206,21 +214,31 @@ namespace gt4::nativeExtras
     inline const std::vector<std::string>& labels(int group)
     {
         static const std::vector<std::string> empty;
-        return group == 0 ? nativeLabels : group == 1 ? vehfuncsLabels : empty;
+        if (group == 0) {
+            return nativeLabels;
+        }
+        if (group == 1) {
+            return secondLabels;
+        }
+        return group == 2 ? vehfuncsLabels : empty;
     }
 
     inline void clear()
     {
         model = -1;
-        choice = {{0, 0}};
+        choice = {{0, 0, 0}};
         nativeIndices.clear();
+        secondIndices.clear();
         nativeLabels.clear();
+        secondLabels.clear();
         vehfuncsLabels.clear();
         active = probing = nullptr;
         available = metadataReady = preparedScan = false;
         game::extraChoice = -2;
+        game::extraSecondChoice = -2;
         game::extrasModel = -1;
         game::extrasSeed = -1;
+        defaultComponents = {{-2, -2}};
         game::extraComponents = {{-2, -2}};
         nativePreview::observeVehicle = nullptr;
     }
@@ -246,23 +264,33 @@ namespace gt4::nativeExtras
             return;
         }
         nativeIndices.clear();
+        secondIndices.clear();
         nativeLabels.clear();
+        secondLabels.clear();
         available = false;
         void* structure = game::field<void*>(mi, 0x5C);
+        std::array<bool, 6> present{};
         if (structure) {
             const auto count = game::field<uint8_t>(structure, 0x30C);
             if (count <= 6) {
                 for (unsigned i = 0; i < count; ++i) {
                     if (game::field<void*>(structure, 0x2F4 + i * 4)) {
-                        nativeIndices.push_back(int(i));
+                        present[i] = true;
                     }
                 }
             }
         }
-        if (!nativeIndices.empty()) {
-            nativeLabels = {"Default", "None"};
-            for (int id : nativeIndices) {
-                nativeLabels.push_back("Extra " + std::to_string(id + 1));
+        auto domains = nativeExtraDomains(present, game::field<uint32_t>(mi, 0x54));
+        nativeIndices = std::move(domains[0]);
+        secondIndices = std::move(domains[1]);
+        for (size_t slot = 0; slot < 2; ++slot) {
+            auto& values = slot == 0 ? nativeLabels : secondLabels;
+            const auto& indices = slot == 0 ? nativeIndices : secondIndices;
+            if (!indices.empty()) {
+                values = {"Default", "None"};
+                for (int id : indices) {
+                    values.push_back("Extra " + std::to_string(id + 1));
+                }
             }
         }
         VehFuncsFrames binding;
@@ -271,7 +299,10 @@ namespace gt4::nativeExtras
             void* c = game::field<void*>(mi, 0x1C);
             available = c && hasExtras(game::field<void*>(c, 4));
             if (!available && structure) {
-                for (int id : nativeIndices) {
+                for (size_t id = 0; id < present.size(); ++id) {
+                    if (!present[id]) {
+                        continue;
+                    }
                     void* a = game::field<void*>(structure, 0x2F4 + size_t(id) * 4);
                     if (a && hasExtras(game::field<void*>(a, 4))) {
                         available = true;
@@ -279,8 +310,10 @@ namespace gt4::nativeExtras
                 }
             }
         }
-        if (choice[0] < 0 || size_t(choice[0]) >= nativeLabels.size()) {
-            choice[0] = 0;
+        for (size_t slot = 0; slot < 2; ++slot) {
+            if (choice[slot] < 0 || size_t(choice[slot]) >= labels(int(slot)).size()) {
+                choice[slot] = 0;
+            }
         }
         metadataReady = true;
         activate();
@@ -290,12 +323,12 @@ namespace gt4::nativeExtras
     inline bool select(int group, int option)
     {
         const auto& options = labels(group);
-        if (group < 0 || group > 1 || option < 0 || size_t(option) >= options.size()) {
+        if (group < 0 || group > 2 || option < 0 || size_t(option) >= options.size()) {
             return false;
         }
         const bool changed = choice[size_t(group)] != option;
         choice[size_t(group)] = option;
-        if (group == 0 && changed) {
+        if (group < 2 && changed) {
             activate();
         } else {
             updateSelection();

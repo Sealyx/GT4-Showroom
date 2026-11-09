@@ -7,6 +7,61 @@
 
 namespace gt4
 {
+    inline std::array<std::vector<int>, 2> nativeExtraDomains(const std::array<bool, 6>& present, uint32_t rules)
+    {
+        std::array<std::vector<int>, 2> domains;
+        for (bool raining : {false, true}) {
+            std::array<unsigned, 2> rule{{(rules >> 12) & 15, (rules >> 28) & 15}};
+            std::array<bool, 2> active{};
+            std::array<std::vector<int>, 2> allowed;
+            std::array<bool, 6> reserved{};
+            for (size_t slot = 0; slot < 2; ++slot) {
+                active[slot] = rule[slot] >= 1 && rule[slot] <= 4 && (rule[slot] != 2 || raining);
+                if (!active[slot]) {
+                    continue;
+                }
+                if (rule[slot] == 4) {
+                    for (size_t i = 0; i < present.size(); ++i) {
+                        if (present[i]) {
+                            allowed[slot].push_back(int(i));
+                        }
+                    }
+                }
+                for (unsigned index = 0; index < 3; ++index) {
+                    const unsigned component = (rules >> (unsigned(slot) * 16 + index * 4)) & 15;
+                    if (component < present.size() && present[component]) {
+                        reserved[component] = true;
+                        if (rule[slot] != 4) {
+                            allowed[slot].push_back(int(component));
+                        }
+                    }
+                }
+            }
+            std::vector<int> unreserved;
+            if (!(active[0] && rule[0] == 4)) {
+                for (size_t i = 0; i < present.size(); ++i) {
+                    if (present[i] && !reserved[i]) {
+                        unreserved.push_back(int(i));
+                    }
+                }
+            }
+            if (!active[0]) {
+                allowed[0] = unreserved;
+            }
+            if (!active[1] && active[0]) {
+                allowed[1] = unreserved;
+            }
+            for (size_t slot = 0; slot < domains.size(); ++slot) {
+                domains[slot].insert(domains[slot].end(), allowed[slot].begin(), allowed[slot].end());
+            }
+        }
+        for (auto& domain : domains) {
+            std::sort(domain.begin(), domain.end());
+            domain.erase(std::unique(domain.begin(), domain.end()), domain.end());
+        }
+        return domains;
+    }
+
     inline std::string extraOutcomeKey(std::vector<std::string> parts)
     {
         if (parts.empty() || parts.size() > 8192) {

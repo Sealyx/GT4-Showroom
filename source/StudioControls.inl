@@ -9,17 +9,75 @@ void finishSettings()
     if (ui.menu.closeResult < 0) {
         ui.cinematic = ui.menuCinematic;
         ui.vehicle = ui.menuVehicle;
-        ui.audioLevels = ui.menuAudio;
-    } else if (ui.audioLevels != ui.menuAudio) {
-        saveStudioAudioPreferences();
+        ui.applyPreferences(ui.menuPreferences);
+        ui.shadows = ui.menuShadows;
+        for (size_t group = 0; group < ui.menuExtras.size(); ++group) {
+            if (ui.menu.extraChoice[group] != ui.menuExtras[group]) {
+                selectStudioExtra(int(group), ui.menuExtras[group]);
+            }
+        }
+        ui.menu.extraChoice = ui.menuExtras;
+        state.viewer = state.menuViewer;
+        state.viewer.lastActivity = state.clock;
+    } else if (ui.preferences() != ui.menuPreferences) {
+        saveStudioPreferences();
     }
-    audio.setLevels(ui.audioLevels);
     ui.menuSnapshot = false;
 }
+
+#include "TransFenderControls.inl"
 
 void requestStudioAction(StudioAction action)
 {
     if (action == StudioAction::None || state.busy()) {
+        return;
+    }
+    if (action == StudioAction::EnterTransFender) {
+        state.ui.menu.finish(1);
+        finishSettings();
+        state.shop.fromViewer = state.viewer.active;
+        state.shop.request(ShopPage::Menu, state.clock);
+        state.cue = Cue::Accept;
+        blockActions();
+        return;
+    }
+    if (action == StudioAction::ViewerEnter || action == StudioAction::Cinematic) {
+        state.ui.menu.finish(1);
+        finishSettings();
+        const bool started = action == StudioAction::ViewerEnter ? state.startViewer() : state.startCinematic();
+        state.cue = started ? Cue::Accept : Cue::Error;
+        blockActions();
+        return;
+    }
+    if (action == StudioAction::ViewerIdle || action == StudioAction::ViewerScene ||
+        action == StudioAction::ViewerColor || action == StudioAction::ViewerFloor ||
+        action == StudioAction::ViewerPalette || action == StudioAction::ViewerReflections ||
+        action == StudioAction::ViewerShadows || action == StudioAction::ViewerPause) {
+        auto& viewer = state.viewer;
+        const int value = state.ui.menu.choice;
+        if (action == StudioAction::ViewerIdle) {
+            viewer.settings.idleEnabled = value != 0;
+            viewer.lastActivity = state.clock;
+        } else if (action == StudioAction::ViewerScene) {
+            viewer.settings.scene = ViewerScene(value);
+        } else if (action == StudioAction::ViewerColor) {
+            viewer.settings.wallColor = value;
+        } else if (action == StudioAction::ViewerFloor) {
+            viewer.settings.floorColor = value;
+        } else if (action == StudioAction::ViewerPalette) {
+            viewer.settings.palette = value;
+        } else if (action == StudioAction::ViewerReflections) {
+            viewer.settings.reflections = value != 0;
+        } else if (action == StudioAction::ViewerShadows) {
+            viewer.settings.shadows = value != 0;
+        } else if (viewer.paused != (value != 0)) {
+            viewer.toggle(state.clock);
+        }
+        viewer.settings.validate();
+        state.ui.menu.open = true;
+        state.ui.menu.selectedAction();
+        state.cue = Cue::Accept;
+        blockActions();
         return;
     }
     if (action == StudioAction::Shadows || action == StudioAction::CarLogo || action == StudioAction::BrandLogo ||
@@ -42,46 +100,20 @@ void requestStudioAction(StudioAction action)
         blockActions();
         return;
     }
-    if (action == StudioAction::Extra1 || action == StudioAction::Extra2) {
-        const bool applied = selectStudioExtra(action == StudioAction::Extra2 ? 1 : 0, state.ui.menu.choice);
+    const int extraGroup = extraActionGroup(action);
+    if (extraGroup >= 0) {
+        const bool applied = selectStudioExtra(extraGroup, state.ui.menu.choice);
         state.ui.menu.open = true;
         state.ui.menu.selectedAction();
         state.cue = applied ? Cue::Accept : Cue::Error;
         blockActions();
         return;
     }
-    if (action == StudioAction::Hotspots || action == StudioAction::Lights || action == StudioAction::Indicators) {
-        auto& v = state.ui.vehicle;
-        const int value = state.ui.menu.choice;
-        if (action == StudioAction::Hotspots) {
-            v.hotspots = value != 0;
-        } else if (action == StudioAction::Lights) {
-            v.lights = value != 0;
-        } else {
-            v.indicators = IndicatorMode(std::clamp(value, 0, 3));
-        }
+    if (action == StudioAction::Hotspots) {
+        auto& visible = state.viewer.active ? state.viewer.hotspots : state.ui.vehicle.hotspots;
+        visible = state.ui.menu.choice != 0;
         state.ui.menu.open = true;
         state.ui.menu.selectedAction();
-        state.cue = Cue::Accept;
-        blockActions();
-        return;
-    }
-    if (action == StudioAction::Cinematic) {
-        if (entries.empty() || state.page == Page::Prize) {
-            return;
-        }
-        auto& c = state.ui.cinematic;
-        const bool enabled = state.ui.menu.choice != 0;
-        if (!enabled) {
-            c.leave();
-        } else if (!c.active) {
-            c.enter(state.clock,
-                    state.enthusia ? enthusiaPose(state.clock - state.motionBegan).yaw : state.heading() + pi);
-        }
-        state.ui.menu.open = true;
-        state.ui.menu.cinematicView = c.active;
-        state.ui.dock = true;
-        state.ui.pointerMoved = state.clock;
         state.cue = Cue::Accept;
         blockActions();
         return;
@@ -95,11 +127,14 @@ void requestStudioAction(StudioAction action)
 void applyViewTransition()
 {
     auto& t = state.ui.transition;
-    if (!t.ready()) {
+    if (!t.ready(state.clock)) {
         return;
     }
     const auto action = t.action;
     const bool returnPointer = state.ui.dock;
+    int preferredModel = -1;
+    const bool persistentView = (action >= StudioAction::SortAscending && action <= StudioAction::SortModelId) ||
+                                action == StudioAction::FilterCountry || action == StudioAction::FilterClass;
     if (action >= StudioAction::SortAscending && action <= StudioAction::SortModelId) {
         state.ui.sortMode = int(action) - int(StudioAction::SortAscending);
         studioConfig.sort = menuSort(state.ui.sortMode);
@@ -107,20 +142,32 @@ void applyViewTransition()
         state.ui.countryFilter = state.ui.menu.choice;
     } else if (action == StudioAction::FilterClass) {
         state.ui.classFilter = state.ui.menu.choice;
-    } else if (action == StudioAction::Favorites) {
+    } else if (action == StudioAction::Favorites && !state.ui.favoritesOnly) {
+        if (state.selected < entries.size()) {
+            state.beforeFavoritesModel = entries[state.selected].id;
+        }
         state.ui.favoritesOnly = true;
-    } else if (action == StudioAction::AllCars) {
+    } else if (action == StudioAction::AllCars && state.ui.favoritesOnly) {
+        preferredModel = state.beforeFavoritesModel;
+        state.beforeFavoritesModel = -1;
         state.ui.favoritesOnly = false;
+    }
+    if (persistentView) {
+        saveStudioPreferences();
     }
     state.leavePrize();
     state.ui.cinematic.leave();
+    state.ui.vehicle.centerWheels();
+    state.viewer.reset(state.clock);
+    state.viewerSnapshot = state.postSelectionCinematic = false;
+    state.spawnReview = SpawnReview::None;
     state.page = Page::Cars;
     state.paint = state.livery = 0;
     state.paintMix = 0;
     state.spawn = false;
     state.searching = false;
     state.ui.keyboard.open = false;
-    rebuildCatalogueView();
+    rebuildCatalogueView(preferredModel);
     refreshSelected();
     state.ui.dock = returnPointer;
     state.changed = state.motionBegan = state.clock - 2;
@@ -171,9 +218,11 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         state.ui.vehicle.bind(entries[state.selected].id);
     }
     applyViewTransition();
-    state.ui.menu.sync(state.ui.favoritesOnly,
-                       state.ui.cinematic.active,
-                       state.ui.sortMode,
+    if (state.shopResetGroup >= 0) {
+        resetShopSelection(state.shopResetGroup == 0);
+        state.shopResetGroup = -1;
+    }
+    state.ui.menu.sync(state.ui.sortMode,
                        state.ui.countryFilter,
                        state.ui.classFilter,
                        state.ui.shadows,
@@ -181,9 +230,9 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
                        state.ui.brandLogo,
                        state.ui.displayModelId,
                        state.ui.displayModelName);
-    state.ui.menu.hotspots = state.ui.vehicle.hotspots;
-    state.ui.menu.lights = state.ui.vehicle.lights;
-    state.ui.menu.indicators = int(state.ui.vehicle.indicators);
+    state.ui.menu.hotspots = state.hotspotsEnabled();
+    state.ui.menu.viewerSettings = state.viewer.settings;
+    state.ui.menu.viewerPaused = state.viewer.paused;
     const uintptr_t rawMouse = 0xB73418;
     float dx = game::at<float>(rawMouse + 0xC), dy = game::at<float>(rawMouse + 0x10);
     if (game::flag(0xBA6744)) {
@@ -199,29 +248,103 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
     const bool search = searchKey.poll(key(VK_OEM_3) || pad.search, tick);
     const bool leftPress = left.poll(key(VK_LEFT) || pad.left, tick, true),
                rightPress = right.poll(key(VK_RIGHT) || pad.right, tick, true);
-    const bool modal = state.ui.menu.open || state.searching;
+    const bool modal = state.ui.menu.open || state.shop.open() || state.searching || state.spawnReview != SpawnReview::None;
     const bool upPress = up.poll(key(VK_UP) || pad.up, tick, modal),
                downPress = down.poll(key(VK_DOWN) || pad.down, tick, modal);
     const bool accept = enter.poll(key(VK_RETURN) || key(VK_SPACE) || pad.accept, tick),
                goBack = backspace.poll(key(VK_BACK) || pad.back, tick);
     const bool add = addFavorite.poll(pad.add, tick),
                favoritesPress = favorite.poll((!state.searching && key('F')) || pad.favorites, tick);
-    const bool previousHotspot =
-                   previousCinematicHotspot.poll(pad.previousHotspot || (key(VK_TAB) && key(VK_SHIFT)), tick),
-               nextHotspot = nextCinematicHotspot.poll(pad.nextHotspot || (key(VK_TAB) && !key(VK_SHIFT)), tick),
-               pauseView = pauseCinematic.poll(key('P'), tick);
+    const bool previousHotspot = previousCinematicHotspot.poll(
+        (pad.previousHotspot && !pad.togglePanels) || (key(VK_TAB) && key(VK_SHIFT)), tick);
+    const bool nextHotspot = nextCinematicHotspot.poll(
+        (pad.nextHotspot && !pad.togglePanels) || (key(VK_TAB) && !key(VK_SHIFT)), tick);
+    const bool pauseView = pauseCinematic.poll(key('P'), tick);
+    const bool togglePanels = cinematicPanels.poll(key('T') || pad.togglePanels, tick);
+    const bool resetShop = shopResetKey.poll(key('R'), tick);
     if (pad.accept || pad.back || pad.add || pad.favorites || pad.view || pad.search || pad.left || pad.right ||
         pad.up || pad.down || pad.previousHotspot || pad.nextHotspot || pad.orbitX || pad.orbitY || pad.zoom) {
         state.ui.controllerUsed = true;
     }
     if (lDown || rDown || key(VK_APPS) || key(VK_LEFT) || key(VK_RIGHT) || key(VK_UP) || key(VK_DOWN) ||
-        key(VK_RETURN) || key(VK_SPACE) || key(VK_BACK) || key(VK_TAB) || key('P') || key('F') || key(VK_OEM_3)) {
+        key(VK_RETURN) || key(VK_SPACE) || key(VK_BACK) || key(VK_TAB) || key('P') || key('T') || key('F') ||
+        key('R') || key(VK_OEM_3)) {
         state.ui.controllerUsed = false;
     }
     if (leftPress || rightPress || upPress || downPress || accept || goBack || search || favoritesPress || add) {
         state.ui.dock = true;
     }
+    const bool moved = std::abs(dx) + std::abs(dy) > .03f;
+    const bool wheel = game::at<uint8_t>(rawMouse + 3) || game::at<uint8_t>(rawMouse + 4);
+    const bool activeInput = moved || click || context || accept || goBack || leftPress || rightPress || upPress ||
+                             downPress || search || favoritesPress || add || previousHotspot || nextHotspot ||
+                             pauseView || togglePanels || wheel || pad.orbitX || pad.orbitY || pad.zoom;
+    if (resetShop && state.shop.open() && !state.shop.locked() && !state.shop.partReview &&
+        state.spawnReview == SpawnReview::None) {
+        state.spawnReview = SpawnReview::ShopReset;
+        state.review = {state.clock};
+        state.pendingReviewChoice = -1;
+        state.reviewChoice = 1;
+        state.cue = Cue::Accept;
+        blockActions();
+        return;
+    }
+    if (state.shop.open() && state.spawnReview == SpawnReview::None) {
+        state.viewer.activity(state.clock);
+        const bool wheelLeft = wheel && game::at<uint8_t>(rawMouse + 3);
+        processShopInput(leftPress || wheelLeft, rightPress || (wheel && !wheelLeft), upPress, downPress,
+                         accept, goBack || context, click, lDown, moved, W, H);
+        return;
+    }
+    if (activeInput && state.viewer.activity(state.clock)) {
+        state.ui.vehicle.endWheelDrag();
+        state.ui.cinematic.grabbed = false;
+        blockActions();
+        return;
+    }
     if (state.busy()) {
+        return;
+    }
+    if (state.spawnReview != SpawnReview::None) {
+        if (state.pendingReviewChoice >= 0) {
+            return;
+        }
+        const int buttonCount = state.reviewButtons();
+        if (leftPress || upPress) {
+            state.reviewChoice = (state.reviewChoice + buttonCount - 1) % buttonCount;
+            state.cue = Cue::Move;
+        }
+        if (rightPress || downPress) {
+            state.reviewChoice = (state.reviewChoice + 1) % buttonCount;
+            state.cue = Cue::Move;
+        }
+        if (moved || click) {
+            for (int i = 0; i < buttonCount; ++i) {
+                auto button = spawnReviewButton(W, H, i, buttonCount);
+                button.y += state.reviewOffset(H);
+                if (button.contains(state.pointerX * W, state.pointerY * H)) {
+                    state.reviewChoice = i;
+                    if (click) {
+                        state.chooseSpawnReview(static_cast<ReviewChoice>(i));
+                        blockActions();
+                        return;
+                    }
+                }
+            }
+        }
+        if (accept) {
+            state.chooseSpawnReview(static_cast<ReviewChoice>(state.reviewChoice));
+            blockActions();
+        } else if (goBack || context) {
+            state.back();
+            blockActions();
+        }
+        if (state.ui.dock) {
+            auto target = spawnReviewButton(W, H, state.reviewChoice, buttonCount);
+            target.y += state.reviewOffset(H);
+            state.pointerX = (target.x + target.w * .5f) / W;
+            state.pointerY = (target.y + target.h * .5f) / H;
+        }
         return;
     }
     if (search) {
@@ -312,11 +435,19 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         auto& ui = state.ui;
         const bool opened = !ui.menu.open;
         if (opened) {
+            state.menuViewer = state.viewer;
             ui.menuCinematic = ui.cinematic;
             ui.menuVehicle = ui.vehicle;
-            ui.menuAudio = ui.audioLevels;
+            ui.menuPreferences = ui.preferences();
+            ui.menuShadows = ui.shadows;
+            ui.menuExtras = ui.menu.extraChoice;
             ui.menuSnapshot = true;
-            ui.menu.volumes = ui.audioLevels;
+            ui.menu.settingsView = SettingsView::Showroom;
+            if (state.viewer.active) {
+                ui.menu.settingsView = SettingsView::VehicleViewer;
+            } else if (ui.cinematic.active) {
+                ui.menu.settingsView = SettingsView::Cinematic;
+            }
             ui.menu.toggle(state.pointerX, state.pointerY, state.clock);
         } else {
             ui.menu.monitorDragLevel = ui.menu.sliderDrag = -1;
@@ -351,10 +482,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
             if (!m.sliderChanged) {
                 return;
             }
-            if (m.childBranch() == MenuBranch::Volume) {
-                state.ui.audioLevels = m.volumes;
-                audio.setLevels(m.volumes);
-            } else if (m.childBranch() == MenuBranch::Extras) {
+            if (m.childBranch() == MenuBranch::Extras) {
                 const int group = m.extraGroup(m.sortRow);
                 if (group >= 0 && !selectStudioExtra(group, m.extraChoice[size_t(group)])) {
                     state.cue = Cue::Error;
@@ -422,6 +550,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
     if (state.ui.cinematic.active) {
         auto& c = state.ui.cinematic;
         auto& v = state.ui.vehicle;
+        auto& viewer = state.viewer;
         if (goBack) {
             v.endWheelDrag();
             state.back();
@@ -429,7 +558,10 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
             return;
         }
         const Mesh* mesh = entries.empty() ? nullptr : lookup(entries[state.selected].id);
-        const bool hasHotspots = mesh && v.hotspots && mesh->cinematic.any();
+        if (togglePanels && mesh) {
+            v.togglePanels(mesh->cinematic);
+        }
+        const bool hasHotspots = mesh && state.hotspotsEnabled() && mesh->cinematic.any();
         if (hasHotspots && (previousHotspot || nextHotspot)) {
             const auto points = renderer.hotspots(*mesh, v);
             v.focus = points.cycle(v.focus, previousHotspot ? -1 : 1);
@@ -437,17 +569,24 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
             state.ui.pointerMoved = state.clock;
         }
         const bool wheelFocused = hasHotspots && v.focus >= 6 && mesh->cinematic.supported(v.focus);
+        const auto toggleRotation = [&] {
+            if (viewer.active) {
+                viewer.toggle(state.clock);
+            } else {
+                c.toggle(state.clock);
+            }
+        };
         if (accept) {
             if (hasHotspots && v.focus >= 0) {
                 if (v.activate(v.focus, mesh->cinematic)) {
                     state.ui.pointerMoved = state.clock;
                 }
             } else {
-                c.toggle(state.clock);
+                toggleRotation();
             }
         }
         if (pauseView) {
-            c.toggle(state.clock);
+            toggleRotation();
         }
         bool hotspotClicked = false;
         if (click && hasHotspots) {
@@ -468,21 +607,31 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
             state.ui.pointerMoved = state.clock;
             return;
         }
-        if (click && !hotspotClicked && mesh && renderer.hitCar(*mesh, state.pointerX * W, state.pointerY * H)) {
-            c.toggle(state.clock);
-            c.grabbed = true;
-            c.dragged = false;
-            c.grabX = state.pointerX * W;
-            c.grabY = state.pointerY * H;
-        }
-        if (!lDown) {
-            c.grabbed = false;
-        }
-        if (c.grabbed) {
-            const float px = state.pointerX * W, py = state.pointerY * H;
-            if (c.dragged || std::abs(px - c.grabX) + std::abs(py - c.grabY) > 3) {
-                c.orbit(dx * .007f, dy * .004f, state.clock);
-                c.dragged = true;
+        if (viewer.active) {
+            if (click && !hotspotClicked && mesh && renderer.hitCar(*mesh, state.pointerX * W, state.pointerY * H)) {
+                viewer.toggle(state.clock);
+            }
+            if ((lDown && !hotspotClicked) || rDown) {
+                viewer.orbit(dx * .007f, dy * .004f, state.clock);
+            }
+        } else {
+            if (click && !hotspotClicked && mesh && renderer.hitCar(*mesh, state.pointerX * W, state.pointerY * H)) {
+                c.toggle(state.clock);
+                c.grabbed = true;
+                c.dragged = false;
+                c.grabX = state.pointerX * W;
+                c.grabY = state.pointerY * H;
+            }
+            if (!lDown) {
+                c.grabbed = false;
+            }
+            if (c.grabbed) {
+                const float px = state.pointerX * W;
+                const float py = state.pointerY * H;
+                if (c.dragged || std::abs(px - c.grabX) + std::abs(py - c.grabY) > 3) {
+                    c.orbit(dx * .007f, dy * .004f, state.clock);
+                    c.dragged = true;
+                }
             }
         }
         if (wheelFocused) {
@@ -493,28 +642,28 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
                 state.ui.pointerMoved = state.clock;
                 state.ui.dock = true;
             }
+        }
+        const auto moveCamera = [&](auto& camera) {
+            if (!wheelFocused) {
+                camera.orbit(pad.orbitX * float(dt) * 1.8f, pad.orbitY * float(dt) * .9f, state.clock);
+                if (leftPress || rightPress) {
+                    camera.orbit(leftPress ? -.09f : .09f, 0, state.clock);
+                }
+            }
+            if (upPress || downPress) {
+                camera.orbit(0, upPress ? -.06f : .06f, state.clock);
+            }
+            if (wheel) {
+                camera.wheel(game::at<uint8_t>(rawMouse + 3) ? 1.f : -1.f);
+            }
+            if (pad.zoom && !(hasHotspots && pad.zoomFromShoulders)) {
+                camera.wheel(pad.zoom * float(dt) * 8);
+            }
+        };
+        if (viewer.active) {
+            moveCamera(viewer);
         } else {
-            c.orbit(pad.orbitX * float(dt) * 1.8f, pad.orbitY * float(dt) * .9f, state.clock);
-            if (leftPress) {
-                c.orbit(-.09f, 0, state.clock);
-            }
-            if (rightPress) {
-                c.orbit(.09f, 0, state.clock);
-            }
-        }
-        if (upPress) {
-            c.orbit(0, -.06f, state.clock);
-        }
-        if (downPress) {
-            c.orbit(0, .06f, state.clock);
-        }
-        if (game::at<uint8_t>(rawMouse + 3)) {
-            c.wheel(1);
-        } else if (game::at<uint8_t>(rawMouse + 4)) {
-            c.wheel(-1);
-        }
-        if (pad.zoom && !(hasHotspots && pad.zoomFromShoulders)) {
-            c.wheel(pad.zoom * float(dt) * 8);
+            moveCamera(c);
         }
         if (hasHotspots && state.ui.dock && v.focus >= 0) {
             const auto points = renderer.hotspots(*mesh, v);

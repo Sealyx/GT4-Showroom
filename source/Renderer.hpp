@@ -26,6 +26,9 @@
 #include "PaintNames.hpp"
 #include "CinematicVehicle.hpp"
 #include "RenderTargets.hpp"
+#include "ViewerStudio.hpp"
+#include "StudioLighting.hpp"
+#include "NativeStudio/EnvironmentMap.hpp"
 
 namespace gt4
 {
@@ -39,12 +42,12 @@ namespace gt4
     {
         std::vector<Vertex> vertices;
         IDirect3DTexture9* texture = nullptr;
+        IDirect3DTexture9* cleanTexture = nullptr;
         uint32_t rgb = 0xFFFFFF;
         int paint = -1;
         float alpha = 1;
         unsigned addressU = 1, addressV = 1;
         int component = -1;
-        CinematicLamp lamp = CinematicLamp::None;
     };
 
     struct Mesh
@@ -72,23 +75,25 @@ namespace gt4
                 if (b.texture) {
                     b.texture->Release();
                 }
+                if (b.cleanTexture) {
+                    b.cleanTexture->Release();
+                }
             }
         }
 
         void compact()
         {
-            std::map<std::tuple<uintptr_t, uint32_t, int, float, unsigned, unsigned, int, CinematicLamp>, size_t>
-                groups;
+            std::map<std::tuple<uintptr_t, uintptr_t, uint32_t, int, float, unsigned, unsigned, int>, size_t> groups;
             std::vector<Batch> merged;
             for (auto& b : batches) {
                 const auto key = std::make_tuple(reinterpret_cast<uintptr_t>(b.texture),
+                                                 reinterpret_cast<uintptr_t>(b.cleanTexture),
                                                  b.rgb,
                                                  b.paint,
                                                  b.alpha,
                                                  b.addressU,
                                                  b.addressV,
-                                                 b.component,
-                                                 b.lamp);
+                                                 b.component);
                 auto it = groups.find(key);
                 if (b.alpha >= .98f && it != groups.end()) {
                     auto& to = merged[it->second].vertices;
@@ -97,6 +102,10 @@ namespace gt4
                         b.texture->Release();
                     }
                     b.texture = nullptr;
+                    if (b.cleanTexture) {
+                        b.cleanTexture->Release();
+                        b.cleanTexture = nullptr;
+                    }
                 } else {
                     if (b.alpha >= .98f) {
                         groups.emplace(key, merged.size());
@@ -116,9 +125,6 @@ namespace gt4
             for (const auto& b : batches) {
                 if (b.paint >= 0 && b.paint < 4) {
                     paintMask |= uint8_t(1u << b.paint);
-                }
-                if (b.lamp != CinematicLamp::None) {
-                    cinematic.lampMask |= uint8_t(1u << unsigned(b.lamp));
                 }
                 for (const auto& v : b.vertices) {
                     low.x = std::min(low.x, v.p.x);
@@ -218,19 +224,62 @@ namespace gt4
     class Renderer
     {
         VehicleLogos logos;
+        VehicleLogos::Image shopLogo, shopStroke;
+        bool shopStrokeTried = false;
+        std::array<VehicleLogos::Image, 6> shopArtwork{};
+        std::array<bool, 6> shopArtworkTried{};
+        std::filesystem::path shopLogoPath;
+        bool shopLogoTried = false;
         float lastShadowPhase = 0, lastShadowAngle = 0, lastShadowSize = 1;
+        studioLighting::LightFrame studioLight{};
+        bool useStudioShadow = false;
+        uint32_t viewerLightTint = 0xFFFFFF;
         std::vector<uint32_t> prizePixels;
         UINT prizeWidth = 0, prizeHeight = 0;
         IDirect3DTexture9* prizeTexture = nullptr;
         int prizeFontEm = 192, prizeFontCell = 256;
-        PrivateFont fontAsset, prizeNameAsset;
+        PrivateFont fontAsset, prizeNameAsset, shopHeadingAsset;
+        IDirect3DTexture9* shopHeadingFont = nullptr;
+        std::array<float, 96> shopHeadingWidths{};
+        std::string footerText;
+        double footerBegan = -1.;
+        IDirect3DTexture9* shopSerifFont = nullptr;
+        std::array<float, 96> shopSerifWidths{};
         IDirect3DTexture9* prizeNameFont = nullptr;
         std::array<float, 96> prizeNameWidths{};
         IDirect3DTexture9* flags = nullptr;
         IDirect3DTexture9* font = nullptr;
+        int titleFontEm = 80, titleFontCell = 160;
+        IDirect3DTexture9* titleFont = nullptr;
+        std::array<float, 96> titleWidths{};
+        bool titleFontAttempted = false;
+
+        struct TextStyle
+        {
+            IDirect3DTexture9* texture;
+            const std::array<float, 96>& advances;
+            float em;
+            float cell;
+            float widthScale;
+        };
+
+        TextStyle textStyle(bool prize) const
+        {
+            if (prize) {
+                return {prizeNameFont, prizeNameWidths, float(prizeFontEm), float(prizeFontCell), 1.08f};
+            }
+            return {font, widths, 29, 64, .90f};
+        }
         IDirect3DSurface9* depth = nullptr;
         IDirect3DTexture9* target = nullptr;
         UINT tw = 0, th = 0;
+        IDirect3DTexture9* viewerTarget = nullptr;
+        IDirect3DTexture9* customStudioTexture = nullptr;
+        std::filesystem::path customStudioPath;
+        bool customStudioLoadAttempted = false;
+        IDirect3DSurface9* viewerTargetSurface = nullptr;
+        IDirect3DSurface9* viewerDepth = nullptr;
+        UINT viewerTargetWidth = 0, viewerTargetHeight = 0;
 
         struct GpuMesh
         {
@@ -346,6 +395,8 @@ namespace gt4
 
         void ownedState(IDirect3DDevice9* d)
         {
+            d->SetStreamSourceFreq(0, 1);
+            d->SetRenderState(D3DRS_MULTISAMPLEMASK, 0xFFFFFFFF);
             d->SetRenderState(D3DRS_ZFUNC, D3DCMP_LESSEQUAL);
             d->SetRenderState(D3DRS_SHADEMODE, D3DSHADE_GOURAUD);
             d->SetRenderState(D3DRS_FILLMODE, D3DFILL_SOLID);
@@ -466,9 +517,10 @@ namespace gt4
         void fontAtlas(IDirect3DDevice9* d,
                        IDirect3DTexture9*& atlas,
                        std::array<float, 96>& advances,
-                       const wchar_t* face,
+                       PrivateFont& asset,
                        int em = 29,
-                       int cell = 64)
+                       int cell = 64,
+                       const wchar_t* systemFamily = nullptr)
         {
             if (atlas) {
                 return;
@@ -492,20 +544,11 @@ namespace gt4
                 return;
             }
             auto old = SelectObject(dc, bitmap);
-            HFONT f = CreateFontW(-em,
-                                  0,
-                                  0,
-                                  0,
-                                  FW_BOLD,
-                                  FALSE,
-                                  FALSE,
-                                  FALSE,
-                                  ANSI_CHARSET,
-                                  OUT_DEFAULT_PRECIS,
-                                  CLIP_DEFAULT_PRECIS,
-                                  ANTIALIASED_QUALITY,
-                                  DEFAULT_PITCH,
-                                  face);
+            HFONT f = systemFamily
+                          ? CreateFontW(-em, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, ANSI_CHARSET,
+                                        OUT_TT_ONLY_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
+                                        DEFAULT_PITCH | FF_ROMAN, systemFamily)
+                          : asset.createFont(dc, em);
             if (!f) {
                 SelectObject(dc, old);
                 DeleteObject(bitmap);
@@ -549,17 +592,32 @@ namespace gt4
 
         void fontCreate(IDirect3DDevice9* d)
         {
-            fontAtlas(d, font, widths, fontAsset.face());
+            fontAtlas(d, font, widths, fontAsset);
+            if (!titleFontAttempted && font) {
+                titleFontAttempted = true;
+                D3DCAPS9 caps{};
+                d->GetDeviceCaps(&caps);
+                if (caps.MaxTextureWidth >= 2560 && caps.MaxTextureHeight >= 960) {
+                    titleFontEm = 80;
+                    titleFontCell = 160;
+                    fontAtlas(d, titleFont, titleWidths, fontAsset, titleFontEm, titleFontCell);
+                }
+                if (!titleFont) {
+                    titleFontEm = 64;
+                    titleFontCell = 128;
+                    fontAtlas(d, titleFont, titleWidths, fontAsset, titleFontEm, titleFontCell);
+                }
+            }
             if (!prizeNameFont) {
                 D3DCAPS9 caps{};
                 d->GetDeviceCaps(&caps);
                 prizeFontEm = caps.MaxTextureWidth >= 4096 && caps.MaxTextureHeight >= 1536 ? 192 : 96;
                 prizeFontCell = prizeFontEm == 192 ? 256 : 128;
-                fontAtlas(d, prizeNameFont, prizeNameWidths, prizeNameAsset.face(), prizeFontEm, prizeFontCell);
+                fontAtlas(d, prizeNameFont, prizeNameWidths, prizeNameAsset, prizeFontEm, prizeFontCell);
                 if (!prizeNameFont && prizeFontEm > 96) {
                     prizeFontEm = 96;
                     prizeFontCell = 128;
-                    fontAtlas(d, prizeNameFont, prizeNameWidths, prizeNameAsset.face(), prizeFontEm, prizeFontCell);
+                    fontAtlas(d, prizeNameFont, prizeNameWidths, prizeNameAsset, prizeFontEm, prizeFontCell);
                 }
             }
         }
@@ -586,6 +644,8 @@ namespace gt4
 
         void releaseTarget()
         {
+            releaseViewerTarget();
+            releaseCustomStudio();
             if (target) {
                 target->Release();
             }
@@ -602,11 +662,27 @@ namespace gt4
         bool lastDraw = false;
         double cpuMs = 0;
         float lightPhase = 0;
+        bool studioEnvironmentAvailable = true;
+
+        nativeStudio::EnvironmentMap<IDirect3DDevice9,
+                                     IDirect3DCubeTexture9,
+                                     IDirect3DTexture9,
+                                     IDirect3DSurface9,
+                                     IDirect3DStateBlock9,
+                                     false> studioEnvironment{false};
         float studioZoom = 1.15f;
 
-        void setLogoRoot(const std::filesystem::path& p)
+        void setShopLogo(const std::filesystem::path& path)
         {
-            logos.setRoot(p);
+            shopLogoPath = path;
+            shopHeadingAsset.load((path.parent_path().parent_path() / L"fonts/Kalam-Bold.ttf").wstring(), L"Kalam");
+        }
+
+        void setLogoRoot(const std::filesystem::path& path)
+        {
+            logos.setRoot(path);
+            customStudioPath = assetPath(path.parent_path() / L"studios/custom.png");
+            releaseCustomStudio();
         }
 
         void ensureUiAssets(IDirect3DDevice9* d)
@@ -619,6 +695,12 @@ namespace gt4
         void releaseTransientTargets()
         {
             releaseTarget();
+        }
+
+        void releaseStudioEnvironment()
+        {
+            studioEnvironment.reset();
+            studioEnvironmentAvailable = true;
         }
 
         int resultFontResolution() const
@@ -687,6 +769,7 @@ namespace gt4
                 font->Release();
                 font = nullptr;
             }
+            releaseTitleFont();
             return fontAsset.load(file, family);
         }
 
@@ -699,21 +782,45 @@ namespace gt4
             return prizeNameAsset.load(file, L"Liberation Sans");
         }
 
-        float textWidth(const std::string& s, float h, bool prize = false) const
+        std::string fontReport(bool prize = false) const
         {
-            const auto& advances = prize ? prizeNameWidths : widths;
+            return prize ? prizeNameAsset.diagnostic() : fontAsset.diagnostic();
+        }
+
+        static float textWidth(const std::string& s, float h, const TextStyle& style)
+        {
+            const auto& advances = style.advances;
             float w = 0;
             for (unsigned char c : s) {
                 w += (c >= 32 && c < 128 ? advances[c - 32] : advances['?' - 32]) * h /
-                     float(prize ? prizeFontEm : 29) * (prize ? 1.08f : .9f);
+                     style.em * style.widthScale;
             }
             return w;
         }
 
+        static float fitted(const std::string& s, float h, float maxWidth, const TextStyle& style)
+        {
+            const float w = textWidth(s, h, style);
+            return w > maxWidth ? h * maxWidth / w : h;
+        }
+
+        float textWidth(const std::string& s, float h, bool prize = false) const
+        {
+            return textWidth(s, h, textStyle(prize));
+        }
+
         float fitted(const std::string& s, float h, float maxWidth, bool prize = false) const
         {
-            const float w = textWidth(s, h, prize);
-            return w > maxWidth ? h * maxWidth / w : h;
+            return fitted(s, h, maxWidth, textStyle(prize));
+        }
+
+        void releaseTitleFont()
+        {
+            if (titleFont) {
+                titleFont->Release();
+                titleFont = nullptr;
+            }
+            titleFontAttempted = false;
         }
 
         ~Renderer()
@@ -723,7 +830,35 @@ namespace gt4
 
         void reset()
         {
+            releaseStudioEnvironment();
             logos.reset();
+            if (shopHeadingFont) {
+                shopHeadingFont->Release();
+                shopHeadingFont = nullptr;
+            }
+            if (shopStroke.texture) {
+                shopStroke.texture->Release();
+                shopStroke = {};
+            }
+            shopStrokeTried = false;
+            footerText.clear();
+            footerBegan = -1.;
+            if (shopSerifFont) {
+                shopSerifFont->Release();
+                shopSerifFont = nullptr;
+            }
+            if (shopLogo.texture) {
+                shopLogo.texture->Release();
+                shopLogo = {};
+            }
+            for (auto& image : shopArtwork) {
+                if (image.texture) {
+                    image.texture->Release();
+                    image = {};
+                }
+            }
+            shopArtworkTried.fill(false);
+            shopLogoTried = false;
             for (auto& b : monitorButtons) {
                 b.second->Release();
             }
@@ -747,13 +882,14 @@ namespace gt4
                 font->Release();
             }
             font = nullptr;
+            releaseTitleFont();
             if (flags) {
                 flags->Release();
             }
             flags = nullptr;
         }
 
-        void rect(IDirect3DDevice9* d,
+        bool rect(IDirect3DDevice9* d,
                   float x,
                   float y,
                   float w,
@@ -773,8 +909,9 @@ namespace gt4
             d->SetTexture(0, texture);
             d->SetTextureStageState(0, D3DTSS_COLOROP, texture ? D3DTOP_MODULATE : D3DTOP_SELECTARG2);
             d->SetTextureStageState(0, D3DTSS_ALPHAOP, texture ? D3DTOP_MODULATE : D3DTOP_SELECTARG2);
-            d->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2, v, sizeof(ScreenVertex));
+            const bool drawn = SUCCEEDED(d->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2, v, sizeof(ScreenVertex)));
             ++drawCalls;
+            return drawn;
         }
 
         void text(IDirect3DDevice9* d,
@@ -783,24 +920,28 @@ namespace gt4
                   float y,
                   float height,
                   DWORD col,
-                  bool center = false,
-                  float skew = 0,
-                  bool prize = false)
+                  bool center,
+                  float skew,
+                  const TextStyle& style,
+                  float rotation = 0)
         {
-            IDirect3DTexture9* atlas = prize ? prizeNameFont : font;
-            const auto& advances = prize ? prizeNameWidths : widths;
+            auto* atlas = style.texture;
+            const auto& advances = style.advances;
             if (!atlas) {
                 return;
             }
             screen(d);
             std::vector<ScreenVertex> glyphs;
             glyphs.reserve(s.size() * 6);
-            const float cell = float(prize ? prizeFontCell : 64), em = float(prize ? prizeFontEm : 29),
-                        sy = height / em, sx = sy * (prize ? 1.08f : .90f);
+            const float cell = style.cell;
+            const float sy = height / style.em;
+            const float sx = sy * style.widthScale;
             float length = 0;
             for (unsigned char c : s) {
                 length += (c >= 32 && c < 128 ? advances[c - 32] : advances['?' - 32]) * sx;
             }
+            const float pivotX = center ? x : x + length * .5f;
+            const float pivotY = y + height * .5f;
             if (center) {
                 x -= length * .5f;
             }
@@ -826,6 +967,14 @@ namespace gt4
                                      u + (advances[i] + 1) / (16 * cell),
                                      v + 1.f / 6},
                                     {x - .5f, y + cell * sy - .5f, 0, 1, col, u, v + 1.f / 6}};
+                if (rotation) {
+                    const float sine = std::sin(rotation), cosine = std::cos(rotation);
+                    for (auto& vertex : q) {
+                        const float dx = vertex.x - pivotX, dy = vertex.y - pivotY;
+                        vertex.x = pivotX + dx * cosine - dy * sine;
+                        vertex.y = pivotY + dx * sine + dy * cosine;
+                    }
+                }
                 glyphs.insert(glyphs.end(), {q[0], q[1], q[2], q[0], q[2], q[3]});
                 x += advances[i] * sx;
             }
@@ -833,6 +982,33 @@ namespace gt4
                 d->DrawPrimitiveUP(D3DPT_TRIANGLELIST, UINT(glyphs.size() / 3), glyphs.data(), sizeof(ScreenVertex));
                 ++drawCalls;
             }
+        }
+
+        void text(IDirect3DDevice9* d,
+                  const std::string& s,
+                  float x,
+                  float y,
+                  float height,
+                  DWORD col,
+                  bool center = false,
+                  float skew = 0,
+                  bool prize = false)
+        {
+            text(d, s, x, y, height, col, center, skew, textStyle(prize));
+        }
+
+        void label(IDirect3DDevice9* d,
+                   const std::string& s,
+                   float x,
+                   float y,
+                   float h,
+                   float alpha,
+                   bool center,
+                   float skew,
+                   const TextStyle& style)
+        {
+            text(d, s, x + 1.5f, y + 2, h, color(0x000000, alpha * .9f), center, skew, style);
+            text(d, s, x, y, h, color(0xD6D9D9, alpha), center, skew, style);
         }
 
         void label(IDirect3DDevice9* d,
@@ -845,8 +1021,16 @@ namespace gt4
                    float skew = 0,
                    bool prize = false)
         {
-            text(d, s, x + 1.5f, y + 2, h, color(0x000000, alpha * .9f), center, skew, prize);
-            text(d, s, x, y, h, color(0xD6D9D9, alpha), center, skew, prize);
+            label(d, s, x, y, h, alpha, center, skew, textStyle(prize));
+        }
+
+        float footerReveal(const std::string& message, double now)
+        {
+            if (message != footerText || footerBegan < 0. || now < footerBegan) {
+                footerText = message;
+                footerBegan = now;
+            }
+            return ease(float((now - footerBegan) / .16));
         }
 
         void cursor(IDirect3DDevice9* d, float x, float y, float scale, float alpha)
@@ -899,52 +1083,68 @@ namespace gt4
             stroke(cursorInset[0], cursorInset[3], .85f, 0xA57308);
         }
 
-        void studio(IDirect3DDevice9* d, const Camera& cam, float phase)
+        void studio(IDirect3DDevice9* d, const Camera& cam, double seconds)
         {
+            studioLight = studioLighting::frame(seconds + 16.);
+            useStudioShadow = true;
+
+            float x = 0, floorY = 0, z = 0, rhw = 0;
+            const bool floorVisible = cam.project({0, 0, 0}, x, floorY, z, rhw);
+            const float floorShift = floorVisible ? std::clamp(floorY / cam.h - .56f, -.12f, .12f) : 0.f;
+            constexpr int columns = 40;
+            constexpr int rows = 32;
+            constexpr int stride = columns + 1;
+            static constexpr auto indices = [] {
+                std::array<uint16_t, columns * rows * 6> result{};
+                size_t index = 0;
+                for (int row = 0; row < rows; ++row) {
+                    for (int column = 0; column < columns; ++column) {
+                        const auto a = uint16_t(row * stride + column);
+                        const auto b = uint16_t(a + 1);
+                        const auto c = uint16_t(b + stride);
+                        const auto e = uint16_t(a + stride);
+                        result[index++] = a;
+                        result[index++] = b;
+                        result[index++] = c;
+                        result[index++] = a;
+                        result[index++] = c;
+                        result[index++] = e;
+                    }
+                }
+                return result;
+            }();
+
+            std::array<ScreenVertex, stride * (rows + 1)> vertices{};
+            for (int row = 0; row <= rows; ++row) {
+                const float v = float(row) / rows;
+                for (int column = 0; column <= columns; ++column) {
+                    const float u = float(column) / columns;
+                    const float luminance = studioLighting::luminance(studioLight, u, v - floorShift);
+                    vertices[row * stride + column] = {
+                        u * cam.w - .5f, v * cam.h - .5f, 1.f, 1.f, color(0xF7FCFF, 1, luminance), 0.f, 0.f};
+                }
+            }
+
             screen(d);
-            std::vector<ScreenVertex> v;
-            v.reserve(48 * 40 * 6);
-            auto sample = [&](float x, float y) {
-                float z = 0;
-                if (y > 9) {
-                    const float q = (y - 9) / 15.f;
-                    z = q * q * 14.f;
-                }
-                const V3 p = {x, y, z};
-                const float beam = std::exp(
-                    -std::pow((y + 1.3f + std::sin(phase) * x * .42f + std::sin(phase * .7f) * 3.f) / 2.2f, 2));
-                const float spot =
-                    .14f * std::exp(-std::pow((x + std::sin(phase) * 14) / 14.f, 2) - std::pow((z - 5) / 12.f, 2));
-                const float light =
-                    spot + .23f + .25f * (.5f + .5f * std::cos(phase + .8f)) + .28f * beam + std::max(0.f, z) * .009f;
-                ScreenVertex s{};
-                cam.project(p, s.x, s.y, s.z, s.rhw);
-                s.color = color(0xB7BDBF, 1, light * 1.6f);
-                return s;
-            };
-            std::array<ScreenVertex, 49 * 41> grid{};
-            for (int y = 0; y <= 40; ++y) {
-                for (int x = 0; x <= 48; ++x) {
-                    grid[y * 49 + x] = sample((x - 24) * 2.6f, cam.eye.y + .12f + y * (24 - cam.eye.y - .12f) / 40);
-                }
-            }
-            for (int y = 0; y < 40; ++y) {
-                for (int x = 0; x < 48; ++x) {
-                    const auto &a = grid[y * 49 + x], &b = grid[y * 49 + x + 1], &c = grid[(y + 1) * 49 + x + 1],
-                               &e = grid[(y + 1) * 49 + x];
-                    v.insert(v.end(), {a, b, c, a, c, e});
-                }
-            }
             d->SetTexture(0, nullptr);
             d->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG2);
             d->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG2);
             d->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
-            d->SetRenderState(D3DRS_ZENABLE, TRUE);
-            d->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
-            d->DrawPrimitiveUP(D3DPT_TRIANGLELIST, UINT(v.size() / 3), v.data(), sizeof(ScreenVertex));
-            triangles += v.size() / 3;
+            d->SetRenderState(D3DRS_ZENABLE, FALSE);
+            d->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
+            d->DrawIndexedPrimitiveUP(D3DPT_TRIANGLELIST,
+                                      0,
+                                      UINT(vertices.size()),
+                                      UINT(indices.size() / 3),
+                                      indices.data(),
+                                      D3DFMT_INDEX16,
+                                      vertices.data(),
+                                      sizeof(ScreenVertex));
+            triangles += indices.size() / 3;
             ++drawCalls;
         }
+
+#include "VehicleViewerRenderer.inl"
 
         void mesh(IDirect3DDevice9* d,
                   const Mesh& m,
@@ -957,7 +1157,10 @@ namespace gt4
                   bool reflection = false,
                   bool absolute = false,
                   const CinematicVehicleState* vehicle = nullptr,
-                  double clock = 0)
+                  bool viewerSubject = false,
+                  float rideHeight = 0,
+                  bool panoramaReflection = false,
+                  bool clean = false)
         {
             if (opacity <= 0 || m.empty()) {
                 return;
@@ -982,7 +1185,10 @@ namespace gt4
                 world._43 = -world._43;
             }
             const float phase = shadow ? lastShadowPhase : lightPhase;
-            const V3 light = unit({-3.f + std::sin(phase) * 4.f, -4.f + std::cos(phase) * 2.f, 7});
+            V3 light = unit({-3.f + std::sin(phase) * 4.f, -4.f + std::cos(phase) * 2.f, 7});
+            if (shadow && useStudioShadow) {
+                light = {-studioLight.shadowX, -studioLight.shadowY, 1.f};
+            }
             if (shadow) {
                 D3DMATRIX flat = world;
                 for (int row = 0; row < 4; ++row) {
@@ -1025,6 +1231,9 @@ namespace gt4
                 local._41 = part.position.x;
                 local._42 = part.position.y;
                 local._43 = part.position.z;
+                if (rideHeight && component < int(CinematicComponent::FrontLeftWheel)) {
+                    local._43 += rideHeight;
+                }
                 D3DMATRIX combined{};
                 for (int row = 0; row < 4; ++row) {
                     for (int col = 0; col < 4; ++col) {
@@ -1037,12 +1246,13 @@ namespace gt4
             };
             if (shadow) {
                 d->SetTexture(0, nullptr);
-                d->SetRenderState(D3DRS_TEXTUREFACTOR, color(0, opacity * .55f));
+                const float shadowOpacity = useStudioShadow ? studioLight.shadowOpacity : .55f;
+                d->SetRenderState(D3DRS_TEXTUREFACTOR, color(0, opacity * shadowOpacity));
                 d->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
                 d->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
                 d->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TFACTOR);
                 d->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TFACTOR);
-                if (vehicle && m.cinematic.any()) {
+                if ((vehicle || rideHeight) && m.cinematic.any()) {
                     for (size_t i = 0; i < m.batches.size(); ++i) {
                         const auto& b = m.batches[i];
                         if (b.vertices.empty()) {
@@ -1063,11 +1273,66 @@ namespace gt4
                 d->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
                 return;
             }
+            if (viewerSubject) {
+                d->SetRenderState(D3DRS_AMBIENT, 0xFF7C7C7C);
+            }
+            auto* room = viewerSubject && (m.paintMask || panoramaReflection)
+                             ? studioEnvironment.cubeTexture()
+                             : nullptr;
+            if (room) {
+                D3DMATRIX roomTransform = identity();
+                roomTransform._11 = cam.right.x;
+                roomTransform._12 = cam.right.z;
+                roomTransform._13 = cam.right.y;
+                roomTransform._21 = cam.up.x;
+                roomTransform._22 = cam.up.z;
+                roomTransform._23 = cam.up.y;
+                roomTransform._31 = cam.forward.x;
+                roomTransform._32 = cam.forward.z;
+                roomTransform._33 = cam.forward.y;
+                d->SetTransform(D3DTS_TEXTURE1, &roomTransform);
+                d->SetTexture(1, room);
+                d->SetTextureStageState(1, D3DTSS_TEXCOORDINDEX, D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR);
+                d->SetTextureStageState(1, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_COUNT3);
+                d->SetTextureStageState(1, D3DTSS_COLORARG0, D3DTA_CURRENT);
+                d->SetTextureStageState(1, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+                d->SetTextureStageState(1, D3DTSS_COLORARG2, D3DTA_TFACTOR);
+                d->SetTextureStageState(1, D3DTSS_ALPHAARG1, D3DTA_CURRENT);
+                d->SetTextureStageState(1, D3DTSS_RESULTARG, D3DTA_CURRENT);
+                const DWORD reflectionGain = !panoramaReflection ? 0xFF333333
+                                               : m.paintMask      ? 0xFF171717
+                                                                  : 0xFF0B0B0B;
+                d->SetRenderState(D3DRS_TEXTUREFACTOR, reflectionGain);
+                d->SetRenderState(D3DRS_WRAP1, 0);
+                d->SetSamplerState(1, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
+                d->SetSamplerState(1, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
+                d->SetSamplerState(1, D3DSAMP_ADDRESSW, D3DTADDRESS_CLAMP);
+                d->SetSamplerState(1, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
+                d->SetSamplerState(1, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
+                d->SetSamplerState(1, D3DSAMP_MIPFILTER, D3DTEXF_LINEAR);
+                d->SetSamplerState(1, D3DSAMP_MAXMIPLEVEL, 0);
+                const float mipBias = panoramaReflection ? .6f : 0.f;
+                DWORD mipBiasBits = 0;
+                std::memcpy(&mipBiasBits, &mipBias, sizeof(mipBiasBits));
+                d->SetSamplerState(1, D3DSAMP_MIPMAPLODBIAS, mipBiasBits);
+                d->SetSamplerState(1, D3DSAMP_SRGBTEXTURE, FALSE);
+                d->SetTextureStageState(2, D3DTSS_COLOROP, D3DTOP_DISABLE);
+                d->SetTextureStageState(2, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
+            }
+            bool reflective = false;
             D3DLIGHT9 lamp{};
             lamp.Type = D3DLIGHT_DIRECTIONAL;
             lamp.Direction = {-light.x, -light.y, -light.z};
             lamp.Diffuse = {.58f, .58f, .58f, 1};
             lamp.Specular = {.65f, .65f, .65f, 1};
+            if (viewerLightTint != 0xFFFFFF) {
+                lamp.Diffuse.r *= .8f + .2f * float((viewerLightTint >> 16) & 255) / 255;
+                lamp.Diffuse.g *= .8f + .2f * float((viewerLightTint >> 8) & 255) / 255;
+                lamp.Diffuse.b *= .8f + .2f * float(viewerLightTint & 255) / 255;
+                lamp.Specular.r *= float((viewerLightTint >> 16) & 255) / 255;
+                lamp.Specular.g *= float((viewerLightTint >> 8) & 255) / 255;
+                lamp.Specular.b *= float(viewerLightTint & 255) / 255;
+            }
             d->SetLight(0, &lamp);
             d->LightEnable(0, TRUE);
             for (int pass = 0; pass < 2; ++pass) {
@@ -1076,8 +1341,16 @@ namespace gt4
                     if (((b.alpha < .98f) ? 1 : 0) != pass || b.vertices.empty()) {
                         continue;
                     }
-                    if (vehicle) {
+                    if (vehicle || rideHeight) {
                         transforms(d, cam, partWorld(b.component));
+                    }
+                    const bool untaggedBody = panoramaReflection && !m.paintMask &&
+                                              b.component < int(CinematicComponent::FrontLeftWheel);
+                    const bool glossyPaint = room && pass == 0 && (b.paint >= 0 || untaggedBody);
+                    if (glossyPaint != reflective) {
+                        reflective = glossyPaint;
+                        d->SetTextureStageState(1, D3DTSS_COLOROP, reflective ? D3DTOP_MULTIPLYADD : D3DTOP_DISABLE);
+                        d->SetTextureStageState(1, D3DTSS_ALPHAOP, reflective ? D3DTOP_SELECTARG1 : D3DTOP_DISABLE);
                     }
                     const uint32_t rgb = b.paint >= 0 ? paint.rgb[b.paint] : b.rgb;
                     D3DMATERIAL9 mat{};
@@ -1086,13 +1359,6 @@ namespace gt4
                                    float(rgb & 255) / 255,
                                    std::clamp(opacity * b.alpha, 0.f, 1.f)};
                     mat.Ambient = mat.Diffuse;
-                    const auto glow = cinematicLampState(b.lamp, vehicle, clock);
-                    if (glow.on) {
-                        mat.Emissive = {float(glow.color >> 16 & 255) / 255,
-                                        float(glow.color >> 8 & 255) / 255,
-                                        float(glow.color & 255) / 255,
-                                        1};
-                    }
                     const float spec = b.paint >= 0 ? .72f : .20f;
                     mat.Specular = {spec, spec, spec, 1};
                     mat.Power = 40;
@@ -1104,9 +1370,10 @@ namespace gt4
                     d->SetSamplerState(0, D3DSAMP_ADDRESSV, b.addressV);
                     d->SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
                     d->SetSamplerState(0, D3DSAMP_MAXMIPLEVEL, 0);
-                    d->SetTexture(0, b.texture);
-                    d->SetTextureStageState(0, D3DTSS_COLOROP, b.texture ? D3DTOP_MODULATE : D3DTOP_SELECTARG2);
-                    d->SetTextureStageState(0, D3DTSS_ALPHAOP, b.texture ? D3DTOP_MODULATE : D3DTOP_SELECTARG2);
+                    auto* texture = clean && b.cleanTexture ? b.cleanTexture : b.texture;
+                    d->SetTexture(0, texture);
+                    d->SetTextureStageState(0, D3DTSS_COLOROP, texture ? D3DTOP_MODULATE : D3DTOP_SELECTARG2);
+                    d->SetTextureStageState(0, D3DTSS_ALPHAOP, texture ? D3DTOP_MODULATE : D3DTOP_SELECTARG2);
                     d->SetRenderState(D3DRS_ZWRITEENABLE, pass == 0);
                     d->SetRenderState(D3DRS_ALPHATESTENABLE, TRUE);
                     d->SetRenderState(D3DRS_ALPHAFUNC, D3DCMP_GREATER);
@@ -1115,6 +1382,15 @@ namespace gt4
                     triangles += b.vertices.size() / 3;
                     ++drawCalls;
                 }
+            }
+            if (room) {
+                d->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
+                d->SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
+                d->SetTextureStageState(1, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
+                d->SetTexture(1, nullptr);
+            }
+            if (viewerSubject) {
+                d->SetRenderState(D3DRS_AMBIENT, 0xFF6B6B6B);
             }
             d->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
         }
@@ -1322,8 +1598,14 @@ namespace gt4
             ++drawCalls;
         }
 
-        void monitorButton(
-            IDirect3DDevice9* d, UIRect r, const std::string& caption, float alpha, float scale, bool selected)
+        void monitorButton(IDirect3DDevice9* d,
+                           UIRect r,
+                           const std::string& caption,
+                           float alpha,
+                           float scale,
+                           bool selected,
+                           float captionShift = 0,
+                           float captionSize = 12)
         {
             const auto key = std::make_pair(int(std::lround(r.w / r.h * 64)), selected);
             auto found = monitorButtons.find(key);
@@ -1370,7 +1652,15 @@ namespace gt4
                 d->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, v, sizeof(ScreenVertex));
                 ++drawCalls;
             }
-            text(d, caption, r.x + r.w * .5f, r.y + 2.f * scale, 12 * scale, color(0x101013, alpha), true, 0, true);
+            text(d,
+                 caption,
+                 r.x + r.w * .5f,
+                 r.y + (2.f + captionShift) * scale,
+                 fitted(caption, captionSize * scale, r.w - 18 * scale),
+                 color(0x101013, alpha),
+                 true,
+                 0,
+                 true);
         }
 
         void monitorNextIcon(IDirect3DDevice9* d, float x, float y, float scale, float alpha)
@@ -1402,7 +1692,7 @@ namespace gt4
                 text(d,
                      m.monitorTitle(level),
                      r.x + r.w * .5f,
-                     r.y + (level == 0 ? 3 : 1) * scale,
+                     r.y + (level == 0 && m.settingsView != SettingsView::VehicleViewer ? 3.f : 2.f) * scale,
                      fitted(m.monitorTitle(level), 13 * scale, r.w - 20 * scale, true),
                      color(0xD0D0D2, alpha),
                      true,
@@ -1412,6 +1702,9 @@ namespace gt4
                 const int count = single ? 1 : int(rows.size());
                 for (int i = 0; i < count; ++i) {
                     const float yy = r.y + (22 + 28 * i) * scale;
+                    if (yy + 28 * scale > r.y + r.h - 35 * scale + .01f) {
+                        break;
+                    }
                     rect(
                         d, r.x + 2 * scale, yy, r.w - 4 * scale, 28 * scale, color(i % 2 ? 0xACACB1 : 0xB4B4B9, alpha));
                     const auto field = m.monitorField(level, i, W, H);
@@ -1427,12 +1720,6 @@ namespace gt4
                         }
                     } else {
                         caption = rows[size_t(i)].label;
-                        if (level == 0 && i == 1) {
-                            caption = "Favorites";
-                        }
-                        if (level == 0 && i == 2) {
-                            caption = "Cinematic";
-                        }
                         value = m.monitorValue(level, i);
                     }
                     text(d,
@@ -1445,12 +1732,11 @@ namespace gt4
                          0,
                          true);
                     if (level == 1 && m.sliderWindow()) {
-                        rect(d, field.x, field.y, field.w, field.h, color(0x9698A0, alpha));
                         const auto track = m.monitorSlider(i, W, H);
-                        const float center = track.y + track.h * .5f,
-                                    filled = track.w * m.sliderValue(i) / std::max(1, m.sliderMaximum(i));
-                        rect(d, track.x, center - 2 * scale, track.w, 4 * scale, color(0x686A72, alpha));
-                        rect(d, track.x, center - 1 * scale, filled, 2 * scale, color(0xEEB039, alpha));
+                        const float center = track.y + track.h * .5f;
+                        const float filled = track.w * m.sliderValue(i) / std::max(1, m.sliderMaximum(i));
+                        rect(d, track.x, center - 2 * scale, track.w, 4 * scale, color(0x92939A, alpha));
+                        rect(d, track.x, center - 1.5f * scale, filled, 3 * scale, color(0xF3AA27, alpha));
                         const UIRect knob{track.x + filled - 4 * scale, track.y, 8 * scale, track.h};
                         const auto& ramp = m.monitorFieldSelected(level, i) ? monitorOrange : monitorArrowGray;
                         for (size_t band = 0; band < ramp.size(); ++band) {
@@ -1461,18 +1747,6 @@ namespace gt4
                                  knob.h / ramp.size() + .1f,
                                  color(ramp[band], alpha));
                         }
-                        const auto value = m.sliderLabel(i);
-                        const float labelX = track.x + track.w + 12 * scale,
-                                    labelWidth = std::max(1.f, field.x + field.w - labelX - 3 * scale);
-                        text(d,
-                             value,
-                             labelX + labelWidth * .5f,
-                             field.y + 3.4f * scale,
-                             fitted(value, 11 * scale, labelWidth, true),
-                             color(0x08080C, alpha),
-                             true,
-                             0,
-                             true);
                     } else {
                         monitorBevel(d,
                                      field,
@@ -1521,7 +1795,7 @@ namespace gt4
                     }
                     const auto& item = options[size_t(i)];
                     if (m.current(level) == i) {
-                        rect(d, row.x, row.y, row.w, row.h, color(0xEEB039, a));
+                        rect(d, r.x, row.y, row.x + row.w - r.x, row.h, color(0xEEB039, a));
                     }
                     text(d,
                          item.label,
@@ -1634,7 +1908,7 @@ namespace gt4
         CinematicHotspotList hotspots(const Mesh& m, const CinematicVehicleState& state) const
         {
             CinematicHotspotList result;
-            if (!state.hotspots || m.serial != lastCarSerial) {
+            if (m.serial != lastCarSerial) {
                 return result;
             }
             const float scale = lastCarCamera.h / 720.f, co = std::cos(lastCarAngle), si = std::sin(lastCarAngle);
@@ -1746,22 +2020,84 @@ namespace gt4
             }
         }
 
+#include "TransFenderRenderer.inl"
+
+        bool compositeStudioTexture(IDirect3DDevice9* d, const D3DVIEWPORT9& viewport, const Model& model)
+        {
+            d->SetRenderState(D3DRS_ZENABLE, FALSE);
+            d->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
+            d->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+            const float motion = model.busy()
+                ? smoothFade(float((model.clock - model.fade.began) / MenuFade::duration))
+                : 1.f - model.opening();
+            const float dolly = .009f * motion;
+            return rect(d, float(viewport.X), float(viewport.Y), float(viewport.Width), float(viewport.Height),
+                        0xFFFFFFFF, target, dolly, dolly, 1.f - dolly, 1.f - dolly);
+        }
+
+        bool presentStudio(IDirect3DDevice9* d, const Model& model)
+        {
+            D3DVIEWPORT9 viewport{};
+            IDirect3DStateBlock9* saved = nullptr;
+            if (!target || FAILED(d->GetViewport(&viewport)) ||
+                FAILED(d->CreateStateBlock(D3DSBT_ALL, &saved)) || !saved) {
+                return false;
+            }
+
+            d->SetVertexShader(nullptr);
+            d->SetPixelShader(nullptr);
+            ownedState(d);
+            d->SetRenderState(D3DRS_SCISSORTESTENABLE, FALSE);
+            d->SetRenderState(D3DRS_FOGENABLE, FALSE);
+            d->SetRenderState(D3DRS_LIGHTING, FALSE);
+            d->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+            d->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
+            d->SetRenderState(D3DRS_COLORWRITEENABLE, 15);
+            d->SetRenderState(D3DRS_SRGBWRITEENABLE, FALSE);
+            d->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+            d->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_DIFFUSE);
+            d->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
+            d->SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE);
+            d->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
+            d->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
+            d->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
+            d->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
+            d->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
+            d->SetSamplerState(0, D3DSAMP_SRGBTEXTURE, FALSE);
+            const bool drawn = compositeStudioTexture(d, viewport, model);
+            lastDraw = SUCCEEDED(saved->Apply()) && drawn;
+            saved->Release();
+            return lastDraw;
+        }
+
         template <class Lookup>
+        bool draw(IDirect3DDevice9* d, UINT width, UINT height, const Model& model,
+                  const std::vector<Entry>& entries, Lookup lookup)
+        {
+            return draw(d, width, height, model, entries, lookup, [](int) -> const Mesh* { return nullptr; });
+        }
+
+        template <class Lookup, class Parts>
         bool draw(IDirect3DDevice9* d,
                   UINT width,
                   UINT height,
                   const Model& s,
                   const std::vector<Entry>& entries,
-                  Lookup lookup)
+                  Lookup lookup,
+                  Parts parts,
+                  bool stageOnly = false)
         {
             LARGE_INTEGER begin{}, frequency{};
             QueryPerformanceCounter(&begin);
             QueryPerformanceFrequency(&frequency);
             lastDraw = false;
+            const bool customStudio = s.viewer.settings.scene == ViewerScene::Custom;
+            viewerLightTint = s.viewer.active && !customStudio ? s.viewer.settings.lighting().color : 0xFFFFFF;
             triangles = drawCalls = uploads = 0;
             ++frameSerial;
             lightPhase = float(s.clock) * .42f;
             lastShadowPhase = lightPhase;
+            useStudioShadow = false;
             if (!d || !s.open || (!entries.empty() && s.selected >= entries.size())) {
                 return false;
             }
@@ -1842,13 +2178,20 @@ namespace gt4
             const Entry& e = entries.empty() ? emptyEntry : entries[s.selected];
             const Mesh* main = entries.empty() ? nullptr : lookup(e.id);
             const float span = main ? main->span() : 5.f;
-            if (s.page == Page::Prize) {
+            if (s.shop.open() && s.shop.page != ShopPage::Closed) {
+                drawTransFender(d, W, H, s, e, main, parts);
+                spawnReviewDialog(d, W, H, s);
+                if (s.spawnReview != SpawnReview::None && s.pointerVisible && !s.ui.controllerUsed) {
+                    cursor(d, s.pointerX * W, s.pointerY * H, scale * .85f, 1);
+                }
+            } else if (s.page == Page::Prize) {
                 prizeScene(d, W, H, s, e, main);
             } else {
                 Camera cam(W, H, 5.f);
                 const float zoom = std::isfinite(studioZoom) ? std::clamp(studioZoom, .65f, 1.75f) : 1.15f;
                 cam.eye = V3{0, 0, .55f} + (cam.eye - V3{0, 0, .55f}) * (1 / zoom);
-                lastShadowPhase = s.ui.cinematic.active ? float(s.ui.cinematic.lightTime(s.clock)) * .42f : lightPhase;
+                const double studioTime = s.ui.cinematic.active ? s.ui.cinematic.lightTime(s.clock) : s.clock;
+                lastShadowPhase = float(studioTime) * .42f;
                 const Paint paint = e.paints.empty() ? Paint{} : e.paints[std::min(s.paint, e.paints.size() - 1)];
                 if (main) {
                     Camera mainCam = cam;
@@ -1887,7 +2230,16 @@ namespace gt4
                         mainCam.right = unit(cross(mainCam.forward, {0, 0, 1}));
                         mainCam.up = cross(mainCam.right, mainCam.forward);
                     }
-                    studio(d, mainCam, lightPhase);
+                    if (s.viewer.active) {
+                        lightPhase = lastShadowPhase = float(s.viewer.elapsed(s.clock)) * .42f;
+                        if (main->paintMask || customStudio) {
+                            updateStudioEnvironment(d, s.viewer, s.clock);
+                        }
+                        mainCam = viewerCamera(W, H, s.viewer, s.clock);
+                        angle = pi;
+                    } else {
+                        studio(d, mainCam, studioTime);
+                    }
                     lastCarCamera = mainCam;
                     lastCarAngle = angle;
                     lastCarSize = s.scale() * adaptivePreviewSpan(span, compactThumbnail(e) || span < 2.8f) / span;
@@ -1918,7 +2270,22 @@ namespace gt4
                     }
                     carHit = {lowX, lowY, highX - lowX, highY - lowY};
                     const auto* vehicle = s.ui.cinematic.active ? &s.ui.vehicle : nullptr;
-                    if (s.ui.shadows) {
+                    const float rideHeight = float(s.shop.confirmedRideHeight) * .025f;
+                    if (s.viewer.active) {
+                        viewerRoom(d,
+                                   mainCam,
+                                   s.viewer,
+                                   s.clock,
+                                   *main,
+                                   angle,
+                                   paint,
+                                   s.carAlpha(),
+                                   lastCarSize,
+                                   vehicle,
+                                   rideHeight,
+                                   s.shop.washed);
+                    }
+                    if (s.viewer.active ? s.viewer.settings.shadows : s.ui.shadows) {
                         mesh(d,
                              *main,
                              mainCam,
@@ -1930,7 +2297,8 @@ namespace gt4
                              false,
                              false,
                              vehicle,
-                             s.clock);
+                             false,
+                             rideHeight);
                     }
                     mesh(d,
                          *main,
@@ -1943,14 +2311,17 @@ namespace gt4
                          false,
                          false,
                          vehicle,
-                         s.clock);
+                         s.viewer.active,
+                         rideHeight,
+                         customStudio,
+                         s.shop.washed);
                 } else {
-                    studio(d, cam, lightPhase);
+                    studio(d, cam, studioTime);
                 }
                 d->SetRenderState(D3DRS_ZENABLE, FALSE);
                 d->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
                 d->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
-                if (main) {
+                if (main && !s.viewer.active) {
                     const auto rows = vehicleDisplayRows(e, s.ui);
                     if (!rows.empty()) {
                         const auto box = vehicleDisplayPanel(W, H, carHit, rows.size());
@@ -2126,14 +2497,20 @@ namespace gt4
                     const bool carLogo =
                         s.ui.carLogo && logo(false, W * .77f, H * .065f, W * .4f, H * .13f, 1 - s.titleMix());
                     if (!carLogo) {
+                        const auto& name = e.title.empty() ? e.name : e.title;
+                        const auto regular = textStyle(false);
+                        const auto style = titleFont
+                            ? TextStyle{titleFont, titleWidths, float(titleFontEm), float(titleFontCell), regular.widthScale}
+                            : regular;
                         label(d,
-                              e.title.empty() ? e.name : e.title,
+                              name,
                               W * .77f,
                               H * .065f,
-                              fitted(e.title.empty() ? e.name : e.title, 50 * scale, W * .40f),
+                              fitted(name, 50 * scale, W * .40f, style),
                               1 - s.titleMix(),
                               true,
-                              10 * scale);
+                              0,
+                              style);
                     }
                     const bool brandLogo =
                         s.ui.brandLogo && logo(true, W * .80f, H * .065f, W * .30f, H * .12f, s.titleMix());
@@ -2158,7 +2535,14 @@ namespace gt4
                     const FooterLayout footer(H);
                     const auto help = s.ui.menu.help();
                     if (help.empty()) {
-                        label(d, foot, W * .5f, footer.y, fitted(foot, footer.fontHeight, W * .84f), 1, true);
+                        const float reveal = footerReveal(foot, s.clock);
+                        label(d,
+                              foot,
+                              W * .5f,
+                              footer.y + (1.f - reveal) * 9 * scale,
+                              fitted(foot, footer.fontHeight, W * .84f),
+                              reveal,
+                              true);
                         label(d,
                               std::to_string(entries.empty() ? 0 : s.selected + 1) + " / " +
                                   std::to_string(entries.size()),
@@ -2168,12 +2552,13 @@ namespace gt4
                               1,
                               true);
                     } else {
+                        const float reveal = footerReveal(help, s.clock);
                         text(d,
                              help,
                              W * .5f,
-                             H * .929f,
+                             H * .929f + (1.f - reveal) * 9 * scale,
                              fitted(help, 16 * scale, W * .9f, true),
-                             color(0xD5D5D8),
+                             color(0xD5D5D8, reveal),
                              true,
                              0,
                              true);
@@ -2251,57 +2636,61 @@ namespace gt4
                           fitted(s.searchNotice, 13 * scale, boxW - 28 * scale),
                           1,
                           true);
+                } else if (!entries.empty() && s.selected < entries.size() &&
+                           s.ui.countryNotice(entries[s.selected].country, s.searching, false)) {
+                    static const std::string first = "This vehicle is unassigned to a country.";
+                    static const std::string second = "Add its model name or ID in GT4Showroom.ini.";
+                    const float boxW = std::min(W * .54f, 650 * scale), x = (W - boxW) * .5f, y = H * .66f;
+                    rect(d, x, y, boxW, 54 * scale, color(0x080B0D, .94f));
+                    rect(d, x, y, 2 * scale, 54 * scale, 0xFFAEB5B5);
+                    label(d, first, W * .5f, y + 5 * scale, fitted(first, 13 * scale, boxW - 28 * scale), 1, true);
+                    label(d, second, W * .5f, y + 29 * scale, fitted(second, 11 * scale, boxW - 28 * scale), 1, true);
                 }
-                if (main && s.ui.cinematic.active && !s.ui.menu.open) {
+                if (main && s.ui.cinematic.active && s.hotspotsEnabled() && !s.ui.menu.open &&
+                    s.spawnReview == SpawnReview::None) {
                     drawHotspots(d, *main, s.ui.vehicle, s.carAlpha());
                 }
                 keyboardPanel(d, W, H, s);
                 studioMenu(d, W, H, s);
+                if (s.postSelectionCinematic && s.ui.cinematic.active && !s.appearanceReady && !s.ui.menu.open &&
+                    s.spawnReview == SpawnReview::None) {
+                    const std::string message = s.status.empty() ? "Preparing customization preview..." : s.status;
+                    const float boxWidth = std::min(W * .7f, 720 * scale);
+                    rect(d, (W - boxWidth) * .5f, H * .86f, boxWidth, 36 * scale, color(0x080B0D, .94f));
+                    label(d,
+                          message,
+                          W * .5f,
+                          H * .86f + 6 * scale,
+                          fitted(message, 12 * scale, boxWidth - 28 * scale),
+                          1,
+                          true);
+                }
+                spawnReviewDialog(d, W, H, s);
                 if (s.pointerVisible &&
-                    (!s.ui.cinematic.active || s.ui.menu.open || s.clock - s.ui.pointerMoved < 2.5)) {
+                    (!s.ui.cinematic.active || s.ui.menu.open || s.spawnReview != SpawnReview::None ||
+                     s.clock - s.ui.pointerMoved < 2.5)) {
                     cursor(d, s.pointerX * W, s.pointerY * H, scale * .85f, 1);
                 }
             }
-            if (s.blackAlpha() > 0) {
-                rect(d, 0, 0, W, H, color(0x000000, s.blackAlpha()));
+            const float blackout = s.shop.page == ShopPage::Closed
+                                       ? std::max(s.blackAlpha(), s.shop.fade(s.clock))
+                                       : s.blackAlpha();
+            if (blackout > 0) {
+                rect(d, 0, 0, W, H, color(0x000000, blackout));
             }
-            if (!targets.primary()) {
-                saved->Apply();
-                if (mixed) {
-                    d->SetSoftwareVertexProcessing(oldSoftware);
-                }
-                targets.restore();
-                surface->Release();
-                saved->Release();
-                return false;
-            }
-            d->SetRenderState(D3DRS_ZENABLE, FALSE);
-            d->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
-            d->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
-            const float dolly =
-                .009f * (s.busy() ? smoothFade(float((s.clock - s.fade.began) / MenuFade::duration)) : 1 - s.opening());
-            rect(d,
-                 float(oldVP.X),
-                 float(oldVP.Y),
-                 float(oldVP.Width),
-                 float(oldVP.Height),
-                 0xFFFFFFFF,
-                 target,
-                 dolly,
-                 dolly,
-                 1 - dolly,
-                 1 - dolly);
-            saved->Apply();
+            const bool composited = stageOnly ||
+                (targets.primary() && compositeStudioTexture(d, oldVP, s));
+            const bool stateRestored = SUCCEEDED(saved->Apply());
             if (mixed) {
                 d->SetSoftwareVertexProcessing(oldSoftware);
             }
             const bool restored = targets.restore();
             surface->Release();
             saved->Release();
-            if (!restored) {
+            if (!composited || !stateRestored || !restored) {
                 return false;
             }
-            lastDraw = true;
+            lastDraw = !stageOnly;
             LARGE_INTEGER end{};
             QueryPerformanceCounter(&end);
             cpuMs = 1000. * double(end.QuadPart - begin.QuadPart) / double(frequency.QuadPart);

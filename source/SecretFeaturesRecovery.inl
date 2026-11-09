@@ -121,7 +121,7 @@ bool updateSecretRecovery(uint64_t tick, double dt, bool focus)
         openIntent.clear();
         blockOpenInput();
         blockActions();
-        audio.initFailure(gameWindow(), base + L"GT4Showroom/assets/audio/");
+        audio.initFailure(gameWindow(), base + L"GT4Showroom/audio/");
         const bool camera = outcomeCamera.begin(status == 2);
         log(camera ? "Outcome camera started with validated player/culprit references."
                    : "Outcome camera unavailable; existing camera retained.");

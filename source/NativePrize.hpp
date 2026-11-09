@@ -89,18 +89,18 @@ namespace gt4::prizeNative
         return remaps.empty() ? -1 : remaps[size_t(plan.paintjob) % remaps.size()];
     }
 
-    inline std::vector<TuningOption> compatible(void* mi)
+    inline std::vector<TuningOption> compatible(void* mi, bool allWheels = false)
     {
         std::vector<TuningOption> options;
         std::set<int> seen;
-        auto add = [&](int id) {
+        auto add = [&](int id, bool wheelOnly = false) {
             void* part = gta::modelInfo(id);
             uint16_t flags = 0;
             if (!part || !gta::read(uintptr_t(part) + 0x12, flags)) {
                 return;
             }
             const int slot = tuningSlot(flags);
-            if (slot < 0 || !seen.insert(id).second) {
+            if (slot < 0 || (wheelOnly && slot != 34) || !seen.insert(id).second) {
                 return;
             }
             options.push_back({id, slot, tuningEffect(slot)});
@@ -108,14 +108,22 @@ namespace gt4::prizeNative
         for (int i = 0; i < 18; ++i) {
             add(extended16(static_cast<uint8_t*>(mi) + 0x2D6 + i * 2));
         }
-        const uint8_t wheelClass = game::field<uint8_t>(mi, 0x4F);
-        if (wheelClass >= 1 && wheelClass <= 4) {
-            const int count = reinterpret_cast<int(__cdecl*)(int)>(0x4C8740)(wheelClass - 1);
-            if (count > 0 && count <= 256) {
-                for (int i = 0; i < count; ++i) {
-                    add(reinterpret_cast<int(__cdecl*)(int, int)>(0x4C8750)(wheelClass - 1, i));
-                }
+        const auto addWheelSet = [&](int set) {
+            const int count = reinterpret_cast<int(__cdecl*)(int)>(0x4C8740)(set);
+            if (count <= 0 || count > 256) {
+                return;
             }
+            for (int i = 0; i < count; ++i) {
+                add(reinterpret_cast<int(__cdecl*)(int, int)>(0x4C8750)(set, i), true);
+            }
+        };
+        const uint8_t wheelClass = game::field<uint8_t>(mi, 0x4F);
+        if (allWheels && game::field<int32_t>(mi, 0x3C) == 0) {
+            for (int set = 0; set < 3; ++set) {
+                addWheelSet(set);
+            }
+        } else if (wheelClass >= 1 && wheelClass <= 4) {
+            addWheelSet(wheelClass - 1);
         }
         return options;
     }
