@@ -211,7 +211,7 @@ namespace gt4
             if (washStart >= 0. && now - washStart >= washSeconds) {
                 washStart = -1.;
                 washed = true;
-                status = "Wash complete.";
+                status = "Wash complete";
             }
         }
 

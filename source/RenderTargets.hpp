@@ -4,6 +4,44 @@
 
 namespace gt4
 {
+    struct AuxiliaryGraphicsPass
+    {
+        using Query = int(__cdecl*)();
+        std::array<Query, 5> captures{};
+
+        bool active() const
+        {
+            for (auto query : captures) {
+                if (query && query()) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    };
+
+    // a shadow/reflection redraw is not a safe moment to snapshot the visible showroom car.
+    inline bool auxiliaryGraphicsPass()
+    {
+        static HMODULE bound = nullptr;
+        static AuxiliaryGraphicsPass queries;
+        const HMODULE module = GetModuleHandleW(L"ProperShaders.asi");
+        if (bound != module) {
+            bound = module;
+            queries = {};
+            if (module) {
+                constexpr const char* names[] = {"PS_IsCapturingGlobalShadows", "PS_IsCapturingLocalShadows",
+                                                 "PS_IsCapturingSkylight", "PS_IsCapturingReflections",
+                                                 "PS_IsCapturingDepth"};
+                for (size_t i = 0; i < queries.captures.size(); ++i) {
+                    queries.captures[i] = reinterpret_cast<AuxiliaryGraphicsPass::Query>(
+                        GetProcAddress(module, names[i]));
+                }
+            }
+        }
+        return queries.active();
+    }
+
     template <class Device = IDirect3DDevice9, class Surface = IDirect3DSurface9> class RenderTargets
     {
         Device* device = nullptr;

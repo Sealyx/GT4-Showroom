@@ -387,8 +387,8 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
             text(device, name, x, y, 22 * scale, color(0x16120C, 1), true, 3 * scale, true);
         }
         constexpr const char* descriptions[] = {
-            "Wash the vehicle before taking it out.", "Adjust the ride height and see the change on the car.",
-            "Choose a set of wheels to suit your vehicle.", "Choose compatible bodywork for the vehicle."};
+            "Wash the vehicle before taking it out", "Adjust the ride height and see the change on the car",
+            "Choose a set of wheels to suit your vehicle", "Choose compatible bodywork for the vehicle"};
         detail = descriptions[size_t(shop.section)];
     } else if (hasParts) {
         const int count = int(shop.parts.size());
@@ -423,7 +423,7 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
         const float position = count > 1 ? float(shop.option) / (count - 1) : 0;
         rect(device, left, height * shopTrackY, track, 4 * scale, color(0x302B24, .8f));
         rect(device, left + (track - thumb) * position, height * shopTrackY, thumb, 4 * scale, color(0xBCBAB2, 1));
-        detail = wheels ? "Choose a wheel to install." : "Browse compatible bodywork and confirm to select.";
+        detail = wheels ? "Choose a wheel to install" : "Browse compatible bodywork and confirm to select";
         price = shopPartPrice(group.slot);
     } else if (suspension || wash) {
         if (wash) {
@@ -432,7 +432,7 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
             drawShopTile(device, width, height, .79f, .809f, parts(5409), paint, 3.9f, .29f, true);
             d3dShopOverlay(device);
             shopWashBack(device, width * .91f, height * .838f, scale * 1.45f);
-            detail = shop.washStart >= 0. ? "Washing vehicle..." : shop.washed ? "Wash complete." : "Start the wash.";
+            detail = shop.washStart >= 0. ? "Washing vehicle..." : shop.washed ? "Wash complete" : "Start the wash";
             price = TransFender::washPrice;
         } else {
             const float x = width * .91f, w = 23 * scale;
@@ -452,7 +452,7 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
             text(device, std::to_string(shop.rideHeight * 25) + " mm", x, height * .720f, 20 * scale,
                  color(0xFFFAED, 1), true, 0, true);
             shopWashBack(device, width * .91f, height * .838f, scale * 1.45f);
-            detail = "Adjust the ride height and confirm your setting.";
+            detail = "Adjust the ride height and confirm your setting";
             price = shop.rideHeight ? TransFender::suspensionPrice : 0;
         }
     }
@@ -477,10 +477,10 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
             }
         }
         text(device, section, titleX, titleY, 32 * scale, color(0xFFF8EC), false, 0, heading);
-        const char* explanation = wheels       ? "Browse the shop's wheel selection."
-                                  : suspension ? "Preview the vehicle's ride height."
-                                  : wash       ? "Clean the vehicle before taking it out."
-                                               : "Select parts for the current vehicle.";
+        const char* explanation = wheels       ? "Browse the shop's wheel selection"
+                                  : suspension ? "Preview the vehicle's ride height"
+                                  : wash       ? "Clean the vehicle before taking it out"
+                                               : "Select parts for the current vehicle";
         const float x = width * .068f, y = height * .163f;
         const float size = fitted(explanation, 17 * scale, width * .285f, true);
         text(device, explanation, x + scale, y + scale, size, color(0x110B09, .91f), false, 0, true);
@@ -554,9 +554,9 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
         const auto& group = groups[size_t(selected.group)];
         const std::string message = "Install " + group.options[size_t(selected.option)] + "?";
         const std::string priceText =
-            shop.status == "Insufficient funds." || shop.status == "Wait for the preview to finish loading."
+            shop.status == "Insufficient funds" || shop.status == "Wait for the preview to finish loading"
                 ? shop.status
-                : "$" + shopMoney(price) + " charged when you spawn the car.";
+                : "$" + shopMoney(price) + " charged when you spawn the car";
         constexpr std::array<const char*, 2> buttons{"Cancel", "Confirm"};
         drawReviewPanel(device, width, height, shop.review.reveal(model.clock), shop.review.offset(model.clock, height),
                         shopTitle(page), message, priceText, buttons.data(), int(buttons.size()), shop.reviewChoice);

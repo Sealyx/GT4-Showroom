@@ -183,7 +183,7 @@ namespace gt4
         rebuildCatalogueView();
         char b[160];
         std::snprintf(b, sizeof(b),
-                      "Model filter: %zu excluded IDs, %zu visible registered vehicles, %zu invalid tokens ignored.",
+                      "Model filter: %zu excluded IDs, %zu visible registered vehicles, %zu invalid tokens ignored",
                       excluded.size(), entries.size(), invalid);
         log(b);
     }
@@ -196,7 +196,7 @@ namespace gt4
         state.secretUnlocks = readSecretUnlocks(ini);
         char secretReport[200];
         std::snprintf(secretReport, sizeof(secretReport),
-                      "SecretUnlocks: %zu IDs, %zu names, %zu invalid tokens; modkit=%d paintjob=%d abilities=%d.",
+                      "SecretUnlocks: %zu IDs, %zu names, %zu invalid tokens; modkit=%d paintjob=%d abilities=%d",
                       state.secretUnlocks.models.ids.size(), state.secretUnlocks.models.names.size(),
                       state.secretUnlocks.models.invalid, state.secretUnlocks.enableModkit,
                       state.secretUnlocks.enablePaintjob, state.secretUnlocks.enableAbilities);
@@ -209,8 +209,8 @@ namespace gt4
         const auto names = reloadPaintNames(root);
         char paintReport[240];
         std::snprintf(paintReport, sizeof(paintReport),
-                      "Paint names: %zu eligible carcols files, %zu named rows; Mod Loader profile %s. Country tokens "
-                      "rejected: %zu.",
+                      "Paint names: %zu eligible carcols files, %zu named rows; Mod Loader profile %s Country tokens "
+                      "rejected: %zu",
                       names.files, names.rows, names.profile.c_str(), countryConfig.invalid);
         log(paintReport);
         for (auto& e : catalog) {
@@ -457,7 +457,7 @@ namespace gt4
         }
         if (state.page == Page::Prize) {
             if (!renderer.prizeAssetReady()) {
-                state.status = "Prize backdrop unavailable. BACKSPACE returns to cars.";
+                state.status = "Prize backdrop unavailable BACKSPACE returns to cars";
                 return;
             }
             if (prizeSerial != state.prize.serial || prizeModel != state.prize.id) {
@@ -474,7 +474,7 @@ namespace gt4
                 prizeProgress.clear();
                 state.status = "Loading bonus car...";
                 char info[220];
-                std::snprintf(info, sizeof(info), "Secret unlock selected: model=%d modkit=%d ability=%s serial=%u.",
+                std::snprintf(info, sizeof(info), "Secret unlock selected: model=%d modkit=%d ability=%s serial=%u",
                               prizeModel, state.prize.modkit,
                               *abilityName(state.prize.ability) ? abilityName(state.prize.ability) : "NONE",
                               prizeSerial);
@@ -485,7 +485,7 @@ namespace gt4
                 if (!ready && state.prize.enablePaintjob && prizeNative::report.stage == PrizeStage::Paint &&
                     state.clock - state.prizeBegan > 8) {
                     log("Optional paintjob did not finish in8s; retaining the compatible tuned car with its original "
-                        "paint.");
+                        "paint");
                     state.prize.enablePaintjob = false;
                     state.prize.remapTxd = -1;
                     ready = prizeNative::stream(state.prize);
@@ -505,7 +505,7 @@ namespace gt4
                         char kit[220];
                         std::snprintf(kit, sizeof(kit),
                                       "Resolved prize: model=%d native-compatible parts=%zu paintjob=%d paintTxd=%d; "
-                                      "standalone streaming flags=%d.",
+                                      "standalone streaming flags=%d",
                                       state.prize.id, state.prize.upgrades.size(),
                                       state.prize.enablePaintjob ? state.prize.paintjob : -1, state.prize.remapTxd,
                                       prizeStreamingFlags);
@@ -544,12 +544,12 @@ namespace gt4
                         prizeNative::loadGate = {};
                         audio.startPrize();
                         prizePlayed = true;
-                        log("Secret unlock preview ready; confirmation available after the reveal.");
+                        log("Secret unlock preview ready; confirmation available after the reveal");
                     } else {
-                        state.status = "Vehicle preview unavailable. BACKSPACE returns to cars.";
+                        state.status = "Vehicle preview unavailable BACKSPACE returns to cars";
                         log("Secret unlock capture failed after native loading completed; private preview preparation "
                             "or "
-                            "geometry unavailable.");
+                            "geometry unavailable");
                         state.cue = Cue::Error;
                     }
                 }
@@ -560,8 +560,8 @@ namespace gt4
             if (!state.prizeReady && !prizeCaptureTried && state.clock - state.prizeBegan >= 20) {
                 prizeCaptureTried = true;
                 state.status = prizeNative::report.stage == PrizeStage::Model
-                                   ? "Vehicle assets unavailable. BACKSPACE returns to cars."
-                                   : "Tuning assets unavailable. BACKSPACE returns to cars.";
+                                   ? "Vehicle assets unavailable BACKSPACE returns to cars"
+                                   : "Tuning assets unavailable BACKSPACE returns to cars";
                 log(("Secret unlock timed out: " + prizeProgress).c_str());
                 state.cue = Cue::Error;
             }
@@ -615,10 +615,10 @@ namespace gt4
             state.ui.menu.setCustomization(customizationNative::state, true);
             if (!ready && customized) {
                 state.status = customizationNative::captureRetry.exhausted()
-                                   ? "Customization preview unavailable. Change the part or choose Stock."
+                                   ? "Customization preview unavailable Change the part or choose Stock"
                                    : "Preparing customization preview...";
             } else if (state.status == "Preparing customization preview..." ||
-                       state.status == "Customization preview unavailable. Change the part or choose Stock.") {
+                       state.status == "Customization preview unavailable Change the part or choose Stock") {
                 state.status.clear();
             }
         } else {
@@ -669,7 +669,7 @@ namespace gt4
                     failed.push_back(id);
                     pending.erase(id);
                     char b[160];
-                    std::snprintf(b, sizeof(b), "Preview streaming timed out for model %d after 20 seconds.", id);
+                    std::snprintf(b, sizeof(b), "Preview streaming timed out for model %d after 20 seconds", id);
                     log(b);
                 } else {
                     game::queue(id);
@@ -689,7 +689,7 @@ namespace gt4
                 std::snprintf(
                     report, sizeof(report),
                     "VehFuncs preview model %d: wheel source groups %d -> %d; wheel matrix helper=%d; verified "
-                    "frame visibility=%d; native captures=%llu.",
+                    "frame visibility=%d; native captures=%llu",
                     id, nativePreview::lastSources, nativePreview::lastRemaining, nativePreview::wheelMatrices,
                     nativePreview::visibility.verified, static_cast<unsigned long long>(nativePreview::prepared));
                 log(report);
@@ -697,14 +697,14 @@ namespace gt4
             static bool nativeFailureLogged = false;
             if (nativePreview::failedPath && !nativeFailureLogged) {
                 nativeFailureLogged = true;
-                log("Native vehicle capture unavailable; later captures remain enabled.");
+                log("Native vehicle capture unavailable; later captures remain enabled");
             }
             if (mesh) {
                 if (diagnostics.enabled) {
                     char textures[260];
                     std::snprintf(textures, sizeof(textures),
                                   "Preview textures model=%d declared=%zu missing=%zu unsupported=%zu "
-                                  "nativeOnlyAtomics=%zu prepared=%d IVF=%d.",
+                                  "nativeOnlyAtomics=%zu prepared=%d IVF=%d",
                                   id, mesh->declaredTextures, mesh->missingTextures, mesh->unsupportedTextures,
                                   mesh->nativeOnly, nativePreview::lastModel == id,
                                   GetModuleHandleW(L"ImVehFt.asi") != nullptr ||
@@ -756,7 +756,7 @@ namespace gt4
             b, sizeof(b),
             "%s: key=%d ctrl=%d focus=%d gameState=%d loadingData=%d startLoadRequest=%d menu=%d codePause=%d "
             "userPause=%d alive=%d cutscene=%d enex=%d catalogue=%zu padFrames=%llu frontendRead=%d rawMenu=%u "
-            "rawLoading=%u inVehicle=%d.",
+            "rawLoading=%u inVehicle=%d",
             event, hotkey, ctrl, g.focus, g.gameState, g.loadingData, g.frontend.startLoadRequested(), g.menu,
             g.codePause, g.userPause, g.alive, g.cutscene, g.enex, catalog.size(),
             static_cast<unsigned long long>(frameSerial), g.frontend.valid, unsigned(g.frontend.menuByte),
@@ -836,12 +836,12 @@ namespace gt4
         char message[160];
         std::snprintf(message, sizeof(message),
                       "GTSPAWN settings reloaded: key=%d ctrl=%d active menu order=%d descending=%d Spawn=%d; selected "
-                      "model preserved.",
+                      "model preserved",
                       hotkey, ctrl, int(studioConfig.sort.by), studioConfig.sort.descending,
                       static_cast<int>(studioConfig.spawn));
         log(message);
         if (keys.invalid || studioConfig.invalidSort) {
-            log("Invalid opening key used its documented fallback.");
+            log("Invalid opening key used its documented fallback");
         }
     }
 
@@ -925,7 +925,7 @@ namespace gt4
     void saveStudioPreferences()
     {
         if (!saveStudioPreferences(std::filesystem::path(base) / L"GT4Showroom/settings.dat", state.ui.preferences())) {
-            log("Studio preferences could not be saved; current session settings remain active.");
+            log("Studio preferences could not be saved; current session settings remain active");
         }
     }
 
@@ -970,7 +970,7 @@ namespace gt4
             }
             char detail[240];
             std::snprintf(detail, sizeof(detail),
-                          "SpawnInside ended: %s at %.2f seconds; camera owner %u, native moving-camera updates %u.",
+                          "SpawnInside ended: %s at %.2f seconds; camera owner %u, native moving-camera updates %u",
                           spawnEntry.lastStop, spawnEntry.playback.age,
                           game::field<uint32_t>(spawnEntry.camera(), 0xB0), spawnEntry.nativeFrames);
             log(detail);
@@ -1090,13 +1090,13 @@ namespace gt4
                     static_cast<unsigned long>(scan));
                 log(b);
             } else {
-                log("No visible vehicle models; check [ExcludedModels] in GT4Showroom.ini.");
+                log("No visible vehicle models; check [ExcludedModels] in GT4Showroom.ini");
             }
         }
         if (openIntent.until && !openIntent.pending(tick)) {
             char b[192];
             std::snprintf(b, sizeof(b),
-                          "Open request expired: userPause=%d codePause=%d menu=%d loading=%d enex=%d catalogue=%zu.",
+                          "Open request expired: userPause=%d codePause=%d menu=%d loading=%d enex=%d catalogue=%zu",
                           game::userPaused(), game::codePaused(), game::menu(), game::loading(),
                           game::at<int>(0x96A7CC), catalog.size());
             log(b);
@@ -1168,10 +1168,10 @@ namespace gt4
                                 blockActions();
                                 state.status =
                                     state.page == Page::Prize
-                                        ? "Prize tuning assets could not be loaded. Try REALBIG again."
+                                        ? "Prize tuning assets could not be loaded Try REALBIG again"
                                     : state.postSelectionCinematic
-                                        ? "Customization could not be loaded. Choose Stock or try again."
-                                        : "Livery texture could not be loaded. Choose No Livery or try again.";
+                                        ? "Customization could not be loaded Choose Stock or try again"
+                                        : "Livery texture could not be loaded Choose No Livery or try again";
                                 state.cue = Cue::Error;
                             }
                         } else {
@@ -1200,7 +1200,7 @@ namespace gt4
                                                     customizationNative::apply(vehicle, livery.first, livery.second);
                                                 if (!installedParts) {
                                                     log("Customization application did not verify every selected "
-                                                        "upgrade.");
+                                                        "upgrade");
                                                 }
                                             }
                                         }
@@ -1217,7 +1217,7 @@ namespace gt4
                                             std::snprintf(
                                                 detail, sizeof(detail),
                                                 "Prize ability: %s tracked=%d reference=%d flags=0x%08X mass=%.1f "
-                                                "turnMass=%.1f handling=%p active=%zu.",
+                                                "turnMass=%.1f handling=%p active=%zu",
                                                 *abilityName(state.prize.ability) ? abilityName(state.prize.ability)
                                                                                   : "NONE",
                                                 applied, prizeNative::abilityBackend.reference(uintptr_t(vehicle)),
@@ -1231,14 +1231,14 @@ namespace gt4
                                 if (!prepared) {
                                     log("Spawn native preparation did not reach the render boundary; explicit paint "
                                         "was "
-                                        "applied but a later plugin override remains possible.");
+                                        "applied but a later plugin override remains possible");
                                 }
                                 if (diagnostics.enabled.load(std::memory_order_relaxed)) {
                                     char paint[192];
                                     std::snprintf(
                                         paint, sizeof(paint),
                                         "Spawn appearance: model=%d choice=%zu prepared=%d colors=%u,%u,%u,%u "
-                                        "palette=0x%08lX.",
+                                        "palette=0x%08lX",
                                         entries[state.selected].id, state.paint, prepared,
                                         unsigned(game::field<uint8_t>(spawned, 0x434)),
                                         unsigned(game::field<uint8_t>(spawned, 0x435)),
@@ -1257,7 +1257,7 @@ namespace gt4
                                     pendingEntryLow = low;
                                     pendingEntryHigh = high;
                                 }
-                                log("Vehicle spawned; leaving studio.");
+                                log("Vehicle spawned; leaving studio");
                                 if (!error.empty()) {
                                     log(error.c_str());
                                 }
@@ -1291,13 +1291,13 @@ namespace gt4
                         pendingEntry = nullptr;
                         if (studioConfig.spawn == SpawnMode::DriverSeat) {
                             void* ped = entryNative::function<void*(__cdecl*)(int)>(0x56E210)(-1);
-                            log(seatPlayerAsDriver(ped, v) ? "Spawn: player seated directly as driver."
-                                                           : "Spawn: driver seat unavailable; vehicle left nearby.");
+                            log(seatPlayerAsDriver(ped, v) ? "Spawn: player seated directly as driver"
+                                                           : "Spawn: driver seat unavailable; vehicle left nearby");
                         } else {
                             const bool started = spawnEntry.begin(v, pendingEntryLow, pendingEntryHigh);
                             char detail[240];
                             std::snprintf(detail, sizeof(detail),
-                                          "Spawn=3 entry: started=%d reason=%s cameraOwner=%u task=%p.", started,
+                                          "Spawn=3 entry: started=%d reason=%s cameraOwner=%u task=%p", started,
                                           spawnEntry.lastStop, game::field<uint32_t>(spawnEntry.camera(), 0xB0),
                                           spawnEntry.entryTask);
                             log(detail);
@@ -1344,7 +1344,7 @@ namespace gt4
         static bool first = true;
         if (first) {
             first = false;
-            log("Native game-process callback reached.");
+            log("Native game-process callback reached");
         }
         if (!game::loading()) {
             prizeNative::abilities.maintain(prizeNative::abilityBackend);
@@ -1362,7 +1362,7 @@ namespace gt4
         static bool first = true;
         if (first) {
             first = false;
-            log("Native frontend callback reached.");
+            log("Native frontend callback reached");
         }
         {
             const bool pulse = controllerPauseRequested &&
@@ -1421,7 +1421,7 @@ namespace gt4
     void prepareStudioFrame(void* camera)
     {
         if (!camera || camera != game::at<void*>(0xC1703C) || camera != game::renderCamera() || studioPreparing ||
-            studioPreparedFrame == frameSerial || !studioVisible()) {
+            studioPreparedFrame == frameSerial || !studioVisible() || auxiliaryGraphicsPass()) {
             return;
         }
         auto* device = game::device();
@@ -1633,12 +1633,12 @@ namespace gt4
         try {
             close();
         } catch (...) {
-            log("Preview cleanup failed before engine shutdown.");
+            log("Preview cleanup failed before engine shutdown");
         }
         try {
             nativePreview::releaseRetired();
         } catch (...) {
-            log("Retired preview cleanup failed before engine shutdown.");
+            log("Retired preview cleanup failed before engine shutdown");
         }
     }
 
@@ -1720,7 +1720,7 @@ namespace gt4
             }
             originalRestartShutdown = originalRenderWareShutdown = nullptr;
             originalGameShutdown = nullptr;
-            log("Preview lifecycle hooks unavailable.");
+            log("Preview lifecycle hooks unavailable");
         }
     }
 
@@ -1754,11 +1754,11 @@ namespace gt4
         hotkey = keys.vk;
         ctrl = keys.ctrl;
         if (keys.migrated) {
-            log("Legacy shipped Ctrl+G binding upgraded to F1 without modifying the INI. Set OpenKey explicitly to "
-                "override.");
+            log("Legacy shipped Ctrl+G binding upgraded to F1 without modifying the INI Set OpenKey explicitly to "
+                "override");
         }
         if (keys.invalid) {
-            log("Invalid opening key; using F1 without Ctrl.");
+            log("Invalid opening key; using F1 without Ctrl");
         }
         reloadSettings();
         reloadExclusions();
@@ -1767,15 +1767,15 @@ namespace gt4
         const std::filesystem::path fontPath = std::filesystem::path(base) / L"GT4Showroom/fonts/Michroma-Regular.ttf";
         state.random.seed(uint32_t(GetTickCount64()) ^ GetCurrentProcessId());
         if (!renderer.loadPrize((std::filesystem::path(base) / L"GT4Showroom/prize/congratulations.rgba").wstring())) {
-            log("Static prize backdrop unavailable; check the complete packaged asset folder.");
+            log("Static prize backdrop unavailable; check the complete packaged asset folder");
         }
         if (!renderer.loadFont(fontPath.wstring(), L"Michroma")) {
-            log("Bundled font unavailable; using fallback. Check the asset folder.");
+            log("Bundled font unavailable; using fallback Check the asset folder");
         } else {
-            log("Bundled font loaded privately; no Windows installation needed.");
+            log("Bundled font loaded privately; no Windows installation needed");
         }
         if (!renderer.loadPrizeNameFont((fontPath.parent_path() / L"LiberationSans-Bold.ttf").wstring())) {
-            log("Bundled bold prize-name font unavailable; using Arial Bold fallback.");
+            log("Bundled bold prize-name font unavailable; using Arial Bold fallback");
         }
         if (diagnostics.enabled.load(std::memory_order_relaxed)) {
             log(("Main font: " + renderer.fontReport()).c_str());
@@ -1783,13 +1783,13 @@ namespace gt4
         }
         secretSchool.script.assetsReady = false;
         if (!modding::videoMemoryBinding()) {
-            log("Unsupported video-memory continuation; no hooks installed.");
+            log("Unsupported video-memory continuation; no hooks installed");
             return 0;
         }
         modding::moddingVideoMemoryCleanup = video;
         modding::InstallLock lock;
         if (!lock.acquired || MH_Initialize() != MH_OK) {
-            log("Hook initialization unavailable.");
+            log("Hook initialization unavailable");
             return 0;
         }
         constexpr uintptr_t showRasterAddress = 0x745240;
@@ -1832,14 +1832,14 @@ namespace gt4
                 MH_RemoveHook(h);
             }
             hooks.clear();
-            log("Hook transaction refused; owned hooks rolled back.");
+            log("Hook transaction refused; owned hooks rolled back");
             return 0;
         }
         initialized = true;
-        log("GT4Showroom 2.6.0-dev initialized. Persistent showroom preferences, independent native extras, "
+        log("GT4Showroom 2.6.0-dev initialized Persistent showroom preferences, independent native extras, "
             "post-selection "
-            "Cinematic and individual customization, Vehicle Viewer studios. GTSPAWN reload remains "
-            "outside the showroom. Studio vehicle drawing uses the GT4 renderer. EnableLog defaults off.");
+            "Cinematic and individual customization, Vehicle Viewer studios GTSPAWN reload remains "
+            "outside the showroom Studio vehicle drawing uses the GT4 renderer EnableLog defaults off");
         return 1;
     }
 

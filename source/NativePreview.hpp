@@ -262,6 +262,42 @@ namespace gt4::nativePreview
         return true;
     }
 
+    // modelextras sets its current vehicle at the scene callsite, not inside gta's setup function.
+    inline void setupMaterials(void* vehicle)
+    {
+        const HMODULE extras = GetModuleHandleW(L"ModelExtras.asi");
+        std::array<uint8_t, 5> call{};
+        if (extras && gta::read(0x5532A9, call) && call[0] == 0xE8) {
+            int32_t displacement = 0;
+            std::memcpy(&displacement, call.data() + 1, sizeof(displacement));
+            const uintptr_t address = uintptr_t(0x5532AE) + uintptr_t(intptr_t(displacement));
+            HMODULE owner = nullptr;
+            if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                      GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                  reinterpret_cast<LPCWSTR>(address), &owner) && owner == extras) {
+                reinterpret_cast<void(__fastcall*)(void*)>(address)(vehicle);
+                return;
+            }
+        }
+        reinterpret_cast<void(__thiscall*)(void*)>(0x6D64F0)(vehicle);
+    }
+
+    inline std::unordered_map<int, float> previewDirt;
+
+    // rebuilding a spoiler is not another trip through the mud.
+    inline float dirtForPreview(int model, float initial)
+    {
+        initial = std::isfinite(initial) ? std::clamp(initial, 0.f, 15.f) : 0.f;
+        const auto found = previewDirt.find(model);
+        if (found != previewDirt.end()) {
+            return found->second;
+        }
+        if (previewDirt.size() < 4096) {
+            previewDirt.emplace(model, initial);
+        }
+        return initial;
+    }
+
     inline std::unique_ptr<Mesh> captureVehicle(void* vehicle, int id, void (*prepare)(void*) = nullptr,
                                                 bool clean = false)
     {
@@ -283,6 +319,7 @@ namespace gt4::nativePreview
             return nullptr;
         }
         targets.track();
+        const float dirt = dirtForPreview(id, game::field<float>(vehicle, 0x4B0));
         if (prepare) {
             prepare(vehicle);
         }
@@ -302,6 +339,7 @@ namespace gt4::nativePreview
             return nullptr;
         }
         game::seedVehicle(vehicle, id);
+        game::field<float>(vehicle, 0x4B0) = clean ? 0.f : dirt;
         visibility.bind();
         lastModel = id;
         lastSources = sourceGroups(game::field<void*>(clump, 4));
@@ -319,7 +357,7 @@ namespace gt4::nativePreview
         reached = false;
         bool materialsWarmed = false;
         previewMaterialPasses(
-            vehicle, reinterpret_cast<void(__thiscall*)(void*)>(0x6D64F0),
+            vehicle, setupMaterials,
             [&](void* subject) {
                 // modelextras waits callbacks before its material pass. let it finish before copying textures
                 const int passes = !materialsWarmed && GetModuleHandleW(L"ModelExtras.asi") ? 12 : 1;

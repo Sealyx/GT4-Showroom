@@ -508,22 +508,28 @@ namespace gt4::game
 
         static_assert(sizeof(Header) == 16 && sizeof(NativeMesh) == 12, "32-bit RenderWare mesh layout");
         auto* header = field<Header*>(g, 0x54);
+        bool useHeader = header != nullptr;
         if (header) {
             if (header->meshes > 4096 || header->total > 2000000 || header->offset > 65536 || header->flags > 1) {
-                return atomic;
+                useHeader = false;
             }
-            auto* meshes =
-                reinterpret_cast<NativeMesh*>(reinterpret_cast<uint8_t*>(header) + sizeof(Header) + header->offset);
             uint64_t total = 0;
-            for (unsigned i = 0; i < header->meshes; ++i) {
-                total += meshes[i].count;
-                if (total > header->total || !meshes[i].indices) {
-                    return atomic;
+            if (useHeader) {
+                auto* meshes = reinterpret_cast<NativeMesh*>(reinterpret_cast<uint8_t*>(header) +
+                                                            sizeof(Header) + header->offset);
+                for (unsigned i = 0; i < header->meshes; ++i) {
+                    total += meshes[i].count;
+                    if (total > header->total || !meshes[i].indices) {
+                        useHeader = false;
+                        break;
+                    }
                 }
+                useHeader = useHeader && total == header->total;
             }
-            if (total != header->total) {
-                return atomic;
-            }
+        }
+        if (useHeader) {
+            auto* meshes = reinterpret_cast<NativeMesh*>(reinterpret_cast<uint8_t*>(header) +
+                                                        sizeof(Header) + header->offset);
             for (unsigned i = 0; i < header->meshes && c.count < 120000; ++i) {
                 const auto& mesh = meshes[i];
                 capture(mesh.material, [&](auto emit) {

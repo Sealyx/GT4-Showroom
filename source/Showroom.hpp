@@ -807,7 +807,7 @@ namespace gt4
             if (enthusia) {
                 return ease(float((clock - changed) / .3));
             }
-            return ease(float((clock - changed - .34) / 1.05));
+            return smoothFade(float((clock - changed - .12) / 1.30));
         }
 
         float scale() const
@@ -815,7 +815,10 @@ namespace gt4
             if (enthusia) {
                 return 1.f;
             }
-            return 1.f + .24f * (1 - carAlpha());
+            // the retreat starts with the reveal but settles later, like a camera dolly easing to a stop.
+            const float progress = std::clamp(float((clock - changed - .12) / 1.55), 0.f, 1.f);
+            const float remaining = 1.f - progress;
+            return 1.f + .95f * remaining * remaining * remaining;
         }
 
         float heading() const

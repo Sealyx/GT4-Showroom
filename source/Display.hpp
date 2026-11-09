@@ -38,7 +38,7 @@ namespace gt4
                !cutscene && !modifier;
     }
 
-    inline constexpr const char* showroomReloadMessage = "Gran Turismo Spawner reloaded.";
+    inline constexpr const char* showroomReloadMessage = "Gran Turismo Spawner reloaded";
 
     inline bool controllerReloadRequested(bool open, bool select, bool leftStick)
     {

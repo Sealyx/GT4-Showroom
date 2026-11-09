@@ -124,7 +124,7 @@ bool updateSecretRecovery(uint64_t tick, double dt, bool focus)
         audio.initFailure(gameWindow(), base + L"GT4Showroom/audio/");
         const bool camera = outcomeCamera.begin(status == 2);
         log(camera ? "Outcome camera started with validated player/culprit references."
-                   : "Outcome camera unavailable; existing camera retained.");
+                   : "Outcome camera unavailable; existing camera retained");
     }
     const bool suspended = !focus || game::menu() || game::codePaused() || game::userPaused();
     audio.focus(!suspended);
@@ -205,7 +205,7 @@ bool updateSecretRecovery(uint64_t tick, double dt, bool focus)
         secretRecovery.closing = 0;
         if (choice == SecretFeaturesChoice::Retry) {
             secretRetryFade.begin();
-            log("Retry: fading out; holding full black for at least 0.6 seconds before native recovery.");
+            log("Retry: fading out; holding full black for at least 0.6 seconds before native recovery");
         }
     }
     return true;

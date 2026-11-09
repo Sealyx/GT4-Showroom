@@ -503,7 +503,7 @@ bool viewerRoom(IDirect3DDevice9* d,
     if (viewer.settings.scene == ViewerScene::Custom) {
         return viewerStudio(d, camera, viewer, now);
     }
-    const bool fullResolutionRibbons = viewer.settings.scene == ViewerScene::Ribbons;
+    const bool fullResolutionRibbons = viewer.settings.scene == ViewerScene::Ribbons && camera.h > 720.f;
     const auto backdrop = [&](const Camera& view, bool includeRibbons) {
         return viewerStudio(d, view, viewer, now) &&
                ((fullResolutionRibbons && !includeRibbons) || viewerPatterns(d, view, viewer, now, false)) &&
@@ -512,7 +512,10 @@ bool viewerRoom(IDirect3DDevice9* d,
     const auto direct = [&] {
         return backdrop(camera, true) && viewerStudio(d, camera, viewer, now, true);
     };
-    const float scale = std::min(.5f, 720.f / std::max(camera.w, camera.h));
+    // keep the animated bands above a subpixel grid on smaller displays. the foreground car stays native-sized.
+    const float scale = camera.h <= 720.f
+        ? std::min(2.f, 720.f / std::max(1.f, camera.h))
+        : std::min(.5f, 720.f / std::max(camera.w, camera.h));
     const UINT width = UINT(std::max(1.f, std::round(camera.w * scale)));
     const UINT height = UINT(std::max(1.f, std::round(camera.h * scale)));
     if (!allocateViewerTarget(d, width, height)) {
@@ -547,7 +550,26 @@ bool viewerRoom(IDirect3DDevice9* d,
     d->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
     d->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
     d->SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
-    rect(d, 0, 0, camera.w, camera.h, 0xFFFFFFFF, viewerTarget);
+    if (camera.h <= 720.f) {
+        // integrate neighbouring samples instead of sharpening subpixel bands when the layer shrinks.
+        constexpr std::array<std::array<float, 3>, 5> taps{{
+            {{0.f, 0.f, .5f}}, {{-1.25f, 0.f, .125f}}, {{1.25f, 0.f, .125f}},
+            {{0.f, -1.25f, .125f}}, {{0.f, 1.25f, .125f}}
+        }};
+        for (size_t i = 0; i < taps.size(); ++i) {
+            d->SetRenderState(D3DRS_ALPHABLENDENABLE, i != 0);
+            d->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_ONE);
+            d->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_ONE);
+            const float u = taps[i][0] / camera.w, v = taps[i][1] / camera.h;
+            rect(d, 0, 0, camera.w, camera.h, color(0xFFFFFF, 1.f, taps[i][2]), viewerTarget,
+                 u, v, 1.f + u, 1.f + v);
+        }
+        d->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+        d->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+        d->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+    } else {
+        rect(d, 0, 0, camera.w, camera.h, 0xFFFFFFFF, viewerTarget);
+    }
     d->SetTexture(0, nullptr);
     if (fullResolutionRibbons && !viewerPatterns(d, camera, viewer, now, false)) {
         return direct();
@@ -675,7 +697,7 @@ void spawnReviewDialog(IDirect3DDevice9* d, float width, float height, const Mod
                         state.reviewOffset(height),
                         "Livery Warning",
                         "This vehicle has custom liveries and its recommended for you",
-                        "to switch its color to white. Would you like the switch or would you",
+                        "to switch its color to white Would you like the switch or would you",
                         buttons.data(),
                         int(buttons.size()),
                         state.reviewChoice,
@@ -691,7 +713,7 @@ void spawnReviewDialog(IDirect3DDevice9* d, float width, float height, const Mod
                         state.reviewOffset(height),
                         "Customization",
                         "Return the wheels or body components to stock?",
-                        "Choose the parts you would like to reset.",
+                        "Choose the parts you would like to reset",
                         buttons.data(),
                         int(buttons.size()),
                         state.reviewChoice);
@@ -707,7 +729,7 @@ void spawnReviewDialog(IDirect3DDevice9* d, float width, float height, const Mod
                         state.reviewOffset(height),
                         "Vehicle Viewer",
                         "Are you sure you would like to spawn the vehicle now?",
-                        "Return to your previous view or exit to the vehicle selection.",
+                        "Return to your previous view or exit to the vehicle selection",
                         buttons.data(),
                         int(buttons.size()),
                         state.reviewChoice);
@@ -717,8 +739,8 @@ void spawnReviewDialog(IDirect3DDevice9* d, float width, float height, const Mod
     const std::string first = canSpawn ? "Are you sure you would like to spawn the vehicle now?"
                                        : "Return to Cinematic or exit to the vehicle selection?";
     const std::string second = state.spawnReview == SpawnReview::Initial
-                                   ? "You can enter Cinematic Mode to inspect your vehicle."
-                                   : "Use Back to return to the previous view.";
+                                   ? "You can enter Cinematic Mode to inspect your vehicle"
+                                   : "Use Back to return to the previous view";
     const char* primary = state.spawnReview == SpawnReview::Initial ? "Enter Cinematic" : "Back to Cinematic";
     const std::array<const char*, 3> buttons{primary, "Exit", "Spawn Now"};
     const int count = state.reviewButtons();

@@ -256,7 +256,7 @@ void finishShopPurchase(void* vehicle, bool installedParts)
     }
     int* wallet = shopWallet();
     if (!wallet || *wallet < state.shop.pendingCost()) {
-        log("TransFender: balance changed before purchase.");
+        log("TransFender: balance changed before purchase");
         return;
     }
     int charge = installedParts ? state.shop.partsCost : 0;
@@ -264,7 +264,7 @@ void finishShopPurchase(void* vehicle, bool installedParts)
         if (shopSetRideHeight(vehicle, state.shop.confirmedRideHeight)) {
             charge += TransFender::suspensionPrice;
         } else {
-            log("TransFender: suspension could not be installed; no suspension charge.");
+            log("TransFender: suspension could not be installed; no suspension charge");
         }
     }
     if (state.shop.washed) {

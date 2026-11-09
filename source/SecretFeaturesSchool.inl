@@ -110,7 +110,7 @@ bool updateSecretSchool(uint64_t tick, double dt, bool focus)
                 secretSchoolClosing = 0;
                 f.accepted = false;
                 f.suspended();
-                log("License choice rejected after live mission revalidation; original state preserved.");
+                log("License choice rejected after live mission revalidation; original state preserved");
             }
         }
         return true;

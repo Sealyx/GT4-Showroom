@@ -40,8 +40,8 @@ void resetShopSelection(bool wheels)
             shop.partsCost += shopPartPrice(groups[row].slot);
         }
     }
-    shop.status = complete ? (wheels ? "Wheels reset to stock." : "Components reset to stock.")
-                           : "Some parts could not be reset.";
+    shop.status = complete ? (wheels ? "Wheels reset to stock" : "Components reset to stock")
+                           : "Some parts could not be reset";
     state.cue = complete ? Cue::Accept : Cue::Error;
 }
 
@@ -105,18 +105,18 @@ void processShopInput(
                     }
                 }
                 if (total + shop.pendingCost() - shop.partsCost > shop.balance) {
-                    fail("Insufficient funds.");
+                    fail("Insufficient funds");
                     return;
                 }
                 if (!state.appearanceReady) {
-                    fail("Wait for the preview to finish loading.");
+                    fail("Wait for the preview to finish loading");
                     return;
                 }
                 for (size_t row = 0; row < groups.size(); ++row) {
                     shop.confirmedParts[row] = groups[row].choice;
                 }
                 shop.partsCost = total;
-                shop.status = "Selected. Charged when you spawn the car.";
+                shop.status = "Selected Charged when you spawn the car";
                 state.cue = Cue::Accept;
             } else {
                 state.cue = Cue::Back;
@@ -173,7 +173,7 @@ void processShopInput(
             const bool wheels = page == ShopPage::Wheels;
             shop.parts = shopParts(groups, wheels);
             if (shop.parts.empty()) {
-                fail(wheels ? "This vehicle has no compatible wheels." : "This vehicle has no compatible components.");
+                fail(wheels ? "This vehicle has no compatible wheels" : "This vehicle has no compatible components");
                 return;
             }
             shop.option = 0;
@@ -243,10 +243,10 @@ void processShopInput(
         if (accept) {
             const int other = shop.pendingCost() - (shop.confirmedRideHeight ? TransFender::suspensionPrice : 0);
             if (shop.rideHeight && other + TransFender::suspensionPrice > shop.balance) {
-                fail("Insufficient funds.");
+                fail("Insufficient funds");
             } else {
                 shop.confirmedRideHeight = shop.rideHeight;
-                shop.status = "Ride height selected.";
+                shop.status = "Ride height selected";
                 state.cue = Cue::Accept;
             }
         }
@@ -256,9 +256,9 @@ void processShopInput(
         (accept || (click && state.pointerX >= .31f && state.pointerX < .86f &&
                     state.pointerY >= .77f && state.pointerY < .92f))) {
         if (shop.washed) {
-            shop.status = "Wash already selected.";
+            shop.status = "Wash already selected";
         } else if (shop.pendingCost() + TransFender::washPrice > shop.balance) {
-            fail("Insufficient funds.");
+            fail("Insufficient funds");
         } else {
             shop.washStart = state.clock;
             shop.status.clear();

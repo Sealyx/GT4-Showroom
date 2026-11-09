@@ -522,12 +522,18 @@ namespace gt4
                        PrivateFont& asset,
                        int em = 29,
                        int cell = 64,
-                       const wchar_t* systemFamily = nullptr)
+                       const wchar_t* systemFamily = nullptr,
+                       bool highDensity = true)
         {
             if (atlas) {
                 return;
             }
-            const int w = cell * 16, h = cell * 6;
+            D3DCAPS9 caps{};
+            d->GetDeviceCaps(&caps);
+            const int samples = highDensity && cell <= 128 && caps.MaxTextureWidth >= UINT(cell * 32) &&
+                                caps.MaxTextureHeight >= UINT(cell * 12) ? 2 : 1;
+            const int rasterCell = cell * samples;
+            const int w = rasterCell * 16, h = rasterCell * 6;
             HDC dc = CreateCompatibleDC(nullptr);
             if (!dc) {
                 return;
@@ -547,10 +553,10 @@ namespace gt4
             }
             auto old = SelectObject(dc, bitmap);
             HFONT f = systemFamily
-                          ? CreateFontW(-em, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, ANSI_CHARSET,
+                          ? CreateFontW(-em * samples, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, ANSI_CHARSET,
                                         OUT_TT_ONLY_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
                                         DEFAULT_PITCH | FF_ROMAN, systemFamily)
-                          : asset.createFont(dc, em);
+                          : asset.createFont(dc, em * samples);
             if (!f) {
                 SelectObject(dc, old);
                 DeleteObject(bitmap);
@@ -565,10 +571,15 @@ namespace gt4
                 char ch = char(i + 32);
                 SIZE sz{};
                 GetTextExtentPoint32A(dc, &ch, 1, &sz);
-                advances[i] = float(sz.cx);
-                TextOutA(dc, (i % 16) * cell, (i / 16) * cell, &ch, 1);
+                advances[i] = float(sz.cx) / float(samples);
+                TextOutA(dc, (i % 16) * rasterCell, (i / 16) * rasterCell, &ch, 1);
             }
-            if (SUCCEEDED(d->CreateTexture(w, h, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &atlas, nullptr))) {
+            bool mipmaps = SUCCEEDED(d->CreateTexture(w, h, 0, D3DUSAGE_AUTOGENMIPMAP, D3DFMT_A8R8G8B8,
+                                                       D3DPOOL_MANAGED, &atlas, nullptr));
+            if (!mipmaps) {
+                d->CreateTexture(w, h, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &atlas, nullptr);
+            }
+            if (atlas) {
                 D3DLOCKED_RECT l{};
                 if (SUCCEEDED(atlas->LockRect(0, &l, nullptr, 0))) {
                     for (int y = 0; y < h; ++y) {
@@ -580,6 +591,10 @@ namespace gt4
                         }
                     }
                     atlas->UnlockRect(0);
+                    if (mipmaps) {
+                        atlas->SetAutoGenFilterType(D3DTEXF_LINEAR);
+                        atlas->GenerateMipSubLevels();
+                    }
                 } else {
                     atlas->Release();
                     atlas = nullptr;
@@ -590,6 +605,9 @@ namespace gt4
             DeleteObject(f);
             DeleteObject(bitmap);
             DeleteDC(dc);
+            if (!atlas && samples > 1) {
+                fontAtlas(d, atlas, advances, asset, em, cell, systemFamily, false);
+            }
         }
 
         void fontCreate(IDirect3DDevice9* d)
@@ -948,6 +966,9 @@ namespace gt4
                 x -= length * .5f;
             }
             d->SetTexture(0, atlas);
+            d->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
+            d->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
+            d->SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_LINEAR);
             d->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
             d->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
             for (unsigned char ch : s) {
@@ -2640,8 +2661,8 @@ namespace gt4
                           true);
                 } else if (!entries.empty() && s.selected < entries.size() &&
                            s.ui.countryNotice(entries[s.selected].country, s.searching, false)) {
-                    static const std::string first = "This vehicle is unassigned to a country.";
-                    static const std::string second = "Add its model name or ID in GT4Showroom.ini.";
+                    static const std::string first = "This vehicle is unassigned to a country";
+                    static const std::string second = "Add its model name or ID in GT4Showroom.ini";
                     const float boxW = std::min(W * .54f, 650 * scale), x = (W - boxW) * .5f, y = H * .66f;
                     rect(d, x, y, boxW, 54 * scale, color(0x080B0D, .94f));
                     rect(d, x, y, 2 * scale, 54 * scale, 0xFFAEB5B5);
