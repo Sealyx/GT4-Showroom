@@ -477,4 +477,4 @@ namespace gt4::nativePreview
         captureVehicle(vehicle, id);
         return reached;
     }
-} 
+}

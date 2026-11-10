@@ -300,9 +300,9 @@ namespace gt4
         Audio(const Audio&) = delete;
         Audio& operator=(const Audio&) = delete;
         bool enabled = true, running = false, focused = true;
-        
+
 		// game owns the volume now. saved showroom trims stay out of playback
-		
+
         unsigned bedVolume = 100, cueVolume = 100, masterVolume = 100;
 
         const AudioFault* nextFault()

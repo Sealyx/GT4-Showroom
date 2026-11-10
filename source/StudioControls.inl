@@ -1,4 +1,4 @@
-inline Key previousCinematicHotspot, nextCinematicHotspot, pauseCinematic;
+inline Key previousCinematicHotspot, nextCinematicHotspot, pauseCinematic, photoHide, photoReset;
 
 void finishSettings()
 {
@@ -30,6 +30,21 @@ void finishSettings()
 void requestStudioAction(StudioAction action)
 {
     if (action == StudioAction::None || state.busy()) {
+        return;
+    }
+    if (action == StudioAction::EnterPhoto) {
+        if (state.viewer.active && !state.viewer.transitioning()) {
+            state.ui.menu.finish(1);
+            finishSettings();
+            state.photo.begin(state.viewer, state.clock);
+            photoHide.blockUntilRelease();
+            photoReset.blockUntilRelease();
+            state.ui.vehicle.endWheelDrag();
+            state.ui.cinematic.grabbed = false;
+            state.ui.dock = true;
+            state.cue = Cue::Accept;
+            blockActions();
+        }
         return;
     }
     if (action == StudioAction::EnterTransFender) {
@@ -248,7 +263,8 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
     const bool search = searchKey.poll(key(VK_OEM_3) || pad.search, tick);
     const bool leftPress = left.poll(key(VK_LEFT) || pad.left, tick, true),
                rightPress = right.poll(key(VK_RIGHT) || pad.right, tick, true);
-    const bool modal = state.ui.menu.open || state.shop.open() || state.searching || state.spawnReview != SpawnReview::None;
+    const bool modal = state.ui.menu.open || state.shop.open() || state.photo.active || state.searching ||
+                       state.spawnReview != SpawnReview::None;
     const bool upPress = up.poll(key(VK_UP) || pad.up, tick, modal),
                downPress = down.poll(key(VK_DOWN) || pad.down, tick, modal);
     const bool accept = enter.poll(key(VK_RETURN) || key(VK_SPACE) || pad.accept, tick),
@@ -279,6 +295,145 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
     const bool activeInput = moved || click || context || accept || goBack || leftPress || rightPress || upPress ||
                              downPress || search || favoritesPress || add || previousHotspot || nextHotspot ||
                              pauseView || togglePanels || wheel || pad.orbitX || pad.orbitY || pad.zoom;
+    if (state.photo.active) {
+        auto& photo = state.photo;
+        if (key('H') || key('W') || key('A') || key('S') || key('D') || key('Q') || key('E') || key(VK_OEM_PLUS) ||
+            key(VK_OEM_MINUS)) {
+            state.ui.controllerUsed = false;
+        }
+        if (!state.viewer.active || goBack) {
+            photo.active = photo.requested = false;
+            photo.dragging = photo.movingPanel = false;
+            state.cue = Cue::Back;
+            blockActions();
+            return;
+        }
+        if (photo.requested) {
+            photo.dragging = photo.movingPanel = false;
+            return;
+        }
+        if (photoHide.poll(key('H') || pad.search, tick)) {
+            photo.hidden = !photo.hidden;
+            state.cue = photo.hidden ? Cue::Back : Cue::Open;
+            blockActions();
+            return;
+        }
+        if (photoReset.poll(key('R') || pad.favorites, tick)) {
+            const float panelX = photo.panelX, panelY = photo.panelY;
+            photo.begin(state.viewer, state.clock);
+            photo.panelX = panelX;
+            photo.panelY = panelY;
+            state.cue = Cue::Accept;
+            blockActions();
+            return;
+        }
+        if (accept && key(VK_SPACE)) {
+            photo.requested = true;
+            photo.dragging = photo.movingPanel = false;
+            blockActions();
+            return;
+        }
+        if (photo.dragging) {
+            if (lDown) {
+                photo.place(state.pointerX * W - photo.dragX, state.pointerY * H - photo.dragY, W, H);
+            } else {
+                photo.dragging = false;
+            }
+            state.ui.dock = false;
+            return;
+        }
+        if (!photo.hidden && !rDown && click && photo.header(W, H).contains(state.pointerX * W, state.pointerY * H)) {
+            const auto box = photo.panel(W, H);
+            photo.dragX = state.pointerX * W - box.x;
+            photo.dragY = state.pointerY * H - box.y;
+            photo.dragging = true;
+            state.ui.dock = false;
+            state.cue = Cue::Move;
+            return;
+        }
+        const float seconds = float(std::clamp(dt, 0., .1));
+        const bool panelChord = !photo.hidden && pad.add;
+        const bool movePanel = panelChord && (pad.orbitX || pad.orbitY);
+        if (movePanel) {
+            const auto box = photo.panel(W, H);
+            // native right-stick up is positive, while screen y grows downward
+            photo.place(box.x + pad.orbitX * W * seconds * .45f, box.y - pad.orbitY * H * seconds * .45f, W, H);
+            if (!photo.movingPanel) {
+                state.cue = Cue::Move;
+            }
+            state.ui.dock = false;
+        }
+        photo.movingPanel = movePanel;
+        if (!movePanel && (upPress || downPress)) {
+            photo.row = (photo.row + int(downPress) - int(upPress) + ViewerPhoto::rowCount) % ViewerPhoto::rowCount;
+            state.cue = Cue::Move;
+        }
+        const int direction = int(rightPress) - int(leftPress);
+        if (!movePanel && direction) {
+            if (photo.row < ViewerPhoto::settingCount) {
+                state.cue = photo.adjust(direction) ? Cue::Slider : Cue::Error;
+            } else {
+                photo.row = photo.row == 4 ? 5 : 4;
+                state.cue = Cue::Move;
+            }
+        }
+        const bool pan = key(VK_SHIFT) || pad.view;
+        const float lookX = (rDown ? dx * .003f : 0.f) + (panelChord ? 0.f : pad.orbitX * seconds * 1.5f);
+        const float lookY = (rDown ? dy * .003f : 0.f) + (panelChord ? 0.f : pad.orbitY * seconds);
+        if (pan) {
+            photo.panX = std::clamp(photo.panX - lookX * 3, -8.f, 8.f);
+            photo.panZ = std::clamp(photo.panZ + lookY * 3, -3.f, 8.f);
+        } else {
+            photo.yaw = std::remainder(photo.yaw + lookX, 2 * pi);
+            photo.pitch = std::clamp(photo.pitch + lookY, -.3f, 1.3f);
+        }
+        photo.panX = std::clamp(photo.panX + (float(key('D')) - float(key('A'))) * seconds * 2, -8.f, 8.f);
+        photo.panZ = std::clamp(photo.panZ + (float(key('W')) - float(key('S'))) * seconds * 2, -3.f, 8.f);
+        photo.roll = std::remainder(
+            photo.roll + (float(key('E') || pad.nextHotspot) - float(key('Q') || pad.previousHotspot)) * seconds * 30,
+            360.f);
+        photo.fov =
+            std::clamp(photo.fov + (float(key(VK_OEM_MINUS)) - float(key(VK_OEM_PLUS))) * seconds * 25, 15.f, 100.f);
+        if (wheel) {
+            const float direction = game::at<uint8_t>(rawMouse + 3) ? 1.f : -1.f;
+            photo.zoom = std::clamp(photo.zoom * std::exp(direction * .08f), .3f, 3.f);
+            state.cue = Cue::Slider;
+        }
+        if (!pad.zoomFromShoulders && pad.zoom) {
+            photo.zoom = std::clamp(photo.zoom * std::exp(pad.zoom * seconds), .3f, 3.f);
+        }
+        bool activate = accept;
+        int clickedDirection = 0;
+        if (!photo.hidden && !rDown && (moved || click)) {
+            const int hit = photo.hit(W, H, state.pointerX * W, state.pointerY * H, clickedDirection);
+            if (hit >= 0) {
+                if (photo.row != hit || (clickedDirection && photo.side != clickedDirection)) {
+                    state.cue = Cue::Move;
+                }
+                photo.row = hit;
+                if (clickedDirection) {
+                    photo.side = clickedDirection;
+                }
+                activate = activate || (click && (hit >= ViewerPhoto::settingCount || clickedDirection));
+            }
+        }
+        if (activate) {
+            if (photo.row < ViewerPhoto::settingCount) {
+                state.cue = photo.adjust(clickedDirection ? clickedDirection : photo.side) ? Cue::Slider : Cue::Error;
+            } else if (photo.row == 4) {
+                photo.requested = true;
+                blockActions();
+            } else if (photo.row == 5) {
+                photo.active = false;
+                state.cue = Cue::Back;
+                blockActions();
+            }
+        }
+        if (photo.active) {
+            dockPointer(state, entries, W, H, dt);
+        }
+        return;
+    }
     if (resetShop && state.shop.open() && !state.shop.locked() && !state.shop.partReview &&
         state.spawnReview == SpawnReview::None) {
         state.spawnReview = SpawnReview::ShopReset;
@@ -287,13 +442,24 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         state.reviewChoice = 1;
         state.cue = Cue::Accept;
         blockActions();
+        dockPointer(state, entries, W, H, dt);
         return;
     }
     if (state.shop.open() && state.spawnReview == SpawnReview::None) {
         state.viewer.activity(state.clock);
         const bool wheelLeft = wheel && game::at<uint8_t>(rawMouse + 3);
-        processShopInput(leftPress || wheelLeft, rightPress || (wheel && !wheelLeft), upPress, downPress,
-                         accept, goBack || context, click, lDown, moved, W, H);
+        processShopInput(leftPress || wheelLeft,
+                         rightPress || (wheel && !wheelLeft),
+                         upPress,
+                         downPress,
+                         accept,
+                         goBack || context,
+                         click,
+                         lDown,
+                         moved,
+                         W,
+                         H);
+        dockPointer(state, entries, W, H, dt);
         return;
     }
     if (activeInput && state.viewer.activity(state.clock)) {

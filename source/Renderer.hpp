@@ -27,6 +27,7 @@
 #include "CinematicVehicle.hpp"
 #include "RenderTargets.hpp"
 #include "ViewerStudio.hpp"
+#include "ViewerPhotoCapture.hpp"
 #include "StudioLighting.hpp"
 #include "NativeStudio/EnvironmentMap.hpp"
 
@@ -1573,8 +1574,13 @@ namespace gt4
             }
         }
 
-        void
-        monitorBevel(IDirect3DDevice9* d, UIRect r, float alpha, float scale, bool selected, bool opensWindow = false)
+        void monitorBevel(IDirect3DDevice9* d,
+                          UIRect r,
+                          float alpha,
+                          float scale,
+                          bool selected,
+                          bool opensWindow = false,
+                          bool drawArrow = true)
         {
             rect(d, r.x, r.y, r.w, r.h, color(0x696A72, alpha));
             const float edge = std::max(.6f, scale), height = r.h - 2 * edge;
@@ -1588,6 +1594,9 @@ namespace gt4
             }
             rect(d, r.x + edge, r.y + edge, edge, height, color(0xECEEF5, alpha));
             rect(d, r.x + edge, r.y + r.h - edge, r.w - 2 * edge, edge, color(0x9697A0, alpha));
+            if (!drawArrow) {
+                return;
+            }
             const auto arrow = monitorArrowPanel(r, scale);
             const auto& ramp = selected ? monitorOrange : monitorArrowGray;
             for (size_t i = 0; i < ramp.size(); ++i) {
@@ -1698,6 +1707,135 @@ namespace gt4
             const ScreenVertex p[] = {v(-4, -5), v(5, 0), v(-1, 0), v(-1, 0), v(5, 0), v(-4, 5)};
             d->DrawPrimitiveUP(D3DPT_TRIANGLELIST, 2, p, sizeof(ScreenVertex));
             ++drawCalls;
+        }
+
+        void monitorStepArrow(IDirect3DDevice9* d, UIRect box, float scale, bool selected, int direction)
+        {
+            const auto& ramp = selected ? monitorOrange : monitorArrowGray;
+            for (size_t band = 0; band < ramp.size(); ++band) {
+                rect(d,
+                     box.x,
+                     box.y + box.h * band / ramp.size(),
+                     box.w,
+                     box.h / ramp.size() + .1f,
+                     color(ramp[band], 1));
+            }
+            rect(d, box.x, box.y, scale * .65f, box.h, selected ? 0xFFFFD18A : 0xFFF2F4F9);
+            const float x = box.x + box.w * .5f, y = box.y + box.h * .5f;
+            screen(d);
+            d->SetTexture(0, nullptr);
+            const float left = direction < 0 ? 2.5f : -2.5f;
+            const float right = -left;
+            const DWORD ink = 0xFF111214;
+            const ScreenVertex triangle[]{{x + left * scale, y - 4.5f * scale, 0, 1, ink, 0, 0},
+                                          {x + right * scale, y, 0, 1, ink, 0, 0},
+                                          {x + left * scale, y + 4.5f * scale, 0, 1, ink, 0, 0}};
+            d->DrawPrimitiveUP(D3DPT_TRIANGLELIST, 1, triangle, sizeof(ScreenVertex));
+            ++drawCalls;
+        }
+
+        bool savePhoto(IDirect3DDevice9* d,
+                       const Model& s,
+                       const std::filesystem::path& folder,
+                       std::filesystem::path& saved)
+        {
+            return saveViewerPhoto(d, target, s.photo, folder, saved);
+        }
+
+        void drawViewerPhoto(IDirect3DDevice9* d, float W, float H, const Model& s)
+        {
+            const auto& photo = s.photo;
+            if (photo.requested) {
+                return;
+            }
+            const auto crop = photo.crop(unsigned(W), unsigned(H));
+            rect(d, 0, 0, W, float(crop.y), 0xFF000000);
+            rect(d, 0, float(crop.y + crop.height), W, H - crop.y - crop.height, 0xFF000000);
+            rect(d, 0, float(crop.y), float(crop.x), float(crop.height), 0xFF000000);
+            rect(d, float(crop.x + crop.width), float(crop.y), W - crop.x - crop.width, float(crop.height), 0xFF000000);
+            if (photo.hidden) {
+                return;
+            }
+            const float scale = ViewerPhoto::uiScale(W, H);
+            const auto box = photo.panel(W, H);
+            rect(d, box.x + 3 * scale, box.y + 3 * scale, box.w, box.h, color(0, .26f));
+            rect(d, box.x, box.y, box.w, box.h, 0xFF67696E);
+            rect(d, box.x + scale, box.y + scale, box.w - 2 * scale, box.h - 2 * scale, 0xFFB6B6BB);
+            rect(d, box.x, box.y, box.w, 21 * scale, 0xFF17130A);
+            text(d,
+                 "Photo Mode",
+                 box.x + box.w * .5f,
+                 box.y + 3 * scale,
+                 fitted("Photo Mode", 13 * scale, box.w - 20 * scale, true),
+                 0xFFD0D0D2,
+                 true,
+                 0,
+                 true);
+            const char* names[]{"Zoom", "FOV", "Roll", "Ratio"};
+            for (int row = 0; row < ViewerPhoto::settingCount; ++row) {
+                const auto item = photo.choice(W, H, row);
+                const auto field = photo.field(W, H, row);
+                rect(d, item.x, item.y, item.w, item.h, row % 2 ? 0xFFACACB1 : 0xFFB4B4B9);
+                text(d,
+                     names[row],
+                     box.x + 12 * scale,
+                     item.y + 4 * scale,
+                     fitted(names[row], 13.5f * scale, field.x - box.x - 22 * scale, true),
+                     0xFF08080C,
+                     false,
+                     0,
+                     true);
+                monitorBevel(d, field, 1, scale, false, false, false);
+                for (const int direction : {-1, 1}) {
+                    monitorStepArrow(d,
+                                     photo.arrow(W, H, row, direction),
+                                     scale,
+                                     photo.row == row && photo.side == direction,
+                                     direction);
+                }
+                char value[48]{};
+                if (row == 0) {
+                    std::snprintf(value, sizeof(value), "%.2fx", photo.zoom);
+                } else if (row == 1) {
+                    std::snprintf(value, sizeof(value), "%.0f", photo.fov);
+                } else if (row == 2) {
+                    std::snprintf(value, sizeof(value), "%+.0f", photo.roll);
+                } else {
+                    std::snprintf(value, sizeof(value), "%s", ViewerPhoto::ratios[size_t(photo.ratio)]);
+                }
+                const auto left = photo.arrow(W, H, row, -1);
+                const auto right = photo.arrow(W, H, row, 1);
+                text(d,
+                     value,
+                     field.x + field.w * .5f,
+                     field.y + 3.4f * scale,
+                     fitted(value, 13.5f * scale, right.x - left.x - left.w - 10 * scale, true),
+                     0xFF08080C,
+                     true,
+                     0,
+                     true);
+            }
+            monitorButton(d, photo.choice(W, H, 4), "Take Image", 1, scale, photo.row == 4);
+            monitorButton(d, photo.choice(W, H, 5), "Back", 1, scale, photo.row == 5);
+
+            // keep the same footer and reveal as browsing; short pages leave the type at its normal size
+            const auto message = !photo.status.empty() && s.clock < photo.statusUntil
+                                     ? photo.status
+                                     : photo.help(s.clock, s.ui.controllerUsed);
+            const FooterLayout footer(H);
+            const float footerScale = H / 720.f;
+            const float reveal = footerReveal(message, s.clock);
+            rect(d, 0, H * .907f, W, H * .093f, 0xFF000000);
+            label(d,
+                  message,
+                  W * .5f,
+                  footer.y + (1 - reveal) * 9 * footerScale,
+                  fitted(message, footer.fontHeight, W * .84f),
+                  reveal,
+                  true);
+            if (s.pointerVisible && !s.ui.controllerUsed) {
+                cursor(d, s.pointerX * W, s.pointerY * H, scale * .85f, 1);
+            }
         }
 
         void monitorSettings(IDirect3DDevice9* d, float W, float H, const Model& s)
@@ -2258,7 +2396,8 @@ namespace gt4
                         if (main->paintMask || customStudio) {
                             updateStudioEnvironment(d, s.viewer, s.clock);
                         }
-                        mainCam = viewerCamera(W, H, s.viewer, s.clock);
+                        mainCam = s.photo.active ? viewerPhotoCamera(W, H, s.photo, s.viewer, s.clock)
+                                                 : viewerCamera(W, H, s.viewer, s.clock);
                         angle = pi;
                     } else {
                         studio(d, mainCam, studioTime);
@@ -2344,360 +2483,372 @@ namespace gt4
                 d->SetRenderState(D3DRS_ZENABLE, FALSE);
                 d->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
                 d->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
-                if (main && !s.viewer.active) {
-                    const auto rows = vehicleDisplayRows(e, s.ui);
-                    if (!rows.empty()) {
-                        const auto box = vehicleDisplayPanel(W, H, carHit, rows.size());
-                        rect(d, box.x + 2 * scale, box.y + 2 * scale, box.w, box.h, color(0, .18f * s.carAlpha()));
-                        rect(d, box.x, box.y, box.w, box.h, color(0x242B2D, .78f * s.carAlpha()));
-                        rect(d, box.x, box.y, box.w, scale, color(0xBEC5C5, .8f * s.carAlpha()));
-                        for (size_t i = 0; i < rows.size(); ++i) {
-                            label(d,
-                                  rows[i],
-                                  box.x + box.w * .5f,
-                                  box.y + (5 + 22 * i) * scale,
-                                  fitted(rows[i], 13 * scale, box.w - 18 * scale),
-                                  s.carAlpha(),
-                                  true);
-                        }
-                    }
-                }
-                if (!s.ui.cinematic.active) {
-                    const float carStrip = (1 - s.paintMix) * (1 - s.ui.cinematic.mix),
-                                paintStrip = s.paintMix * (1 - s.ui.cinematic.mix);
-                    const Carousel layout(W, H, s, entries.size());
-                    for (int i = layout.first; i < layout.last; ++i) {
-                        const auto box = layout.box(i);
-                        rect(d, box.x, box.y, box.w, box.h, color(0x242829, carStrip * .55f));
-                        if (const Mesh* thumb = lookup(entries[i].id)) {
-                            constexpr float thumbAngle = pi - .78f;
-                            const int fullX = int(std::floor(box.x + 2 * scale)),
-                                      fullY = int(std::floor(box.y + 2 * scale)),
-                                      fullW = std::max(1, int(box.w - 4 * scale)),
-                                      fullH = std::max(1, int(box.h - 4 * scale));
-                            const int clipX = std::max(0, fullX), clipY = std::max(0, fullY),
-                                      right = std::min(int(width), fullX + fullW),
-                                      bottom = std::min(int(height), fullY + fullH);
-                            if (right > clipX && bottom > clipY) {
-                                D3DVIEWPORT9 thumbVP{
-                                    DWORD(clipX), DWORD(clipY), DWORD(right - clipX), DWORD(bottom - clipY), 0, 1};
-                                d->SetViewport(&thumbVP);
-                                RECT clip{clipX, clipY, right, bottom};
-                                d->SetScissorRect(&clip);
-                                d->SetRenderState(D3DRS_SCISSORTESTENABLE, TRUE);
-                                d->Clear(0, nullptr, D3DCLEAR_ZBUFFER, 0, 1, 0);
-                                Camera small = fittedThumbnail(float(fullW),
-                                                               float(fullH),
-                                                               thumb->low,
-                                                               thumb->high,
-                                                               thumbAngle,
-                                                               compactThumbnail(entries[i]) ? .72f : .96f);
-                                small.offsetX += float(fullX - clipX) + (float(fullW) - float(thumbVP.Width)) * .5f;
-                                small.cy += float(fullY - clipY);
-                                small.w = float(thumbVP.Width);
-                                small.h = float(thumbVP.Height);
-                                d->SetRenderState(D3DRS_ZENABLE, TRUE);
-                                mesh(d,
-                                     *thumb,
-                                     small,
-                                     thumbAngle,
-                                     entries[i].paints.empty() ? Paint{} : entries[i].paints[0],
-                                     carStrip,
-                                     1);
-                                d->SetRenderState(D3DRS_SCISSORTESTENABLE, FALSE);
-                                d->SetViewport(&vp);
-                                d->SetRenderState(D3DRS_ZENABLE, FALSE);
-                                d->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
-                            }
-                        }
-                    }
-                    if (carStrip > .01f) {
-                        const auto selected = layout.box(int(s.selected));
-                        if (s.page == Page::Cars && !entries.empty() && s.selected < entries.size()) {
-                            marker(d,
-                                   selected.x + selected.w * .5f,
-                                   selected.y - 10 * scale,
-                                   scale,
-                                   carStrip * thumbnailPulse(s.clock - s.changed));
-                        }
-                        label(d,
-                              e.name + (e.year.empty() ? "" : " " + e.year) + (e.favorite ? "  *" : ""),
-                              W * .5f,
-                              H * .82f + 25 * scale * s.paintMix,
-                              22 * scale,
-                              carStrip,
-                              true);
-                        const BrowseBar bar(W, H, s, entries.size());
-                        rect(d, bar.track.x, bar.track.y, bar.track.w, bar.track.h, color(0x171D1D, carStrip));
-                        rect(d, bar.thumb.x, bar.thumb.y, bar.thumb.w, bar.thumb.h, color(0x737978, carStrip));
-                    }
-                    if (paintStrip > .01f && s.page != Page::Livery) {
-                        const size_t n = std::max(size_t(1), e.paints.size());
-                        for (size_t i = 0; i < n; ++i) {
-                            const auto p = e.paints.empty() ? Paint{} : e.paints[i];
-                            const auto box = paintBox(W, H, i, n);
-                            rect(d, box.x, box.y, box.w, box.h, color(i == s.paint ? 0xE6DD9F : 0x151919, paintStrip));
-                            const unsigned slots = main ? paintSlotCount(main->paintMask) : 2;
-                            for (unsigned slot = 0; slot < slots; ++slot) {
-                                const float hh = 44 * scale / slots;
-                                rect(d,
-                                     box.x + 2 * scale,
-                                     box.y + 2 * scale + slot * hh,
-                                     10 * scale,
-                                     hh,
-                                     color(p.rgb[slot], paintStrip));
-                            }
-                            rect(d,
-                                 box.x + 2 * scale,
-                                 box.y + 2 * scale,
-                                 3 * scale,
-                                 42 * scale,
-                                 color(0xFFFFFF, paintStrip * .3f));
-                        }
-                        std::string paintLabel =
-                            paint.name.empty() ? "Paint " + std::to_string(s.paint + 1) + " / " + std::to_string(n)
-                                               : paint.name;
-                        const unsigned displayedSlots = main ? paintSlotCount(main->paintMask) : 2;
-                        for (unsigned slot = 2; slot < displayedSlots; ++slot) {
-                            paintLabel += " / " + paintNames.name(paint.ids[slot], paint.rgb[slot]);
-                        }
-                        label(d,
-                              paintLabel,
-                              W * .5f,
-                              H * .830f,
-                              fitted(paintLabel, 19 * scale, W * .8f),
-                              paintStrip,
-                              true);
-                    }
-                    if (paintStrip > .01f && s.page == Page::Livery) {
-                        for (size_t i = 0; i < s.liveries.size(); ++i) {
-                            const auto b = liveryBox(W, H, i, s.liveries.size());
-                            rect(d, b.x, b.y, b.w, b.h, color(i == s.livery ? 0xE6DD9F : 0x151919, paintStrip));
-                            rect(d,
-                                 b.x + 2 * scale,
-                                 b.y + 2 * scale,
-                                 b.w - 4 * scale,
-                                 b.h - 4 * scale,
-                                 color(0x353C3E, paintStrip));
-                            if (i && s.liveries[i].texture) {
-                                auto* t = static_cast<IDirect3DTexture9*>(s.liveries[i].texture.get());
-                                D3DSURFACE_DESC desc{};
-                                if (SUCCEEDED(t->GetLevelDesc(0, &desc)) && desc.Width && desc.Height) {
-                                    const float fit =
-                                        std::min((b.w - 4 * scale) / desc.Width, (b.h - 4 * scale) / desc.Height);
-                                    const float ww = desc.Width * fit, hh = desc.Height * fit;
-                                    rect(d,
-                                         b.x + (b.w - ww) * .5f,
-                                         b.y + (b.h - hh) * .5f,
-                                         ww,
-                                         hh,
-                                         color(0xFFFFFF, paintStrip),
-                                         t);
-                                }
-                            } else {
+                if (!s.photo.active) {
+                    if (main && !s.viewer.active) {
+                        const auto rows = vehicleDisplayRows(e, s.ui);
+                        if (!rows.empty()) {
+                            const auto box = vehicleDisplayPanel(W, H, carHit, rows.size());
+                            rect(d, box.x + 2 * scale, box.y + 2 * scale, box.w, box.h, color(0, .18f * s.carAlpha()));
+                            rect(d, box.x, box.y, box.w, box.h, color(0x242B2D, .78f * s.carAlpha()));
+                            rect(d, box.x, box.y, box.w, scale, color(0xBEC5C5, .8f * s.carAlpha()));
+                            for (size_t i = 0; i < rows.size(); ++i) {
                                 label(d,
-                                      i ? "..." : "NONE",
-                                      b.x + b.w * .5f,
-                                      b.y + 16 * scale,
-                                      8 * scale,
-                                      paintStrip,
+                                      rows[i],
+                                      box.x + box.w * .5f,
+                                      box.y + (5 + 22 * i) * scale,
+                                      fitted(rows[i], 13 * scale, box.w - 18 * scale),
+                                      s.carAlpha(),
                                       true);
                             }
                         }
-                        const std::string name = s.livery == 0 ? "No Livery" : "Livery " + std::to_string(s.livery);
-                        label(d, name, W * .5f, H * .830f, 19 * scale, paintStrip, true);
                     }
-                    auto logo = [&](bool brand, float centerX, float top, float maxW, float maxH, float alpha) {
-                        unsigned iw = 0, ih = 0;
-                        auto* t = logos.get(d, e.modelKey, brand, iw, ih);
-                        if (!t || !iw || !ih) {
-                            return false;
+                    if (!s.ui.cinematic.active) {
+                        const float carStrip = (1 - s.paintMix) * (1 - s.ui.cinematic.mix),
+                                    paintStrip = s.paintMix * (1 - s.ui.cinematic.mix);
+                        const Carousel layout(W, H, s, entries.size());
+                        for (int i = layout.first; i < layout.last; ++i) {
+                            const auto box = layout.box(i);
+                            rect(d, box.x, box.y, box.w, box.h, color(0x242829, carStrip * .55f));
+                            if (const Mesh* thumb = lookup(entries[i].id)) {
+                                constexpr float thumbAngle = pi - .78f;
+                                const int fullX = int(std::floor(box.x + 2 * scale)),
+                                          fullY = int(std::floor(box.y + 2 * scale)),
+                                          fullW = std::max(1, int(box.w - 4 * scale)),
+                                          fullH = std::max(1, int(box.h - 4 * scale));
+                                const int clipX = std::max(0, fullX), clipY = std::max(0, fullY),
+                                          right = std::min(int(width), fullX + fullW),
+                                          bottom = std::min(int(height), fullY + fullH);
+                                if (right > clipX && bottom > clipY) {
+                                    D3DVIEWPORT9 thumbVP{
+                                        DWORD(clipX), DWORD(clipY), DWORD(right - clipX), DWORD(bottom - clipY), 0, 1};
+                                    d->SetViewport(&thumbVP);
+                                    RECT clip{clipX, clipY, right, bottom};
+                                    d->SetScissorRect(&clip);
+                                    d->SetRenderState(D3DRS_SCISSORTESTENABLE, TRUE);
+                                    d->Clear(0, nullptr, D3DCLEAR_ZBUFFER, 0, 1, 0);
+                                    Camera small = fittedThumbnail(float(fullW),
+                                                                   float(fullH),
+                                                                   thumb->low,
+                                                                   thumb->high,
+                                                                   thumbAngle,
+                                                                   compactThumbnail(entries[i]) ? .72f : .96f);
+                                    small.offsetX += float(fullX - clipX) + (float(fullW) - float(thumbVP.Width)) * .5f;
+                                    small.cy += float(fullY - clipY);
+                                    small.w = float(thumbVP.Width);
+                                    small.h = float(thumbVP.Height);
+                                    d->SetRenderState(D3DRS_ZENABLE, TRUE);
+                                    mesh(d,
+                                         *thumb,
+                                         small,
+                                         thumbAngle,
+                                         entries[i].paints.empty() ? Paint{} : entries[i].paints[0],
+                                         carStrip,
+                                         1);
+                                    d->SetRenderState(D3DRS_SCISSORTESTENABLE, FALSE);
+                                    d->SetViewport(&vp);
+                                    d->SetRenderState(D3DRS_ZENABLE, FALSE);
+                                    d->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+                                }
+                            }
                         }
-                        const float fit = std::min(maxW / iw, maxH / ih);
-                        rect(d, centerX - iw * fit * .5f, top, iw * fit, ih * fit, color(0xFFFFFF, alpha), t);
-                        return true;
-                    };
-                    const bool carLogo =
-                        s.ui.carLogo && logo(false, W * .77f, H * .065f, W * .4f, H * .13f, 1 - s.titleMix());
-                    if (!carLogo) {
-                        const auto& name = e.title.empty() ? e.name : e.title;
-                        const auto regular = textStyle(false);
-                        const auto style = titleFont
-                            ? TextStyle{titleFont, titleWidths, float(titleFontEm), float(titleFontCell), regular.widthScale}
-                            : regular;
+                        if (carStrip > .01f) {
+                            const auto selected = layout.box(int(s.selected));
+                            if (s.page == Page::Cars && !entries.empty() && s.selected < entries.size()) {
+                                marker(d,
+                                       selected.x + selected.w * .5f,
+                                       selected.y - 10 * scale,
+                                       scale,
+                                       carStrip * thumbnailPulse(s.clock - s.changed));
+                            }
+                            label(d,
+                                  e.name + (e.year.empty() ? "" : " " + e.year) + (e.favorite ? "  *" : ""),
+                                  W * .5f,
+                                  H * .82f + 25 * scale * s.paintMix,
+                                  22 * scale,
+                                  carStrip,
+                                  true);
+                            const BrowseBar bar(W, H, s, entries.size());
+                            rect(d, bar.track.x, bar.track.y, bar.track.w, bar.track.h, color(0x171D1D, carStrip));
+                            rect(d, bar.thumb.x, bar.thumb.y, bar.thumb.w, bar.thumb.h, color(0x737978, carStrip));
+                        }
+                        if (paintStrip > .01f && s.page != Page::Livery) {
+                            const size_t n = std::max(size_t(1), e.paints.size());
+                            for (size_t i = 0; i < n; ++i) {
+                                const auto p = e.paints.empty() ? Paint{} : e.paints[i];
+                                const auto box = paintBox(W, H, i, n);
+                                rect(d,
+                                     box.x,
+                                     box.y,
+                                     box.w,
+                                     box.h,
+                                     color(i == s.paint ? 0xE6DD9F : 0x151919, paintStrip));
+                                const unsigned slots = main ? paintSlotCount(main->paintMask) : 2;
+                                for (unsigned slot = 0; slot < slots; ++slot) {
+                                    const float hh = 44 * scale / slots;
+                                    rect(d,
+                                         box.x + 2 * scale,
+                                         box.y + 2 * scale + slot * hh,
+                                         10 * scale,
+                                         hh,
+                                         color(p.rgb[slot], paintStrip));
+                                }
+                                rect(d,
+                                     box.x + 2 * scale,
+                                     box.y + 2 * scale,
+                                     3 * scale,
+                                     42 * scale,
+                                     color(0xFFFFFF, paintStrip * .3f));
+                            }
+                            std::string paintLabel =
+                                paint.name.empty() ? "Paint " + std::to_string(s.paint + 1) + " / " + std::to_string(n)
+                                                   : paint.name;
+                            const unsigned displayedSlots = main ? paintSlotCount(main->paintMask) : 2;
+                            for (unsigned slot = 2; slot < displayedSlots; ++slot) {
+                                paintLabel += " / " + paintNames.name(paint.ids[slot], paint.rgb[slot]);
+                            }
+                            label(d,
+                                  paintLabel,
+                                  W * .5f,
+                                  H * .830f,
+                                  fitted(paintLabel, 19 * scale, W * .8f),
+                                  paintStrip,
+                                  true);
+                        }
+                        if (paintStrip > .01f && s.page == Page::Livery) {
+                            for (size_t i = 0; i < s.liveries.size(); ++i) {
+                                const auto b = liveryBox(W, H, i, s.liveries.size());
+                                rect(d, b.x, b.y, b.w, b.h, color(i == s.livery ? 0xE6DD9F : 0x151919, paintStrip));
+                                rect(d,
+                                     b.x + 2 * scale,
+                                     b.y + 2 * scale,
+                                     b.w - 4 * scale,
+                                     b.h - 4 * scale,
+                                     color(0x353C3E, paintStrip));
+                                if (i && s.liveries[i].texture) {
+                                    auto* t = static_cast<IDirect3DTexture9*>(s.liveries[i].texture.get());
+                                    D3DSURFACE_DESC desc{};
+                                    if (SUCCEEDED(t->GetLevelDesc(0, &desc)) && desc.Width && desc.Height) {
+                                        const float fit =
+                                            std::min((b.w - 4 * scale) / desc.Width, (b.h - 4 * scale) / desc.Height);
+                                        const float ww = desc.Width * fit, hh = desc.Height * fit;
+                                        rect(d,
+                                             b.x + (b.w - ww) * .5f,
+                                             b.y + (b.h - hh) * .5f,
+                                             ww,
+                                             hh,
+                                             color(0xFFFFFF, paintStrip),
+                                             t);
+                                    }
+                                } else {
+                                    label(d,
+                                          i ? "..." : "NONE",
+                                          b.x + b.w * .5f,
+                                          b.y + 16 * scale,
+                                          8 * scale,
+                                          paintStrip,
+                                          true);
+                                }
+                            }
+                            const std::string name = s.livery == 0 ? "No Livery" : "Livery " + std::to_string(s.livery);
+                            label(d, name, W * .5f, H * .830f, 19 * scale, paintStrip, true);
+                        }
+                        auto logo = [&](bool brand, float centerX, float top, float maxW, float maxH, float alpha) {
+                            unsigned iw = 0, ih = 0;
+                            auto* t = logos.get(d, e.modelKey, brand, iw, ih);
+                            if (!t || !iw || !ih) {
+                                return false;
+                            }
+                            const float fit = std::min(maxW / iw, maxH / ih);
+                            rect(d, centerX - iw * fit * .5f, top, iw * fit, ih * fit, color(0xFFFFFF, alpha), t);
+                            return true;
+                        };
+                        const bool carLogo =
+                            s.ui.carLogo && logo(false, W * .77f, H * .065f, W * .4f, H * .13f, 1 - s.titleMix());
+                        if (!carLogo) {
+                            const auto& name = e.title.empty() ? e.name : e.title;
+                            const auto regular = textStyle(false);
+                            const auto style = titleFont ? TextStyle{titleFont,
+                                                                     titleWidths,
+                                                                     float(titleFontEm),
+                                                                     float(titleFontCell),
+                                                                     regular.widthScale}
+                                                         : regular;
+                            label(d,
+                                  name,
+                                  W * .77f,
+                                  H * .065f,
+                                  fitted(name, 50 * scale, W * .40f, style),
+                                  1 - s.titleMix(),
+                                  true,
+                                  0,
+                                  style);
+                        }
+                        const bool brandLogo =
+                            s.ui.brandLogo && logo(true, W * .80f, H * .065f, W * .30f, H * .12f, s.titleMix());
+                        if (!brandLogo) {
+                            label(d, e.brand, W * .80f, H * .085f, 26 * scale, s.titleMix(), true);
+                            label(d, "motor collection", W * .80f, H * .128f, 13 * scale, s.titleMix(), true);
+                        }
+                        rect(d, 0, H * .907f, W, H * .093f, 0xFF000000);
+                        std::string info = e.information;
+                        if (!e.power.empty()) {
+                            info += "    Power:" + e.power;
+                        }
+                        if (!e.torque.empty()) {
+                            info += "    Torque:" + e.torque;
+                        }
+                        std::string foot =
+                            s.status.empty()
+                                ? ((s.clock - s.changed < 4 || int(s.clock) % 8 < 5)
+                                       ? info
+                                       : showroomControlHint(s.page, s.ui.controllerUsed, s.liveries.size() > 1))
+                                : s.status;
+                        const FooterLayout footer(H);
+                        const auto help = s.ui.menu.help();
+                        if (help.empty()) {
+                            const float reveal = footerReveal(foot, s.clock);
+                            label(d,
+                                  foot,
+                                  W * .5f,
+                                  footer.y + (1.f - reveal) * 9 * scale,
+                                  fitted(foot, footer.fontHeight, W * .84f),
+                                  reveal,
+                                  true);
+                            label(d,
+                                  std::to_string(entries.empty() ? 0 : s.selected + 1) + " / " +
+                                      std::to_string(entries.size()),
+                                  W * .94f,
+                                  footer.countY,
+                                  footer.countHeight,
+                                  1,
+                                  true);
+                        } else {
+                            const float reveal = footerReveal(help, s.clock);
+                            text(d,
+                                 help,
+                                 W * .5f,
+                                 H * .929f + (1.f - reveal) * 9 * scale,
+                                 fitted(help, 16 * scale, W * .9f, true),
+                                 color(0xD5D5D8, reveal),
+                                 true,
+                                 0,
+                                 true);
+                        }
+                        const float cx = 63 * scale, cy = 47 * scale;
+                        if (flags) {
+                            const float index = float(e.country);
+                            rect(d,
+                                 cx - 17 * scale,
+                                 cy - 13.26f * scale,
+                                 34 * scale,
+                                 26.52f * scale,
+                                 0xFFFFFFFF,
+                                 flags,
+                                 index / float(countryCount),
+                                 0,
+                                 (index + 1) / float(countryCount),
+                                 1);
+                        }
+                        label(d, e.category, 104 * scale, 19 * scale, 26 * scale);
+                        if (s.ui.favoritesOnly || s.ui.countryFilter >= 0 || s.ui.classFilter >= 0) {
+                            label(d,
+                                  (s.ui.favoritesOnly ? std::string("FAVORITES") : std::string()) +
+                                      (s.ui.favoritesOnly && s.ui.countryFilter >= 0 ? " / " : "") +
+                                      (s.ui.countryFilter >= 0
+                                           ? (s.ui.countryFilter == 0 ? "UNASSIGNED"
+                                                                      : countryLabel(Country(s.ui.countryFilter)))
+                                           : "") +
+                                      (s.ui.classFilter >= 0 ? " / " + std::string(classNames[size_t(s.ui.classFilter)])
+                                                             : ""),
+                                  104 * scale,
+                                  56 * scale,
+                                  11 * scale);
+                        }
+                        if (entries.empty()) {
+                            label(d,
+                                  s.ui.favoritesOnly ? "NO FAVORITES YET - UP / SQUARE ADDS A CAR"
+                                                     : "NO CARS IN THIS FILTER - RMB / SELECT CHANGES FILTER",
+                                  W * .5f,
+                                  H * .50f,
+                                  19 * scale,
+                                  1,
+                                  true);
+                        }
+                    }
+                    if (s.searching) {
+                        const float boxW = std::min(W * .42f, 520 * scale), boxH = 86 * scale, x = (W - boxW) * .5f,
+                                    y = H * (s.ui.keyboard.open ? .53f : .605f);
+                        rect(
+                            d, x - 1 * scale, y - 1 * scale, boxW + 2 * scale, boxH + 2 * scale, color(0x8B9191, .85f));
+                        rect(d, x, y, boxW, boxH, color(0x080B0D, .96f));
+                        rect(d, x, y, boxW, 2 * scale, 0xFFAEB5B5);
+                        disc(d, x + 13 * scale, y + 14 * scale, 3, scale, 0xD31012);
+                        label(d, "MODEL SEARCH", x + 23 * scale, y + 3 * scale, 10 * scale);
+                        const std::string query = s.query.empty() ? "MODEL NAME / ID" : s.query;
+                        const float qh = fitted(query, 19 * scale, boxW - 36 * scale);
+                        label(d, query, x + 15 * scale, y + 24 * scale, qh, s.query.empty() ? .45f : 1.f);
+                        if (int(s.clock * 2) % 2 == 0) {
+                            const float end = x + 15 * scale + (s.query.empty() ? 0 : textWidth(query, qh));
+                            rect(d, end + 3 * scale, y + 30 * scale, 1.5f * scale, 22 * scale, 0xFFE5E9E9);
+                        }
+                        const std::string hint =
+                            s.searchFailed && s.clock < s.searchUntil
+                                ? "MODEL NOT FOUND"
+                                : (s.ui.keyboard.open ? "CROSS Type    SQUARE Delete    TRIANGLE Find    CIRCLE Close"
+                                                      : "ENTER Find    BACKSPACE Edit    ` Close");
+                        label(d, hint, x + 15 * scale, y + 62 * scale, fitted(hint, 9 * scale, boxW - 30 * scale));
+                    } else if (!s.searchNotice.empty() && s.clock < s.searchUntil) {
+                        const float boxW = std::min(W * .54f, 650 * scale), x = (W - boxW) * .5f, y = H * .66f;
+                        rect(d, x, y, boxW, 36 * scale, color(0x080B0D, .94f));
+                        rect(d, x, y, 2 * scale, 36 * scale, 0xFFAEB5B5);
                         label(d,
-                              name,
-                              W * .77f,
-                              H * .065f,
-                              fitted(name, 50 * scale, W * .40f, style),
-                              1 - s.titleMix(),
-                              true,
-                              0,
-                              style);
-                    }
-                    const bool brandLogo =
-                        s.ui.brandLogo && logo(true, W * .80f, H * .065f, W * .30f, H * .12f, s.titleMix());
-                    if (!brandLogo) {
-                        label(d, e.brand, W * .80f, H * .085f, 26 * scale, s.titleMix(), true);
-                        label(d, "motor collection", W * .80f, H * .128f, 13 * scale, s.titleMix(), true);
-                    }
-                    rect(d, 0, H * .907f, W, H * .093f, 0xFF000000);
-                    std::string info = e.information;
-                    if (!e.power.empty()) {
-                        info += "    Power:" + e.power;
-                    }
-                    if (!e.torque.empty()) {
-                        info += "    Torque:" + e.torque;
-                    }
-                    std::string foot =
-                        s.status.empty()
-                            ? ((s.clock - s.changed < 4 || int(s.clock) % 8 < 5)
-                                   ? info
-                                   : showroomControlHint(s.page, s.ui.controllerUsed, s.liveries.size() > 1))
-                            : s.status;
-                    const FooterLayout footer(H);
-                    const auto help = s.ui.menu.help();
-                    if (help.empty()) {
-                        const float reveal = footerReveal(foot, s.clock);
-                        label(d,
-                              foot,
+                              s.searchNotice,
                               W * .5f,
-                              footer.y + (1.f - reveal) * 9 * scale,
-                              fitted(foot, footer.fontHeight, W * .84f),
-                              reveal,
-                              true);
-                        label(d,
-                              std::to_string(entries.empty() ? 0 : s.selected + 1) + " / " +
-                                  std::to_string(entries.size()),
-                              W * .94f,
-                              footer.countY,
-                              footer.countHeight,
+                              y + 5 * scale,
+                              fitted(s.searchNotice, 13 * scale, boxW - 28 * scale),
                               1,
                               true);
-                    } else {
-                        const float reveal = footerReveal(help, s.clock);
-                        text(d,
-                             help,
-                             W * .5f,
-                             H * .929f + (1.f - reveal) * 9 * scale,
-                             fitted(help, 16 * scale, W * .9f, true),
-                             color(0xD5D5D8, reveal),
-                             true,
-                             0,
-                             true);
+                    } else if (!entries.empty() && s.selected < entries.size() &&
+                               s.ui.countryNotice(entries[s.selected].country, s.searching, false)) {
+                        static const std::string first = "This vehicle is unassigned to a country";
+                        static const std::string second = "Add its model name or ID in GT4Showroom.ini";
+                        const float boxW = std::min(W * .54f, 650 * scale), x = (W - boxW) * .5f, y = H * .66f;
+                        rect(d, x, y, boxW, 54 * scale, color(0x080B0D, .94f));
+                        rect(d, x, y, 2 * scale, 54 * scale, 0xFFAEB5B5);
+                        label(d, first, W * .5f, y + 2 * scale, fitted(first, 13 * scale, boxW - 28 * scale), 1, true);
+                        label(
+                            d, second, W * .5f, y + 26 * scale, fitted(second, 11 * scale, boxW - 28 * scale), 1, true);
                     }
-                    const float cx = 63 * scale, cy = 47 * scale;
-                    if (flags) {
-                        const float index = float(e.country);
-                        rect(d,
-                             cx - 17 * scale,
-                             cy - 13.26f * scale,
-                             34 * scale,
-                             26.52f * scale,
-                             0xFFFFFFFF,
-                             flags,
-                             index / float(countryCount),
-                             0,
-                             (index + 1) / float(countryCount),
-                             1);
+                    if (main && s.ui.cinematic.active && s.hotspotsEnabled() && !s.ui.menu.open &&
+                        s.spawnReview == SpawnReview::None) {
+                        drawHotspots(d, *main, s.ui.vehicle, s.carAlpha());
                     }
-                    label(d, e.category, 104 * scale, 19 * scale, 26 * scale);
-                    if (s.ui.favoritesOnly || s.ui.countryFilter >= 0 || s.ui.classFilter >= 0) {
+                    keyboardPanel(d, W, H, s);
+                    studioMenu(d, W, H, s);
+                    if (s.postSelectionCinematic && s.ui.cinematic.active && !s.appearanceReady && !s.ui.menu.open &&
+                        s.spawnReview == SpawnReview::None) {
+                        const std::string message = s.status.empty() ? "Preparing customization preview..." : s.status;
+                        const float boxWidth = std::min(W * .7f, 720 * scale);
+                        rect(d, (W - boxWidth) * .5f, H * .86f, boxWidth, 36 * scale, color(0x080B0D, .94f));
                         label(d,
-                              (s.ui.favoritesOnly ? std::string("FAVORITES") : std::string()) +
-                                  (s.ui.favoritesOnly && s.ui.countryFilter >= 0 ? " / " : "") +
-                                  (s.ui.countryFilter >= 0
-                                       ? (s.ui.countryFilter == 0 ? "UNASSIGNED"
-                                                                  : countryLabel(Country(s.ui.countryFilter)))
-                                       : "") +
-                                  (s.ui.classFilter >= 0 ? " / " + std::string(classNames[size_t(s.ui.classFilter)])
-                                                         : ""),
-                              104 * scale,
-                              56 * scale,
-                              11 * scale);
-                    }
-                    if (entries.empty()) {
-                        label(d,
-                              s.ui.favoritesOnly ? "NO FAVORITES YET - UP / SQUARE ADDS A CAR"
-                                                 : "NO CARS IN THIS FILTER - RMB / SELECT CHANGES FILTER",
+                              message,
                               W * .5f,
-                              H * .50f,
-                              19 * scale,
+                              H * .86f + 6 * scale,
+                              fitted(message, 12 * scale, boxWidth - 28 * scale),
                               1,
                               true);
                     }
-                }
-                if (s.searching) {
-                    const float boxW = std::min(W * .42f, 520 * scale), boxH = 86 * scale, x = (W - boxW) * .5f,
-                                y = H * (s.ui.keyboard.open ? .53f : .605f);
-                    rect(d, x - 1 * scale, y - 1 * scale, boxW + 2 * scale, boxH + 2 * scale, color(0x8B9191, .85f));
-                    rect(d, x, y, boxW, boxH, color(0x080B0D, .96f));
-                    rect(d, x, y, boxW, 2 * scale, 0xFFAEB5B5);
-                    disc(d, x + 13 * scale, y + 14 * scale, 3, scale, 0xD31012);
-                    label(d, "MODEL SEARCH", x + 23 * scale, y + 3 * scale, 10 * scale);
-                    const std::string query = s.query.empty() ? "MODEL NAME / ID" : s.query;
-                    const float qh = fitted(query, 19 * scale, boxW - 36 * scale);
-                    label(d, query, x + 15 * scale, y + 24 * scale, qh, s.query.empty() ? .45f : 1.f);
-                    if (int(s.clock * 2) % 2 == 0) {
-                        const float end = x + 15 * scale + (s.query.empty() ? 0 : textWidth(query, qh));
-                        rect(d, end + 3 * scale, y + 30 * scale, 1.5f * scale, 22 * scale, 0xFFE5E9E9);
+                    spawnReviewDialog(d, W, H, s);
+                    if (s.pointerVisible && (!s.ui.cinematic.active || s.ui.menu.open ||
+                                             s.spawnReview != SpawnReview::None || s.clock - s.ui.pointerMoved < 2.5)) {
+                        cursor(d, s.pointerX * W, s.pointerY * H, scale * .85f, 1);
                     }
-                    const std::string hint =
-                        s.searchFailed && s.clock < s.searchUntil
-                            ? "MODEL NOT FOUND"
-                            : (s.ui.keyboard.open ? "CROSS Type    SQUARE Delete    TRIANGLE Find    CIRCLE Close"
-                                                  : "ENTER Find    BACKSPACE Edit    ` Close");
-                    label(d, hint, x + 15 * scale, y + 62 * scale, fitted(hint, 9 * scale, boxW - 30 * scale));
-                } else if (!s.searchNotice.empty() && s.clock < s.searchUntil) {
-                    const float boxW = std::min(W * .54f, 650 * scale), x = (W - boxW) * .5f, y = H * .66f;
-                    rect(d, x, y, boxW, 36 * scale, color(0x080B0D, .94f));
-                    rect(d, x, y, 2 * scale, 36 * scale, 0xFFAEB5B5);
-                    label(d,
-                          s.searchNotice,
-                          W * .5f,
-                          y + 5 * scale,
-                          fitted(s.searchNotice, 13 * scale, boxW - 28 * scale),
-                          1,
-                          true);
-                } else if (!entries.empty() && s.selected < entries.size() &&
-                           s.ui.countryNotice(entries[s.selected].country, s.searching, false)) {
-                    static const std::string first = "This vehicle is unassigned to a country";
-                    static const std::string second = "Add its model name or ID in GT4Showroom.ini";
-                    const float boxW = std::min(W * .54f, 650 * scale), x = (W - boxW) * .5f, y = H * .66f;
-                    rect(d, x, y, boxW, 54 * scale, color(0x080B0D, .94f));
-                    rect(d, x, y, 2 * scale, 54 * scale, 0xFFAEB5B5);
-                    label(d, first, W * .5f, y + 5 * scale, fitted(first, 13 * scale, boxW - 28 * scale), 1, true);
-                    label(d, second, W * .5f, y + 29 * scale, fitted(second, 11 * scale, boxW - 28 * scale), 1, true);
-                }
-                if (main && s.ui.cinematic.active && s.hotspotsEnabled() && !s.ui.menu.open &&
-                    s.spawnReview == SpawnReview::None) {
-                    drawHotspots(d, *main, s.ui.vehicle, s.carAlpha());
-                }
-                keyboardPanel(d, W, H, s);
-                studioMenu(d, W, H, s);
-                if (s.postSelectionCinematic && s.ui.cinematic.active && !s.appearanceReady && !s.ui.menu.open &&
-                    s.spawnReview == SpawnReview::None) {
-                    const std::string message = s.status.empty() ? "Preparing customization preview..." : s.status;
-                    const float boxWidth = std::min(W * .7f, 720 * scale);
-                    rect(d, (W - boxWidth) * .5f, H * .86f, boxWidth, 36 * scale, color(0x080B0D, .94f));
-                    label(d,
-                          message,
-                          W * .5f,
-                          H * .86f + 6 * scale,
-                          fitted(message, 12 * scale, boxWidth - 28 * scale),
-                          1,
-                          true);
-                }
-                spawnReviewDialog(d, W, H, s);
-                if (s.pointerVisible &&
-                    (!s.ui.cinematic.active || s.ui.menu.open || s.spawnReview != SpawnReview::None ||
-                     s.clock - s.ui.pointerMoved < 2.5)) {
-                    cursor(d, s.pointerX * W, s.pointerY * H, scale * .85f, 1);
+                } else {
+                    drawViewerPhoto(d, W, H, s);
                 }
             }
-            const float blackout = s.shop.page == ShopPage::Closed
-                                       ? std::max(s.blackAlpha(), s.shop.fade(s.clock))
-                                       : s.blackAlpha();
+            const float blackout =
+                s.shop.page == ShopPage::Closed ? std::max(s.blackAlpha(), s.shop.fade(s.clock)) : s.blackAlpha();
             if (blackout > 0) {
                 rect(d, 0, 0, W, H, color(0x000000, blackout));
             }

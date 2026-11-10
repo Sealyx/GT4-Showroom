@@ -25,6 +25,29 @@ namespace gt4
         return camera;
     }
 
+    // keep the viewer timeline alive while camera adjustments remain local to photo mode
+    inline Camera
+    viewerPhotoCamera(float width, float height, const ViewerPhoto& photo, const VehicleViewer& viewer, double now)
+    {
+        Camera camera(width, height, 5, .5f);
+        const float aspect = width / std::max(1.f, height);
+        const float framing = std::max(1.f, (16.f / 9) / std::max(.1f, aspect));
+        const float distance = 7.5f * framing / photo.zoom;
+        const V3 focus{photo.panX, photo.panY, .65f + photo.panZ};
+        const float horizontal = std::cos(photo.pitch) * distance;
+        const float orbit = photo.yaw + viewer.yaw(now) - photo.entryYaw;
+        camera.eye =
+            focus + V3{std::sin(orbit) * horizontal, -std::cos(orbit) * horizontal, std::sin(photo.pitch) * distance};
+        camera.forward = unit(focus - camera.eye);
+        const auto right = unit(cross(camera.forward, {0, 0, 1}));
+        const auto up = cross(right, camera.forward);
+        const float angle = photo.roll * pi / 180;
+        camera.right = right * std::cos(angle) + up * std::sin(angle);
+        camera.up = up * std::cos(angle) - right * std::sin(angle);
+        camera.focal = height / (2 * std::tan(photo.fov * pi / 360));
+        return camera;
+    }
+
     struct ViewerSurface
     {
         V3 point;

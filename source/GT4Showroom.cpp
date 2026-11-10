@@ -240,6 +240,7 @@ namespace gt4
         customizationNative::clear();
         clearShopGeometry();
         state.shop = {};
+        state.photo = {};
         extrasModel = -1;
         state.ui.menu.setExtras({}, {}, {});
         liveryNative::clear(state);
@@ -783,6 +784,7 @@ namespace gt4
 
     void blockActions()
     {
+        state.photo.dragging = state.photo.movingPanel = false;
         searchInput.quarantine();
         searchKey.blockUntilRelease();
         cinematicPanels.blockUntilRelease();
@@ -1442,6 +1444,29 @@ namespace gt4
         if (game::renderCamera() == camera &&
             renderer.draw(device, output.Width, output.Height, state, entries, lookup, shopPart, true)) {
             studioPreparedFrame = frameSerial;
+            if (state.photo.active && state.photo.requested) {
+                std::filesystem::path saved;
+                bool success = false;
+                const bool ready = state.selected < entries.size() && lookup(entries[state.selected].id);
+                try {
+                    if (ready) {
+                        success = renderer.savePhoto(
+                            device, state, std::filesystem::path(base) / L"GT4Showroom" / L"photos", saved);
+                    }
+                } catch (...) {
+                    log("Photo could not be saved; studio state retained");
+                }
+                state.photo.requested = false;
+                if (success) {
+                    state.photo.status = "Photo saved to GT4Showroom/photos";
+                } else if (ready) {
+                    state.photo.status = "Could not save photo";
+                } else {
+                    state.photo.status = "Wait for the vehicle preview to finish loading";
+                }
+                state.photo.statusUntil = state.clock + 3;
+                state.cue = success ? Cue::Accept : Cue::Error;
+            }
         }
         studioPreparing = false;
     }

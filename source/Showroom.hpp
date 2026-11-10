@@ -12,6 +12,7 @@
 #include "StudioUI.hpp"
 #include "VehicleViewer.hpp"
 #include "TransFender.hpp"
+#include "ViewerPhoto.hpp"
 
 namespace gt4
 // main showroom controller
@@ -188,6 +189,7 @@ namespace gt4
         CinematicView beforeViewer;
         VehicleViewer menuViewer;
         TransFender shop;
+        ViewerPhoto photo;
         bool viewerSnapshot = false, postSelectionCinematic = false, appearanceReady = true;
         double viewerBegan = 0;
         SpawnReview spawnReview = SpawnReview::None;
@@ -361,6 +363,7 @@ namespace gt4
         void returnToCarSelection()
         {
             shop = {};
+            photo = {};
             shopResetGroup = -1;
             viewer.reset(clock);
             viewerSnapshot = false;
@@ -561,6 +564,7 @@ namespace gt4
             }
             count = total;
             shop = {};
+            photo = {};
             shopResetGroup = -1;
             beforeFavoritesModel = -1;
             ui.resetTransient();
@@ -639,6 +643,7 @@ namespace gt4
             count = cars.size();
             selected = index;
             shop = {};
+            photo = {};
             shopResetGroup = -1;
             viewer.reset(clock);
             viewerSnapshot = postSelectionCinematic = false;
@@ -1014,7 +1019,46 @@ namespace gt4
             return;
         }
         float x = .5f, y = .79f;
-        if (s.ui.menu.open) {
+        if (s.photo.active) {
+            if (s.photo.hidden || s.photo.dragging || s.photo.movingPanel) {
+                return;
+            }
+            const auto box = s.photo.pointerTarget(w, h);
+            x = (box.x + box.w * .5f) / w;
+            y = (box.y + box.h * .5f) / h;
+        } else if (s.spawnReview != SpawnReview::None) {
+            auto button = spawnReviewButton(w, h, s.reviewChoice, s.reviewButtons());
+            button.y += s.reviewOffset(h);
+            x = (button.x + button.w * .5f) / w;
+            y = (button.y + button.h * .5f) / h;
+        } else if (s.shop.open()) {
+            const auto& shop = s.shop;
+            if (shop.locked() || shop.stripDrag || shop.liftDrag) {
+                return;
+            }
+            if (shop.partReview) {
+                auto button = spawnReviewButton(w, h, shop.reviewChoice, 2);
+                button.y += shop.review.offset(s.clock, h);
+                x = (button.x + button.w * .5f) / w;
+                y = (button.y + button.h * .5f) / h;
+            } else if (shop.page == ShopPage::Menu) {
+                const auto section = size_t(std::clamp(shop.section, 0, int(shopSections.size()) - 1));
+                x = shopIconX[section];
+                y = shopIconY[section];
+            } else if (shop.page == ShopPage::Wheels || shop.page == ShopPage::Components) {
+                x = .5f;
+                y = .751f;
+            } else if (shop.page == ShopPage::Suspension) {
+                const float amount = float(shop.rideHeight - shopLiftMin) / (shopLiftMax - shopLiftMin);
+                x = .91f;
+                y = shopLiftBottom - std::clamp(amount, 0.f, 1.f) * (shopLiftBottom - shopLiftTop);
+            } else if (shop.page == ShopPage::CarWash) {
+                x = .58f;
+                y = .838f;
+            } else {
+                return;
+            }
+        } else if (s.ui.menu.open) {
             if (s.ui.menu.monitorDragLevel >= 0) {
                 return;
             }

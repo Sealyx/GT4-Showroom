@@ -55,7 +55,8 @@ namespace gt4
         ViewerReflections,
         ViewerShadows,
         ViewerPause,
-        EnterTransFender
+        EnterTransFender,
+        EnterPhoto
     };
 
     inline int extraActionGroup(StudioAction action)
@@ -390,7 +391,9 @@ namespace gt4
                 if (viewerSettings.scene != ViewerScene::Custom) {
                     rows.push_back({"Color", StudioAction::None, -1, MenuBranch::ViewerColor});
                     rows.push_back({"Floor", StudioAction::None, -1, MenuBranch::ViewerFloor});
-                    rows.push_back({"Lighting", StudioAction::None, -1, MenuBranch::ViewerPalette});
+                    if (viewerSettings.scene != ViewerScene::Softbox) {
+                        rows.push_back({"Lighting", StudioAction::None, -1, MenuBranch::ViewerPalette});
+                    }
                     rows.push_back({"Reflections", StudioAction::None, -1, MenuBranch::ViewerReflections});
                 }
                 rows.push_back({"Shadows", StudioAction::None, -1, MenuBranch::ViewerShadows});
@@ -399,6 +402,7 @@ namespace gt4
                 if (customizationEnabled) {
                     rows.push_back({"Customization", StudioAction::EnterTransFender});
                 }
+                rows.push_back({"Photo Mode", StudioAction::EnterPhoto});
                 return rows;
             }
             if (settingsView == SettingsView::Cinematic) {

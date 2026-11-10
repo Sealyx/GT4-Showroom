@@ -493,7 +493,9 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
                                                  "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
     const float size = 20 * scale, top = 4 * scale, barHeight = 28 * scale;
     const float right = width - 33 * scale;
-    const float monthWidth = 61 * scale, dayWidth = 25 * scale;
+    const std::string day = std::to_string(date.wDay);
+    const float monthWidth = 61 * scale;
+    const float dayWidth = std::max(25 * scale, textWidth(day, size, true) + 12 * scale);
     const float dateX = right - monthWidth - dayWidth;
     const float moneyX = dateX - 24 * scale - textWidth(balance, size, true);
     const float coinX = moneyX - 24 * scale;
@@ -532,7 +534,7 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
     };
     d3dShopOverlay(device);
     device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, shade, sizeof(ScreenVertex));
-    text(device, std::to_string(date.wDay), dateX + dayWidth * .5f, top + 2.5f * scale, size, color(0), true, 0, true);
+    text(device, day, dateX + dayWidth * .5f, top + 2.5f * scale, size, color(0), true, 0, true);
     text(device, months[size_t(std::clamp(int(date.wMonth), 1, 12) - 1)], dateX + dayWidth + monthWidth * .5f,
          top + 2.5f * scale, size, color(0), true, 0, true);
     if (price > 0) {

@@ -398,4 +398,4 @@ namespace gt4::customizationNative
         }
         return tune(vehicle, plan(livery, txd), false);
     }
-} 
+}

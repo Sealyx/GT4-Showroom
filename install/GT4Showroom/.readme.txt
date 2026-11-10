@@ -1,0 +1,3 @@
+
+For logos check out Cheetah's sample, it includes a 512 x 512 manufacturer and 512 x 171 car wordmark
+Main result-screen words use real bundled fonts, not PNG text images

@@ -247,7 +247,8 @@ inline std::string ContextMenu::monitorValue(int level, int index) const
     if (item.action == StudioAction::EnterTransFender) {
         return customizationEnabled ? "Enter" : "Unavailable";
     }
-    if (item.action == StudioAction::ViewerEnter || item.action == StudioAction::Cinematic) {
+    if (item.action == StudioAction::ViewerEnter || item.action == StudioAction::Cinematic ||
+        item.action == StudioAction::EnterPhoto) {
         return "Enter";
     }
     return item.label;
@@ -313,6 +314,9 @@ inline std::string ContextMenu::help() const
     if (branch == MenuBranch::Extras) {
         return "Drag a slider to preview and select an available extra configuration";
     }
+    if (item.action == StudioAction::EnterPhoto) {
+        return "Frame and photograph the animated studio";
+    }
     if (item.action == StudioAction::EnterTransFender) {
         return "Open TransFender to preview and select parts";
     }
@@ -362,6 +366,7 @@ inline bool ContextMenu::fieldOpensWindow(int level, int index) const
     const auto b = rows[size_t(index)].child;
     return b == MenuBranch::Display || b == MenuBranch::Logos || b == MenuBranch::Extras ||
            rows[size_t(index)].action == StudioAction::EnterTransFender ||
+           rows[size_t(index)].action == StudioAction::EnterPhoto ||
            rows[size_t(index)].action == StudioAction::ViewerEnter ||
            rows[size_t(index)].action == StudioAction::Cinematic;
 }
