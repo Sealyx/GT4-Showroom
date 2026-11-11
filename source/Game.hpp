@@ -73,8 +73,17 @@ namespace gt4::game
         reinterpret_cast<void(__cdecl*)(const char*, bool, bool, bool)>(0x588BE0)(text, false, false, false);
     }
 
+#ifdef GTA_NATIVE_PREVIEW_TEST
+    inline void* (*previewPlayer)(int) = nullptr;
+#endif
+
     inline void* player()
     {
+#ifdef GTA_NATIVE_PREVIEW_TEST
+        if (previewPlayer) {
+            return previewPlayer(-1);
+        }
+#endif
         return reinterpret_cast<void*(__cdecl*)(int)>(0x56E210)(-1);
     }
 

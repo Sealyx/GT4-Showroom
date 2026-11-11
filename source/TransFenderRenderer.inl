@@ -327,7 +327,7 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
             distance = 5.35f;
             angle = pi * (.5f + 2.f * std::fmod(shop.washTurns(model.clock), 1.f));
         } else if (!menu) {
-            center = .68f;
+            center = .66f;
             distance = 6.9f;
             angle = pi * 1.22f + std::fmod(time, 16.f) * (2.f * pi / 16.f);
         }
@@ -359,7 +359,7 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
         }
         if (shopLogo.texture && shopLogo.width) {
             const float logoWidth = std::min(width * .32f, 340 * scale);
-            rect(device, width * .035f, height * .041f, logoWidth, logoWidth * shopLogo.height / shopLogo.width,
+            rect(device, width * .027f, height * .041f, logoWidth, logoWidth * shopLogo.height / shopLogo.width,
                  0xFFFFFFFF, shopLogo.texture);
         }
         const std::array<int, 4> iconModels{5409, entry.id, 1082, 1147};
@@ -461,9 +461,9 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
         fontAtlas(device, shopSerifFont, shopSerifWidths, prizeNameAsset, 48, 80, L"Times New Roman");
         const TextStyle serif =
             shopSerifFont ? TextStyle{shopSerifFont, shopSerifWidths, 48, 80, 1.f} : textStyle(true);
-        text(device, "TransFender", width * .033f + scale, height * .020f + 2 * scale, 35 * scale,
+        text(device, "TransFender", width * .025f + scale, height * .020f + 2 * scale, 35 * scale,
              color(0x251811, .82f), false, 0, serif);
-        text(device, "TransFender", width * .033f, height * .020f, 35 * scale, color(0xFFF4E5, 1), false, 0, serif);
+        text(device, "TransFender", width * .025f, height * .020f, 35 * scale, color(0xFFF4E5, 1), false, 0, serif);
         const std::string section = shopTitle(page);
         const float titleX = width * .067f, titleY = height * .108f;
         fontAtlas(device, shopHeadingFont, shopHeadingWidths, shopHeadingAsset, 64, 128);
@@ -481,8 +481,8 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
                                   : suspension ? "Preview the vehicle's ride height"
                                   : wash       ? "Clean the vehicle before taking it out"
                                                : "Select parts for the current vehicle";
-        const float x = width * .068f, y = height * .163f;
-        const float size = fitted(explanation, 17 * scale, width * .285f, true);
+        const float x = width * .068f, y = height * .178f;
+        const float size = fitted(explanation, 15 * scale, width * .285f, true);
         text(device, explanation, x + scale, y + scale, size, color(0x110B09, .91f), false, 0, true);
         text(device, explanation, x, y, size, color(0xFFF4E7, 1), false, 0, true);
     }

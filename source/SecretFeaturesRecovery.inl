@@ -64,7 +64,7 @@ void __cdecl secretFeaturesNativeText()
 
 void __cdecl secretFeaturesHudDraw()
 {
-    if (!secretRecovery.resuming) {
+    if (!secretRecovery.resuming && secretSchool.needsUiAssets() && !game::loading() && !game::menu()) {
         renderer.ensureUiAssets(game::device());
     }
     secretSchool.script.assetsReady = renderer.uiTextReady();

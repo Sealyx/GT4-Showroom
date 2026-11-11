@@ -230,8 +230,10 @@ namespace gt4
             whitePaintRequested = false;
             auto& entry = cars[selected];
             Paint color = entry.paints.empty() ? Paint{} : entry.paints[std::min(paint, entry.paints.size() - 1)];
-            color.ids[0] = 1;
-            color.rgb[0] = white;
+            for (size_t channel = 0; channel < 2; ++channel) {
+                color.ids[channel] = 1;
+                color.rgb[channel] = white;
+            }
             color.name = "White";
             if (whitePaintModel == entry.id) {
                 entry.paints[whitePaintIndex] = color;

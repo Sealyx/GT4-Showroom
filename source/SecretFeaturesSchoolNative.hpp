@@ -8,6 +8,7 @@ namespace gt4
     class SecretFeaturesSchoolNative
     {
         uintptr_t copiedBase = 0;
+        bool uiRequested = false;
         std::array<uint8_t, SecretFeaturesProfile::bytes> copy{};
         static constexpr uintptr_t globals = 0xA49960;
 
@@ -65,11 +66,18 @@ namespace gt4
         {
             script.reset();
             copiedBase = 0;
+            uiRequested = false;
+        }
+
+        // ordinary hud draws shouldn't pay for a font atlas that nobody is using
+        bool needsUiAssets() const
+        {
+            return script.enabled && !script.assetsReady && (uiRequested || script.needsScene());
         }
 
         bool command(void* self, int command, uint64_t now)
         {
-            if (!script.enabled || !script.assetsReady) {
+            if (!script.enabled) {
                 return false;
             }
             if (command != 0x0050 && command != 0x00E1 && command != 0x0937 && command != 0x033E && command != 0x045A &&
@@ -116,6 +124,10 @@ namespace gt4
                 std::memcmp(live.data(), copy.data() + at, end - at)) {
                 reset();
                 script.mismatch = true;
+                return false;
+            }
+            if (!script.assetsReady) {
+                uiRequested = SecretFeaturesProfile::match(c.mission, c.length);
                 return false;
             }
             const auto skip = script.inspect(c, now);
