@@ -47,7 +47,7 @@ namespace gt4
         DisplayModelName,
         Hotspots,
         ViewerEnter,
-        ViewerIdle,
+        ViewerAnimate,
         ViewerScene,
         ViewerColor,
         ViewerFloor,
@@ -163,7 +163,7 @@ namespace gt4
         DisplayModelId,
         DisplayModelName,
         Hotspots,
-        ViewerIdle,
+        ViewerAnimate,
         ViewerScene,
         ViewerColor,
         ViewerFloor,
@@ -261,7 +261,7 @@ namespace gt4
         std::array<std::vector<std::string>, 3> extras;
         std::array<int, 3> extraChoice{{0, 0, 0}};
         bool shadows = true, carLogo = false, brandLogo = false,
-             displayModelId = false, displayModelName = false;
+             displayModelId = true, displayModelName = true;
         int order = 0, countryFilter = -1, classFilter = -1;
 
         void sync(int o,
@@ -386,8 +386,7 @@ namespace gt4
         std::vector<MenuItem> rootItems() const
         {
             if (settingsView == SettingsView::VehicleViewer) {
-                std::vector<MenuItem> rows{{"Idle", StudioAction::None, -1, MenuBranch::ViewerIdle},
-                                           {"Background", StudioAction::None, -1, MenuBranch::ViewerScene}};
+                std::vector<MenuItem> rows{{"Background", StudioAction::None, -1, MenuBranch::ViewerScene}};
                 if (viewerSettings.scene != ViewerScene::Custom) {
                     rows.push_back({"Color", StudioAction::None, -1, MenuBranch::ViewerColor});
                     rows.push_back({"Floor", StudioAction::None, -1, MenuBranch::ViewerFloor});
@@ -397,6 +396,9 @@ namespace gt4
                     rows.push_back({"Reflections", StudioAction::None, -1, MenuBranch::ViewerReflections});
                 }
                 rows.push_back({"Shadows", StudioAction::None, -1, MenuBranch::ViewerShadows});
+                if (viewerSettings.scene == ViewerScene::Ribbons || viewerSettings.scene == ViewerScene::Wave) {
+                    rows.push_back({"Animate", StudioAction::None, -1, MenuBranch::ViewerAnimate});
+                }
                 rows.push_back({"Rotation", StudioAction::None, -1, MenuBranch::ViewerPause});
                 rows.push_back({"Hotspots", StudioAction::None, -1, MenuBranch::Hotspots});
                 if (customizationEnabled) {
@@ -412,6 +414,7 @@ namespace gt4
                     rows.push_back({"Customization", StudioAction::EnterTransFender});
                 }
                 rows.push_back({"Vehicle Viewer", StudioAction::ViewerEnter});
+                rows.push_back({"Photo Mode", StudioAction::EnterPhoto});
                 return rows;
             }
             std::vector<MenuItem> rows{{"Sort by", StudioAction::None, -1, MenuBranch::Sort},
@@ -461,9 +464,9 @@ namespace gt4
                 case MenuBranch::Hotspots:
                     return {{"On", StudioAction::Hotspots, 1, MenuBranch::None, hotspots},
                             {"Off", StudioAction::Hotspots, 0, MenuBranch::None, !hotspots}};
-                case MenuBranch::ViewerIdle:
-                    return {{"On", StudioAction::ViewerIdle, 1, MenuBranch::None, viewerSettings.idleEnabled},
-                            {"Off", StudioAction::ViewerIdle, 0, MenuBranch::None, !viewerSettings.idleEnabled}};
+                case MenuBranch::ViewerAnimate:
+                    return {{"On", StudioAction::ViewerAnimate, 1, MenuBranch::None, viewerSettings.animate},
+                            {"Off", StudioAction::ViewerAnimate, 0, MenuBranch::None, !viewerSettings.animate}};
                 case MenuBranch::ViewerScene: {
                     std::vector<MenuItem> rows;
                     for (size_t i = 0; i < viewerSceneNames.size(); ++i) {
@@ -912,9 +915,9 @@ namespace gt4
         bool menuSnapshot = false;
         ControllerKeyboard keyboard;
         ViewTransition transition;
-        bool favoritesOnly = false, controllerUsed = false;
+        bool favoritesOnly = false, controllerUsed = false, footerHidden = false;
         int sortMode = 5, countryFilter = -1, classFilter = -1;
-        bool shadows = true, carLogo = false, brandLogo = false, displayModelId = false, displayModelName = false;
+        bool shadows = true, carLogo = false, brandLogo = false, displayModelId = true, displayModelName = true;
         double pointerMoved = 0;
         bool dock = false;
 
@@ -967,6 +970,7 @@ namespace gt4
         {
             menu.open = false;
             keyboard.open = false;
+            footerHidden = false;
             cinematic.leave();
             vehicle.reset();
             menuSnapshot = false;

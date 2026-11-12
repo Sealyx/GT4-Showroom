@@ -434,15 +434,16 @@ namespace gt4
             d->SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
         }
 
-        void disc(IDirect3DDevice9* d, float x, float y, float radius, float scale, uint32_t rgb)
+        void disc(IDirect3DDevice9* d, float x, float y, float radius, float scale, uint32_t rgb, float alpha = 1)
         {
             screen(d);
             ScreenVertex v[50]{};
-            v[0] = {x, y, 0, 1, color(rgb), 0, 0};
+            v[0] = {x, y, 0, 1, color(rgb, alpha), 0, 0};
             for (int i = 0; i <= 48; ++i) {
                 float a = i * 2 * pi / 48;
-                v[i + 1] = {
-                    x + std::cos(a) * radius * scale, y + std::sin(a) * radius * .78f * scale, 0, 1, color(rgb), 0, 0};
+                v[i + 1] = {x + std::cos(a) * radius * scale,
+                            y + std::sin(a) * radius * .78f * scale,
+                            0, 1, color(rgb, alpha), 0, 0};
             }
             d->SetTexture(0, nullptr);
             d->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG2);
@@ -1704,8 +1705,8 @@ namespace gt4
             auto v = [&](float a, float b) {
                 return ScreenVertex{x + a * scale, y + b * scale, 0, 1, color(0x111115, alpha), 0, 0};
             };
-            const ScreenVertex p[] = {v(-4, -5), v(5, 0), v(-1, 0), v(-1, 0), v(5, 0), v(-4, 5)};
-            d->DrawPrimitiveUP(D3DPT_TRIANGLELIST, 2, p, sizeof(ScreenVertex));
+            const ScreenVertex p[] = {v(-2.5f, -4.5f), v(2.5f, 0), v(-2.5f, 4.5f)};
+            d->DrawPrimitiveUP(D3DPT_TRIANGLELIST, 1, p, sizeof(ScreenVertex));
             ++drawCalls;
         }
 
@@ -2400,6 +2401,9 @@ namespace gt4
                                                  : viewerCamera(W, H, s.viewer, s.clock);
                         angle = pi;
                     } else {
+                        if (s.photo.active) {
+                            mainCam = cinematicPhotoCamera(mainCam, s.photo);
+                        }
                         studio(d, mainCam, studioTime);
                     }
                     lastCarCamera = mainCam;
@@ -2484,24 +2488,6 @@ namespace gt4
                 d->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
                 d->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
                 if (!s.photo.active) {
-                    if (main && !s.viewer.active) {
-                        const auto rows = vehicleDisplayRows(e, s.ui);
-                        if (!rows.empty()) {
-                            const auto box = vehicleDisplayPanel(W, H, carHit, rows.size());
-                            rect(d, box.x + 2 * scale, box.y + 2 * scale, box.w, box.h, color(0, .18f * s.carAlpha()));
-                            rect(d, box.x, box.y, box.w, box.h, color(0x242B2D, .78f * s.carAlpha()));
-                            rect(d, box.x, box.y, box.w, scale, color(0xBEC5C5, .8f * s.carAlpha()));
-                            for (size_t i = 0; i < rows.size(); ++i) {
-                                label(d,
-                                      rows[i],
-                                      box.x + box.w * .5f,
-                                      box.y + (5 + 22 * i) * scale,
-                                      fitted(rows[i], 13 * scale, box.w - 18 * scale),
-                                      s.carAlpha(),
-                                      true);
-                            }
-                        }
-                    }
                     if (!s.ui.cinematic.active) {
                         const float carStrip = (1 - s.paintMix) * (1 - s.ui.cinematic.mix),
                                     paintStrip = s.paintMix * (1 - s.ui.cinematic.mix);
@@ -2560,11 +2546,12 @@ namespace gt4
                                        scale,
                                        carStrip * thumbnailPulse(s.clock - s.changed));
                             }
+                            const auto caption = vehicleCaption(e, s.ui);
                             label(d,
-                                  e.name + (e.year.empty() ? "" : " " + e.year) + (e.favorite ? "  *" : ""),
+                                  caption,
                                   W * .5f,
                                   H * .82f + 25 * scale * s.paintMix,
-                                  22 * scale,
+                                  fitted(caption, 22 * scale, W * .86f),
                                   carStrip,
                                   true);
                             const BrowseBar bar(W, H, s, entries.size());
@@ -2775,28 +2762,44 @@ namespace gt4
                                   true);
                         }
                     }
-                    if (s.searching) {
-                        const float boxW = std::min(W * .42f, 520 * scale), boxH = 86 * scale, x = (W - boxW) * .5f,
-                                    y = H * (s.ui.keyboard.open ? .53f : .605f);
-                        rect(
-                            d, x - 1 * scale, y - 1 * scale, boxW + 2 * scale, boxH + 2 * scale, color(0x8B9191, .85f));
-                        rect(d, x, y, boxW, boxH, color(0x080B0D, .96f));
-                        rect(d, x, y, boxW, 2 * scale, 0xFFAEB5B5);
-                        disc(d, x + 13 * scale, y + 14 * scale, 3, scale, 0xD31012);
-                        label(d, "MODEL SEARCH", x + 23 * scale, y + 3 * scale, 10 * scale);
+                    if (s.ui.cinematic.active && (!s.ui.footerHidden || s.ui.menu.open)) {
+                        const std::string controls = s.ui.controllerUsed
+                            ? "CIRCLE RETURN    L1+R1 EXPLODE    L3 HIDE UI"
+                            : "BACKSPACE RETURN    T EXPLODE    H HIDE UI";
+                        const auto help = s.ui.menu.help();
+                        const std::string message = !help.empty() && int(s.clock) % 8 < 5 ? help : controls;
+                        const FooterLayout footer(H);
+                        const float reveal = footerReveal(message, s.clock);
+                        rect(d, 0, H * .907f, W, H * .093f, 0xFF000000);
+                        label(d, message, W * .5f, footer.y + (1 - reveal) * 9 * scale,
+                              fitted(message, footer.fontHeight, W * .90f), reveal, true);
+                    }
+                    if (s.searching || s.searchOpacity() > .001f) {
+                        const float alpha = s.searchOpacity();
+                        const float boxW = std::min(W * .42f, 520 * scale), boxH = 86 * scale;
+                        const float x = (W - boxW) * .5f;
+                        const bool keyboard = s.searching ? s.ui.keyboard.open : s.searchKeyboard;
+                        const float y = H * (keyboard ? .53f : .605f) + (1 - alpha) * 14 * scale;
+                        rect(d, x - scale, y - scale, boxW + 2 * scale, boxH + 2 * scale,
+                             color(0x8B9191, .85f * alpha));
+                        rect(d, x, y, boxW, boxH, color(0x080B0D, .96f * alpha));
+                        rect(d, x, y, boxW, 2 * scale, color(0xAEB5B5, alpha));
+                        disc(d, x + 13 * scale, y + 14 * scale, 3, scale, 0xD31012, alpha);
+                        label(d, "MODEL SEARCH", x + 23 * scale, y + 3 * scale, 10 * scale, alpha);
                         const std::string query = s.query.empty() ? "MODEL NAME / ID" : s.query;
                         const float qh = fitted(query, 19 * scale, boxW - 36 * scale);
-                        label(d, query, x + 15 * scale, y + 24 * scale, qh, s.query.empty() ? .45f : 1.f);
+                        label(d, query, x + 15 * scale, y + 24 * scale, qh, (s.query.empty() ? .45f : 1.f) * alpha);
                         if (int(s.clock * 2) % 2 == 0) {
                             const float end = x + 15 * scale + (s.query.empty() ? 0 : textWidth(query, qh));
-                            rect(d, end + 3 * scale, y + 30 * scale, 1.5f * scale, 22 * scale, 0xFFE5E9E9);
+                            rect(d, end + 3 * scale, y + 30 * scale, 1.5f * scale, 22 * scale, color(0xE5E9E9, alpha));
                         }
                         const std::string hint =
                             s.searchFailed && s.clock < s.searchUntil
                                 ? "MODEL NOT FOUND"
-                                : (s.ui.keyboard.open ? "CROSS Type    SQUARE Delete    TRIANGLE Find    CIRCLE Close"
+                                : (keyboard ? "CROSS Type    SQUARE Delete    TRIANGLE Find    CIRCLE Close"
                                                       : "ENTER Find    BACKSPACE Edit    ` Close");
-                        label(d, hint, x + 15 * scale, y + 62 * scale, fitted(hint, 9 * scale, boxW - 30 * scale));
+                        label(d, hint, x + 15 * scale, y + 62 * scale,
+                              fitted(hint, 9 * scale, boxW - 30 * scale), alpha);
                     } else if (!s.searchNotice.empty() && s.clock < s.searchUntil) {
                         const float boxW = std::min(W * .54f, 650 * scale), x = (W - boxW) * .5f, y = H * .66f;
                         rect(d, x, y, boxW, 36 * scale, color(0x080B0D, .94f));

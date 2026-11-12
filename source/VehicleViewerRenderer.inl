@@ -28,7 +28,7 @@ int viewerPatternPalette = -1;
 
 void updateViewerPatternMesh(const VehicleViewer& viewer, double now)
 {
-    const double time = viewer.elapsed(now);
+    const double time = viewer.backgroundElapsed(now);
     const auto scene = viewer.settings.scene;
     const int palette = viewer.settings.palette;
     if (time == viewerPatternTime && scene == viewerPatternScene && palette == viewerPatternPalette) {
@@ -178,7 +178,7 @@ bool viewerStudio(IDirect3DDevice9* d,
                                      camera.offsetY};
     const auto scene = viewer.settings.scene;
     const uint64_t style = viewerStudioStyle(viewer.settings);
-    const double time = viewerWaveScene(scene) ? viewer.elapsed(now) : 0;
+    const double time = viewerWaveScene(scene) ? viewer.backgroundElapsed(now) : 0;
     if (view != viewerSurfaceCamera || time != viewerSurfaceTime || scene != viewerSurfaceScene ||
         style != viewerSurfaceStyle) {
         for (int row = 0; row <= 36; ++row) {
@@ -435,7 +435,7 @@ void updateStudioEnvironment(IDirect3DDevice9* d, const VehicleViewer& viewer, d
     }
     const auto scene = viewer.settings.scene;
     const bool animated = scene == ViewerScene::Ribbons || viewerWaveScene(scene);
-    const double time = animated ? viewer.elapsed(clock) : 0.;
+    const double time = animated ? viewer.backgroundElapsed(clock) : 0.;
     const uint64_t revision = viewerStudioStyle(viewer.settings);
     constexpr double captureInterval = 1. / 8.;
     studioEnvironmentAvailable = studioEnvironment.update(

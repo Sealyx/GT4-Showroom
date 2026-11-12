@@ -357,11 +357,24 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
             shopLogo = VehicleLogos::load(device, assetPath(shopLogoPath));
             shopLogoTried = true;
         }
+        const float logoX = width * .014f;
+        const float logoWidth = std::min(width * .29f, 310 * scale);
         if (shopLogo.texture && shopLogo.width) {
-            const float logoWidth = std::min(width * .32f, 340 * scale);
-            rect(device, width * .027f, height * .041f, logoWidth, logoWidth * shopLogo.height / shopLogo.width,
+            rect(device, logoX, height * .041f, logoWidth, logoWidth * shopLogo.height / shopLogo.width,
                  0xFFFFFFFF, shopLogo.texture);
         }
+        const std::string tagline = "Providing cheap car services since 1986";
+        const float taglineX = logoX;
+        const float taglineY = height * .132f;
+        const float taglineBaseSize = 12 * scale;
+        const float panelY = std::clamp((taglineY + taglineBaseSize + scale) / (height * .92f), 0.f, 1.f);
+        const float darkEdge = width * (.46f * (1.f - panelY) * (1.f - panelY)
+                                       - (.065f - .038f * panelY));
+        const float taglineWidth = std::max(scale, std::min(logoWidth, darkEdge - taglineX - 2 * scale));
+        const float taglineSize = fitted(tagline, taglineBaseSize, taglineWidth, true);
+        text(device, tagline, taglineX + scale, taglineY + scale, taglineSize,
+             color(0x21150D, .8f), false, 0, true);
+        text(device, tagline, taglineX, taglineY, taglineSize, color(0xE7E5E3), false, 0, true);
         const std::array<int, 4> iconModels{5409, entry.id, 1082, 1147};
         constexpr std::array<float, 4> angles{3.9f, 3.76f, -1.30f, 2.46f};
         constexpr std::array<float, 4> sizes{.43f, .41f, .38f, .42f};
@@ -465,7 +478,7 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
              color(0x251811, .82f), false, 0, serif);
         text(device, "TransFender", width * .025f, height * .020f, 35 * scale, color(0xFFF4E5, 1), false, 0, serif);
         const std::string section = shopTitle(page);
-        const float titleX = width * .067f, titleY = height * .108f;
+        const float titleX = width * .025f, titleY = height * .108f;
         fontAtlas(device, shopHeadingFont, shopHeadingWidths, shopHeadingAsset, 64, 128);
         const TextStyle heading =
             shopHeadingFont ? TextStyle{shopHeadingFont, shopHeadingWidths, 64, 128, 1.f} : textStyle(true);
@@ -473,18 +486,42 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
             for (int i = 0; i < 8; ++i) {
                 const float angle = float(i) * pi / 4;
                 text(device, section, titleX + std::cos(angle) * radius * scale,
-                     titleY + std::sin(angle) * radius * scale, 32 * scale, color(0xFFF2D4, .075f), false, 0, heading);
+                     titleY + std::sin(angle) * radius * scale, 40 * scale, color(0xFFF2D4, .075f), false, 0, heading);
             }
         }
-        text(device, section, titleX, titleY, 32 * scale, color(0xFFF8EC), false, 0, heading);
-        const char* explanation = wheels       ? "Browse the shop's wheel selection"
-                                  : suspension ? "Preview the vehicle's ride height"
-                                  : wash       ? "Clean the vehicle before taking it out"
-                                               : "Select parts for the current vehicle";
-        const float x = width * .068f, y = height * .178f;
-        const float size = fitted(explanation, 15 * scale, width * .285f, true);
-        text(device, explanation, x + scale, y + scale, size, color(0x110B09, .91f), false, 0, true);
-        text(device, explanation, x, y, size, color(0xFFF4E7, 1), false, 0, true);
+        text(device, section, titleX, titleY, 40 * scale, color(0xFFF8EC), false, 0, heading);
+        const char* explanation = wheels       ? "Browse compatible wheels and preview their fit on your vehicle"
+                                  : suspension ? "Adjust the ride height and preview your suspension setting"
+                                  : wash       ? "Wash away dirt and prepare your vehicle before taking it out"
+                                               : "Browse compatible body parts and preview them before fitting";
+        const float x = width * .027f;
+        const float size = 16 * scale;
+        float y = height * .197f;
+        std::string remaining = explanation;
+        // wrap against the curved backdrop instead of squeezing the whole sentence into one line
+        while (!remaining.empty()) {
+            const float panelY = std::clamp((y + size) / (height * .92f), 0.f, 1.f);
+            const float available = std::max(80 * scale,
+                width * .46f * (1.f - panelY) * (1.f - panelY) - x - 12 * scale);
+            size_t count = remaining.size();
+            while (count > 1 && textWidth(remaining.substr(0, count), size, true) > available) {
+                --count;
+            }
+            if (count < remaining.size()) {
+                const size_t space = remaining.rfind(' ', count);
+                if (space != std::string::npos && space > 0) {
+                    count = space;
+                }
+            }
+            const std::string line = remaining.substr(0, count);
+            text(device, line, x + scale, y + scale, size, color(0x110B09, .91f), false, 0, true);
+            text(device, line, x, y, size, color(0xFFF4E7), false, 0, true);
+            remaining.erase(0, count);
+            while (!remaining.empty() && remaining.front() == ' ') {
+                remaining.erase(0, 1);
+            }
+            y += 20 * scale;
+        }
     }
     const auto balance = shopMoney(shop.balance - shop.pendingCost());
     SYSTEMTIME date{};
@@ -538,16 +575,20 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
     text(device, months[size_t(std::clamp(int(date.wMonth), 1, 12) - 1)], dateX + dayWidth + monthWidth * .5f,
          top + 2.5f * scale, size, color(0), true, 0, true);
     if (price > 0) {
-        const float x = width * (wash ? .090f : .076f);
-        const float y = height * (wash ? .845f : .347f);
+        const float x = width * .025f + 71.25f * scale;
+        const float y = height * .362f;
         const std::string amount = shopMoney(price);
-        shopPriceMark(device, x, y, scale);
-        text(device, amount, x + 29 * scale + scale, y - 19 * scale + 2 * scale, 35 * scale, color(0x21150D, .8f),
+        shopPriceMark(device, x, y, scale * 1.5f);
+        text(device, amount, x + 43.5f * scale + scale, y - 28.5f * scale + 2 * scale, 52 * scale, color(0x21150D, .8f),
              false, 0, true);
-        text(device, amount, x + 29 * scale, y - 19 * scale, 35 * scale, color(0xFFFFFF, 1), false, 0, true);
+        text(device, amount, x + 43.5f * scale, y - 28.5f * scale, 52 * scale, color(0xFFFFFF, 1), false, 0, true);
     }
     rect(device, 0, height * .922f, width, height * .078f, color(0x090909, 1));
-    const auto& footer = shop.status.empty() ? detail : shop.status;
+    const std::string controls = model.ui.controllerUsed ? "CIRCLE RETURN    TRIANGLE RESET"
+                                                         : "BACKSPACE RETURN    R RESET";
+    const std::string footer = shop.status.empty()
+        ? (int(std::max(0., model.clock - shop.pageStart)) % 8 < 5 ? detail : controls)
+        : shop.status;
     const float footerAlpha = footerReveal(footer, model.clock);
     text(device, footer, width * .5f, height * .936f + (1.f - footerAlpha) * 9 * scale,
          fitted(footer, 18 * scale, width * .90f, true), color(0xE7E5E3, footerAlpha), true, 0, true);

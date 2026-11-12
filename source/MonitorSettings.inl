@@ -191,8 +191,8 @@ inline std::string ContextMenu::monitorValue(int level, int index) const
         if (branch == MenuBranch::Classes) {
             return classFilter < 0 ? "All Classes" : classNames[size_t(classFilter)];
         }
-        if (branch == MenuBranch::ViewerIdle) {
-            return viewerSettings.idleEnabled ? "On" : "Off";
+        if (branch == MenuBranch::ViewerAnimate) {
+            return viewerSettings.animate ? "On" : "Off";
         }
         if (branch == MenuBranch::ViewerScene) {
             auto settings = viewerSettings;
@@ -276,7 +276,31 @@ inline std::string ContextMenu::help() const
     const auto item = rows[size_t(index)];
     const auto branch = item.child;
     if (item.action == StudioAction::ViewerEnter) {
-        return "Enter Vehicle Viewer";
+        return "View the vehicle in animated studios with adjustable backgrounds, reflections and camera controls";
+    }
+    if (branch == MenuBranch::ViewerAnimate || item.action == StudioAction::ViewerAnimate) {
+        return "Keep the ribbon or wave animation playing while vehicle rotation is paused";
+    }
+    if (branch == MenuBranch::ViewerScene || item.action == StudioAction::ViewerScene) {
+        return "Choose the studio surrounding the vehicle";
+    }
+    if (branch == MenuBranch::ViewerColor || item.action == StudioAction::ViewerColor) {
+        return "Change the studio background color";
+    }
+    if (branch == MenuBranch::ViewerFloor || item.action == StudioAction::ViewerFloor) {
+        return "Change the studio floor color";
+    }
+    if (branch == MenuBranch::ViewerPalette || item.action == StudioAction::ViewerPalette) {
+        return "Choose the lighting color for the animated studio";
+    }
+    if (branch == MenuBranch::ViewerReflections || item.action == StudioAction::ViewerReflections) {
+        return "Show or hide the vehicle reflection on the studio floor";
+    }
+    if (branch == MenuBranch::ViewerShadows || item.action == StudioAction::ViewerShadows) {
+        return "Show or hide the vehicle shadow in the studio";
+    }
+    if (branch == MenuBranch::ViewerPause || item.action == StudioAction::ViewerPause) {
+        return "Pause or resume vehicle rotation without changing the selected studio";
     }
     if (branch == MenuBranch::Hotspots) {
         return "Show interactive hotspots on the vehicle";
@@ -294,13 +318,13 @@ inline std::string ContextMenu::help() const
         return "Switch the studio vehicle shadow on or off";
     }
     if (branch == MenuBranch::Display) {
-        return "Choose the information shown above the preview vehicle";
+        return "Choose the information beside the vehicle name below the thumbnails";
     }
     if (branch == MenuBranch::DisplayModelId || item.action == StudioAction::DisplayModelId) {
-        return "Show the selected vehicle model ID above its preview";
+        return "Show the model ID beside the vehicle name below the thumbnails";
     }
     if (branch == MenuBranch::DisplayModelName || item.action == StudioAction::DisplayModelName) {
-        return "Show the registered vehicle model name above its preview";
+        return "Show the model name beside the vehicle name below the thumbnails";
     }
     if (branch == MenuBranch::Logos) {
         return "Choose the manufacturer and car name logo display";

@@ -48,6 +48,27 @@ namespace gt4
         return camera;
     }
 
+    // cinematic keeps its existing camera and car motion; photo adjustments only change our private view
+    inline Camera cinematicPhotoCamera(Camera camera, const ViewerPhoto& photo)
+    {
+        const V3 focus{photo.panX, photo.panY, .55f + photo.panZ};
+        const V3 offset = camera.eye - V3{0, 0, .55f};
+        const float distance = std::sqrt(dot(offset, offset)) / photo.zoom;
+        const float pitch = std::atan2(offset.z, std::sqrt(offset.x * offset.x + offset.y * offset.y)) + photo.pitch;
+        const float orbit = std::atan2(offset.x, -offset.y) + photo.yaw;
+        const float horizontal = std::cos(pitch) * distance;
+        camera.eye = focus + V3{
+            std::sin(orbit) * horizontal, -std::cos(orbit) * horizontal, std::sin(pitch) * distance};
+        camera.forward = unit(focus - camera.eye);
+        const auto right = unit(cross(camera.forward, {0, 0, 1}));
+        const auto up = cross(right, camera.forward);
+        const float roll = photo.roll * pi / 180;
+        camera.right = right * std::cos(roll) + up * std::sin(roll);
+        camera.up = up * std::cos(roll) - right * std::sin(roll);
+        camera.focal = camera.h / (2 * std::tan(photo.fov * pi / 360));
+        return camera;
+    }
+
     struct ViewerSurface
     {
         V3 point;
@@ -166,7 +187,7 @@ namespace gt4
         wall = viewerBlend(wall, tint, .035f * softbox);
         ground = viewerBlend(ground, tint, .04f + .1f * pool);
         if (viewerWaveScene(scene)) {
-            const float time = float(viewer.elapsed(now));
+            const float time = float(viewer.backgroundElapsed(now));
             const float movingPool = std::exp(-std::pow((point.x + std::sin(time * .22f) * 5) / 5, 2));
             ground = viewerBlend(ground, tint, .04f * movingPool);
         }
@@ -380,7 +401,7 @@ namespace gt4
         reference.pitch = .18f;
         reference.zoom = 1;
         const Camera camera = viewerCamera(1280, 720, reference, now);
-        const auto fields = viewerWaveFields(viewer, viewer.elapsed(now));
+        const auto fields = viewerWaveFields(viewer, viewer.backgroundElapsed(now));
         std::array<float, viewerPatternColumns> upper{}, lower{};
         for (size_t column = 0; column < viewerPatternColumns; ++column) {
             const float halfHeight = std::clamp(fields[1][column], .015f, .2f) * 1.5f;
@@ -437,7 +458,7 @@ namespace gt4
         reference.pitch = .18f;
         reference.zoom = 1;
         const Camera camera = viewerCamera(1280, 720, reference, now);
-        const double time = viewer.elapsed(now);
+        const double time = viewer.backgroundElapsed(now);
         if (scene == ViewerScene::Ribbons) {
             const auto fields = viewerPatternFields(viewerRibbonKeys, time, viewer.orbitProfile().duration);
             const ViewerWorldCurve top(camera, fields[0]);

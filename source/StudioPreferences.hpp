@@ -7,7 +7,7 @@ namespace gt4
     struct StudioPreferences
     {
         int sortMode = 5, countryFilter = -1, classFilter = -1;
-        bool carLogo = false, brandLogo = false, displayModelId = false, displayModelName = false;
+        bool carLogo = false, brandLogo = false, displayModelId = true, displayModelName = true;
         // bytes keep existing settings readable. playback uses gta's sliders
         AudioLevels audio;
 

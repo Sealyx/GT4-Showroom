@@ -37,6 +37,14 @@ namespace gt4
             zoom = viewer.zoom;
         }
 
+        void beginCinematic(double now)
+        {
+            *this = {};
+            active = true;
+            began = now;
+            yaw = pitch = 0;
+        }
+
         bool adjust(int direction)
         {
             if (!direction || row >= settingCount) {

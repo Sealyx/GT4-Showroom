@@ -33,10 +33,14 @@ void requestStudioAction(StudioAction action)
         return;
     }
     if (action == StudioAction::EnterPhoto) {
-        if (state.viewer.active && !state.viewer.transitioning()) {
+        if ((state.ui.cinematic.active || state.viewer.active) && !state.viewer.transitioning()) {
             state.ui.menu.finish(1);
             finishSettings();
-            state.photo.begin(state.viewer, state.clock);
+            if (state.viewer.active) {
+                state.photo.begin(state.viewer, state.clock);
+            } else {
+                state.photo.beginCinematic(state.clock);
+            }
             photoHide.blockUntilRelease();
             photoReset.blockUntilRelease();
             state.ui.vehicle.endWheelDrag();
@@ -64,15 +68,15 @@ void requestStudioAction(StudioAction action)
         blockActions();
         return;
     }
-    if (action == StudioAction::ViewerIdle || action == StudioAction::ViewerScene ||
+    if (action == StudioAction::ViewerAnimate || action == StudioAction::ViewerScene ||
         action == StudioAction::ViewerColor || action == StudioAction::ViewerFloor ||
         action == StudioAction::ViewerPalette || action == StudioAction::ViewerReflections ||
         action == StudioAction::ViewerShadows || action == StudioAction::ViewerPause) {
         auto& viewer = state.viewer;
         const int value = state.ui.menu.choice;
-        if (action == StudioAction::ViewerIdle) {
-            viewer.settings.idleEnabled = value != 0;
-            viewer.lastActivity = state.clock;
+        if (action == StudioAction::ViewerAnimate) {
+            viewer.settings.animate = value != 0;
+            viewer.syncBackground(state.clock);
         } else if (action == StudioAction::ViewerScene) {
             viewer.settings.scene = ViewerScene(value);
         } else if (action == StudioAction::ViewerColor) {
@@ -180,7 +184,7 @@ void applyViewTransition()
     state.paint = state.livery = 0;
     state.paintMix = 0;
     state.spawn = false;
-    state.searching = false;
+    state.closeSearch();
     state.ui.keyboard.open = false;
     rebuildCatalogueView(preferredModel);
     refreshSelected();
@@ -209,11 +213,11 @@ void favoriteSelection(bool add)
     }
     WritePrivateProfileStringW(
         L"Favorites", std::to_wstring(e.id).c_str(), add ? L"1" : L"0", (base + L"GT4Showroom\\favorites.ini").c_str());
-    state.cue = Cue::Favorite;
     refreshCountryMenu();
     if (!add && state.ui.favoritesOnly) {
         requestStudioAction(StudioAction::RefreshFavorites);
     }
+    state.cue = add ? Cue::Favorite : Cue::Back;
 }
 
 void submitStudioSearch()
@@ -277,14 +281,14 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         (pad.nextHotspot && !pad.togglePanels) || (key(VK_TAB) && !key(VK_SHIFT)), tick);
     const bool pauseView = pauseCinematic.poll(key('P'), tick);
     const bool togglePanels = cinematicPanels.poll(key('T') || pad.togglePanels, tick);
-    const bool resetShop = shopResetKey.poll(key('R'), tick);
+    const bool resetShop = shopResetKey.poll(key('R') || (state.shop.open() && pad.favorites), tick);
     if (pad.accept || pad.back || pad.add || pad.favorites || pad.view || pad.search || pad.left || pad.right ||
         pad.up || pad.down || pad.previousHotspot || pad.nextHotspot || pad.orbitX || pad.orbitY || pad.zoom) {
         state.ui.controllerUsed = true;
     }
     if (lDown || rDown || key(VK_APPS) || key(VK_LEFT) || key(VK_RIGHT) || key(VK_UP) || key(VK_DOWN) ||
         key(VK_RETURN) || key(VK_SPACE) || key(VK_BACK) || key(VK_TAB) || key('P') || key('T') || key('F') ||
-        key('R') || key(VK_OEM_3)) {
+        key('R') || key('H') || key(VK_OEM_3)) {
         state.ui.controllerUsed = false;
     }
     if (leftPress || rightPress || upPress || downPress || accept || goBack || search || favoritesPress || add) {
@@ -301,7 +305,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
             key(VK_OEM_MINUS)) {
             state.ui.controllerUsed = false;
         }
-        if (!state.viewer.active || goBack) {
+        if ((!state.ui.cinematic.active && !state.viewer.active) || goBack) {
             photo.active = photo.requested = false;
             photo.dragging = photo.movingPanel = false;
             state.cue = Cue::Back;
@@ -320,7 +324,11 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         }
         if (photoReset.poll(key('R') || pad.favorites, tick)) {
             const float panelX = photo.panelX, panelY = photo.panelY;
-            photo.begin(state.viewer, state.clock);
+            if (state.viewer.active) {
+                photo.begin(state.viewer, state.clock);
+            } else {
+                photo.beginCinematic(state.clock);
+            }
             photo.panelX = panelX;
             photo.panelY = panelY;
             state.cue = Cue::Accept;
@@ -513,17 +521,24 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         }
         return;
     }
+    if (state.ui.cinematic.active && !state.ui.menu.open && photoHide.poll(key('H') || pad.search, tick)) {
+        state.ui.footerHidden = !state.ui.footerHidden;
+        state.cue = state.ui.footerHidden ? Cue::Back : Cue::Open;
+        blockActions();
+        return;
+    }
     if (search) {
         if (state.ui.menu.open) {
             state.ui.menu.finish(-1);
             finishSettings();
         }
         if (state.searching) {
-            state.searching = false;
+            state.closeSearch();
             state.ui.keyboard.open = false;
         } else {
             state.beginSearch();
             state.ui.keyboard.open = pad.search;
+            state.searchKeyboard = pad.search;
             state.ui.keyboard.selected = 0;
         }
         blockActions();
@@ -571,13 +586,13 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
                 return;
             }
             if (action < 0) {
-                state.searching = false;
+                state.closeSearch();
                 kb.open = false;
                 blockActions();
                 return;
             }
         } else if (goBack && pad.back) {
-            state.searching = false;
+            state.closeSearch();
             blockActions();
             return;
         }
@@ -590,7 +605,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         if (action == SearchAction::Submit) {
             submitStudioSearch();
         } else if (action == SearchAction::Cancel) {
-            state.searching = false;
+            state.closeSearch();
             state.ui.keyboard.open = false;
             blockActions();
         }

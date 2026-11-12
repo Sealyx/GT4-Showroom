@@ -78,7 +78,7 @@ namespace gt4
         int palette = 0;
         int wallColor = -1;
         int floorColor = -1;
-        bool idleEnabled = true;
+        bool animate = true;
         bool reflections = true, shadows = true;
 
         const ViewerPalette& lighting() const
@@ -119,7 +119,7 @@ namespace gt4
 
     struct VehicleViewer
     {
-        static constexpr double idleDelay = 180;
+        static constexpr double idleDelay = 150;
         static constexpr double fadeDuration = .3;
         static constexpr float fullTurn = 6.283185307179586f;
 
@@ -131,6 +131,8 @@ namespace gt4
         float fromAlpha = 0;
         double lastActivity = 0, began = 0, blackPresented = -1;
         double motionBegan = 0, heldMotion = 0, lastClock = 0;
+        double backgroundBegan = 0, heldBackground = 0;
+        bool backgroundPaused = false;
 
         static float ease(float value)
         {
@@ -205,6 +207,7 @@ namespace gt4
             const double dt = now - lastClock;
             lastClock = now;
             settings.validate();
+            syncBackground(now);
             zoom += (zoomTarget - zoom) * float(1 - std::exp(-std::min(dt, 1.) * 12));
             if (phase == ViewerPhase::FadeOut && now - began >= fadeDuration) {
                 phase = ViewerPhase::Black;
@@ -219,6 +222,9 @@ namespace gt4
                     hotspots = false;
                     motionBegan = now;
                     heldMotion = 0;
+                    backgroundBegan = now;
+                    heldBackground = 0;
+                    backgroundPaused = false;
                     yawOffset = 0;
                     paused = false;
                 }
@@ -232,7 +238,7 @@ namespace gt4
             }
             if (!eligible) {
                 lastActivity = now;
-            } else if (settings.idleEnabled && !active && !transitioning() && now - lastActivity >= idleDelay) {
+            } else if (!active && !transitioning() && now - lastActivity >= idleDelay) {
                 request(true, true, now);
             }
         }
@@ -240,6 +246,22 @@ namespace gt4
         double elapsed(double now) const
         {
             return heldMotion + (paused ? 0 : std::max(0., now - motionBegan));
+        }
+
+        // background motion has its own clock so pausing the car needn't stop the studio
+        double backgroundElapsed(double now) const
+        {
+            return heldBackground + (backgroundPaused ? 0 : std::max(0., now - backgroundBegan));
+        }
+
+        void syncBackground(double now)
+        {
+            const bool freeze = paused && !settings.animate;
+            if (backgroundPaused != freeze) {
+                heldBackground = backgroundElapsed(now);
+                backgroundBegan = now;
+                backgroundPaused = freeze;
+            }
         }
 
         const ViewerOrbitProfile& orbitProfile() const
@@ -260,6 +282,7 @@ namespace gt4
             heldMotion = elapsed(now);
             motionBegan = now;
             paused = !paused;
+            syncBackground(now);
         }
 
         void orbit(float dx, float dy, double now)
@@ -287,6 +310,7 @@ namespace gt4
             *this = {};
             settings = retainedSettings;
             lastActivity = lastClock = now;
+            backgroundBegan = now;
         }
     };
 }

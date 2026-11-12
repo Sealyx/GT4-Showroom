@@ -115,7 +115,7 @@ namespace gt4
     {
         if (controller) {
             if (page == Page::Cars) {
-                return "CROSS Paint    SQUARE Favorite    TRIANGLE Favorites    SELECT Menu";
+                return "CROSS Paint    SQUARE Favorite    TRIANGLE Favorites    SELECT Menu    L3 SEARCH";
             }
             if (page == Page::Livery) {
                 return "CROSS Spawn    CIRCLE Colors    SELECT Menu";
@@ -124,7 +124,7 @@ namespace gt4
                             : "CROSS Spawn    CIRCLE Cars    SELECT Menu";
         }
         if (page == Page::Cars) {
-            return "ENTER Paint    UP Favorite    F Favorites    RMB Menu";
+            return "ENTER Paint    UP Favorite    F Favorites    RMB Menu    ` SEARCH";
         }
         if (page == Page::Livery) {
             return "ENTER Spawn    BACKSPACE Colors    RMB Menu";
@@ -471,6 +471,32 @@ namespace gt4
         bool searching = false, searchFailed = false;
         std::string query, searchNotice;
         double searchUntil = 0;
+        double searchBegan = -1, searchClosed = -1;
+        float searchCloseAlpha = 0;
+        bool searchKeyboard = false;
+
+        float searchOpacity() const
+        {
+            const double elapsed = clock - (searching ? searchBegan : searchClosed);
+            if (elapsed < 0 || (!searching && searchClosed < 0)) {
+                return 0;
+            }
+            const float phase = VehicleViewer::ease(float(elapsed / .16));
+            return searching ? phase : searchCloseAlpha * (1 - phase);
+        }
+
+        void closeSearch()
+        {
+            if (!searching) {
+                return;
+            }
+            searchCloseAlpha = searchOpacity();
+            searchClosed = clock;
+            searchKeyboard = ui.keyboard.open;
+            searching = false;
+            ui.keyboard.open = false;
+            cue = Cue::Back;
+        }
 
         void beginSearch()
         {
@@ -485,6 +511,10 @@ namespace gt4
             appearanceReady = true;
             leavePrize();
             searching = true;
+            searchBegan = clock;
+            searchClosed = -1;
+            searchKeyboard = false;
+            cue = Cue::Open;
             query.clear();
             searchNotice.clear();
             searchFailed = false;
@@ -527,7 +557,7 @@ namespace gt4
                 opened = clock;
                 prizeReady = false;
                 status.clear();
-                searching = false;
+                closeSearch();
                 searchNotice.clear();
                 dragging = false;
                 cue = Cue::None;
@@ -537,7 +567,7 @@ namespace gt4
             if (command == "enthusia" || command == "gt4") {
                 enthusia = command == "enthusia";
                 motionBegan = clock;
-                searching = false;
+                closeSearch();
                 searchFailed = false;
                 searchNotice = enthusia ? "ENTHUSIA PREVIEW" : "GT4 PREVIEW";
                 searchUntil = clock + 2.8;
@@ -551,11 +581,10 @@ namespace gt4
                 searchNotice = "MODEL NOT FOUND";
                 cue = Cue::Error;
             } else {
-                const bool moved = index != selected;
                 select(index, cars);
-                searching = false;
+                closeSearch();
                 searchNotice = "MODEL FOUND: " + cars[index].name + "  /  " + std::to_string(cars[index].id);
-                cue = moved ? Cue::Slider : Cue::Accept;
+                cue = Cue::Back;
             }
         }
 
@@ -584,6 +613,8 @@ namespace gt4
             motionBegan = clock;
             open = true;
             searching = false;
+            searchBegan = searchClosed = -1;
+            searchCloseAlpha = 0;
             query.clear();
             searchNotice.clear();
             spawn = false;
@@ -617,7 +648,7 @@ namespace gt4
             ui.vehicle.step(seconds);
             ui.transition.step(clock);
             viewer.step(clock,
-                        open && ui.cinematic.active && !ui.modal() && !shop.open() && !searching &&
+                        open && ui.cinematic.active && !ui.modal() && !shop.open() && !photo.active && !searching &&
                             spawnReview == SpawnReview::None && fade.action == CloseAction::None &&
                             !ui.transition.active() && (!postSelectionCinematic || appearanceReady));
             if (viewer.active && !ui.cinematic.active) {
@@ -805,7 +836,7 @@ namespace gt4
         {
             if (open && !busy() && page != Page::Prize && !cars.empty()) {
                 cars[selected].favorite = !cars[selected].favorite;
-                cue = Cue::Favorite;
+                cue = cars[selected].favorite ? Cue::Favorite : Cue::Back;
             }
         }
 
@@ -1064,9 +1095,18 @@ namespace gt4
             if (s.ui.menu.monitorDragLevel >= 0) {
                 return;
             }
-            const auto b = s.ui.menu.pointerTarget(w, h);
-            x = (b.x + b.w * (s.ui.menu.monitorFooter >= 0 ? .5f : .68f)) / w;
-            y = (b.y + b.h * .5f) / h;
+            const auto& menu = s.ui.menu;
+            if (menu.monitorFooter < 0 && menu.focus() == 1 && menu.sliderWindow()) {
+                const int row = menu.current(1);
+                const auto track = menu.monitorSlider(row, w, h);
+                const float amount = float(menu.sliderValue(row)) / std::max(1, menu.sliderMaximum(row));
+                x = (track.x + track.w * amount) / w;
+                y = (track.y + track.h * .5f) / h;
+            } else {
+                const auto box = menu.pointerTarget(w, h);
+                x = (box.x + box.w * (menu.monitorFooter >= 0 ? .5f : .68f)) / w;
+                y = (box.y + box.h * .5f) / h;
+            }
         } else if (s.searching) {
             if (!s.ui.keyboard.open) {
                 return;
