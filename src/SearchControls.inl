@@ -13,6 +13,16 @@ void processStudioSearch(const PadActions& pad, float width, float height, doubl
         blockActions();
         return;
     }
+    if (context && !pad.view) {
+        if (state.searchPicker) {
+            state.searchPicker = false;
+            state.cue = Cue::Back;
+        } else {
+            state.closeSearch();
+        }
+        blockActions();
+        return;
+    }
     const float scale = SearchPanel(width, height, kb.open).scale;
     const SearchPanel panel(width, height, kb.open, state.searchOffset(scale));
     const float x = state.pointerX * width, y = state.pointerY * height;
@@ -34,7 +44,7 @@ void processStudioSearch(const PadActions& pad, float width, float height, doubl
         state.ui.dock = false;
         state.ui.controllerUsed = false;
         const int target = panel.hit(x, y);
-        if (target != state.searchHover && target >= 0) {
+        if (moved && target != state.searchHover && target >= 0) {
             state.cue = Cue::Move;
         }
         state.searchHover = target;
@@ -137,6 +147,7 @@ void processStudioSearch(const PadActions& pad, float width, float height, doubl
             const int direction = downPress ? 1 : -1;
             state.searchRow = (state.searchRow + direction + 4) % 4;
             state.searchEditing = state.searchRow == 1;
+            state.searchHover = state.searchRow;
             state.cue = Cue::Move;
         }
         if ((leftPress || rightPress) && state.searchRow == 0) {
@@ -144,6 +155,7 @@ void processStudioSearch(const PadActions& pad, float width, float height, doubl
             state.cue = Cue::Move;
         } else if ((leftPress || rightPress) && state.searchRow >= 2) {
             state.searchRow = state.searchRow == 2 ? 3 : 2;
+            state.searchHover = state.searchRow;
             state.searchEditing = false;
             state.cue = Cue::Move;
         }

@@ -34,7 +34,7 @@ void processStudioPlate(const PadActions& pad, float width, float height, double
         state.ui.dock = false;
         state.ui.controllerUsed = false;
         const int target = panel.hit(x, y);
-        if (target >= 0 && target != state.plateHover) {
+        if (moved && target >= 0 && target != state.plateHover) {
             state.cue = Cue::Move;
         }
         state.plateHover = target;
@@ -89,6 +89,7 @@ void processStudioPlate(const PadActions& pad, float width, float height, double
             const int direction = rightPress || downPress ? 1 : -1;
             state.plateRow = (state.plateRow + direction + 4) % 4;
             state.plateEditing = false;
+            state.plateHover = state.plateRow;
             state.cue = Cue::Move;
         }
         if (accept && (!state.plateEditing || pad.accept)) {

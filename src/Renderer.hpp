@@ -1357,7 +1357,11 @@ namespace gt4
             message = std::move(spaced);
             const float content = textWidth(message, size, description) + markerWidth;
             const float reveal = footerReveal(message, now);
-            const float offset = footerMarquee(content, right - left, now - footerBegan, scale);
+            const double scrollTime = !description && content > right - left
+                                          ? std::min(now - footerBegan,
+                                              footerControlDuration(content, right - left, scale) - 5.)
+                                          : now - footerBegan;
+            const float offset = footerMarquee(content, right - left, scrollTime, scale);
             const float center = width * .5f;
             const float start = content <= right - left ? center - content * .5f : left - offset;
             const float baseline = layout.countY + layout.countHeight * footerMainAscent;
@@ -1545,7 +1549,8 @@ namespace gt4
                   bool viewerSubject = false,
                   float rideHeight = 0,
                   bool panoramaReflection = false,
-                  bool clean = false)
+                  bool clean = false,
+                  bool thumbnail = false)
         {
             if (opacity <= 0 || m.empty()) {
                 return;
@@ -1653,7 +1658,7 @@ namespace gt4
             }
             if (shadow) {
                 d->SetTexture(0, nullptr);
-                const float shadowOpacity = useStudioShadow ? studioLight.shadowOpacity : .55f;
+                const float shadowOpacity = thumbnail ? .9f : useStudioShadow ? studioLight.shadowOpacity : .55f;
                 d->SetRenderState(D3DRS_TEXTUREFACTOR, color(0, opacity * shadowOpacity));
                 d->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
                 d->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
@@ -1714,7 +1719,7 @@ namespace gt4
                 d->SetRenderState(D3DRS_AMBIENT, 0xFF7C7C7C);
             }
             auto* room = viewerSubject && (m.paintMask || panoramaReflection) ? studioEnvironment.cubeTexture() :
-                mainReflectionActive && mainReflectionQuality > 0 && !reflection ? mainEnvironment.cubeTexture() : nullptr;
+                !thumbnail && mainReflectionActive && mainReflectionQuality > 0 && !reflection ? mainEnvironment.cubeTexture() : nullptr;
             if (room) {
                 D3DMATRIX roomTransform = identity();
                 roomTransform._11 = cam.right.x;
@@ -3041,13 +3046,17 @@ namespace gt4
                                     small.w = float(thumbVP.Width);
                                     small.h = float(thumbVP.Height);
                                     d->SetRenderState(D3DRS_ZENABLE, TRUE);
+                                    if (s.ui.shadows) {
+                                        mesh(d, *thumb, small, thumbAngle, Paint{}, carStrip, 1,
+                                             true, false, false, nullptr, false, 0, false, false, true);
+                                    }
                                     mesh(d,
                                          *thumb,
                                          small,
                                          thumbAngle,
                                          entries[i].paints.empty() ? Paint{} : entries[i].paints[0],
                                          carStrip,
-                                         1);
+                                         1, false, false, false, nullptr, false, 0, false, false, true);
                                     d->SetRenderState(D3DRS_SCISSORTESTENABLE, FALSE);
                                     d->SetViewport(&vp);
                                     d->SetRenderState(D3DRS_ZENABLE, FALSE);
@@ -3260,7 +3269,9 @@ namespace gt4
                         const auto help = contextualHelp(s, W, H, &e);
                         const bool describe = footerHelp.describe(help, s.ui.menu.focus(), s.clock);
                         const bool handling = help.empty() && s.status.empty() && !describe &&
-                                              (s.clock - s.changed < 4 || int(s.clock) % 8 < 5);
+                                              std::fmod(std::max(0., s.clock - s.changed),
+                                                  5. + footerControlDuration(textWidth(controls, 18 * scale, false),
+                                                                             W * .76f, scale)) < 5.;
                         std::string message = controls;
                         if (describe) {
                             message = help;

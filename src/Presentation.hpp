@@ -67,6 +67,12 @@ namespace gt4
         return overflow * float(1. - (phase - 4. - travel) / travel);
     }
 
+    inline double footerControlDuration(float content, float available, float scale)
+    {
+        const float overflow = std::max(0.f, content - available);
+        return overflow > 0 ? 9. + 2. * overflow / std::max(1.f, 30.f * scale) : 3.;
+    }
+
     inline float sideOnHeading(V3 player, V3 vehicle)
     {
         return std::atan2(-(vehicle.x - player.x), vehicle.y - player.y) + pi * .5f;

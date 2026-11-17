@@ -165,6 +165,12 @@ namespace gt4
             {
                 ready[i] = readPack(root / folders[i], packs[i]);
             }
+            if (!ready[1]) {
+                for (size_t i = 0; i < languageSourceStrings.size(); ++i) {
+                    packs[1].emplace(languageSourceStrings[i], languageIndonesianStrings[i]);
+                }
+                ready[1] = true;
+            }
             // english remains a safe built-in fallback if a package is missing or damaged
             ready[0] = true;
             for (const auto *source : languageSourceStrings)

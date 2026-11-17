@@ -1270,7 +1270,7 @@ namespace gt4
                     return;
                 }
                 const SearchPanel panel(w, h, false, s.searchOffset(SearchPanel(w, h, false).scale));
-                const auto box = panel.target(s.searchRow, s.searchPicker, s.searchById);
+                const auto box = panel.target(s.searchRow, s.searchPicker, s.searchModeCursor == 1);
                 x = (box.x + box.w * .5f) / w;
                 y = (box.y + box.h * .5f) / h;
             } else {

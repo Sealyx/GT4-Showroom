@@ -173,7 +173,7 @@ void shopWashMeter(IDirect3DDevice9* device, float width, float height, float pr
     constexpr int segments = 13;
     for (int i = 0; i < segments; ++i) {
         const float position = float(i) / (segments - 1);
-        const float px = x + w * (.15f + .70f * position);
+        const float px = x + w * (.15f + .70f * position) - h * .17f;
         const bool filled = progress > 0 && progress >= float(i + 1) / segments;
         const DWORD ink = color(filled ? 0x9FDBFF : 0x20170D, 1);
         ScreenVertex slash[] = {
