@@ -520,7 +520,7 @@ namespace gt4
 
 #include "TransFenderNative.inl"
 
-    // load a little at a time while paused. the whole catalogue does not need to pile in at once.
+    // load a little at a time while paused. the whole catalogue does not need to pile in at once
     void fillCache(UINT outputWidth, UINT outputHeight)
     {
         if (entries.empty()) {
