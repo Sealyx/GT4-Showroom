@@ -329,6 +329,7 @@ namespace gt4
             float em;
             float cell;
             float widthScale;
+            float gutter = 0;
         };
 
         TextStyle textStyle(bool prize) const
@@ -602,7 +603,8 @@ namespace gt4
                        int em = 29,
                        int cell = 64,
                        const wchar_t* systemFamily = nullptr,
-                       bool highDensity = true)
+                       bool highDensity = true,
+                       int gutter = 0)
         {
             if (atlas) {
                 return;
@@ -660,7 +662,8 @@ namespace gt4
                 SIZE sz{};
                 GetTextExtentPoint32A(dc, &ch, 1, &sz);
                 advances[i] = float(sz.cx) / float(samples);
-                TextOutA(dc, (i % 16) * rasterCell, (i / 16) * rasterCell, &ch, 1);
+                TextOutA(dc, (i % 16) * rasterCell + gutter * samples,
+                         (i / 16) * rasterCell + gutter * samples, &ch, 1);
             }
             bool mipmaps = SUCCEEDED(d->CreateTexture(w, h, 0, D3DUSAGE_AUTOGENMIPMAP, D3DFMT_A8R8G8B8,
                                                        D3DPOOL_MANAGED, &atlas, nullptr));
@@ -694,7 +697,7 @@ namespace gt4
             DeleteObject(bitmap);
             DeleteDC(dc);
             if (!atlas && samples > 1) {
-                fontAtlas(d, atlas, advances, asset, em, cell, systemFamily, false);
+                fontAtlas(d, atlas, advances, asset, em, cell, systemFamily, false, gutter);
             }
         }
 
@@ -994,6 +997,7 @@ namespace gt4
 
         void reset()
         {
+            presentationWidth = presentationHeight = 0;
             bikeDisplay.reset();
             bikeDisplaySource = 0;
             antialiasing.rejectedQuality = -1;
@@ -1194,6 +1198,7 @@ namespace gt4
             std::vector<ScreenVertex> glyphs;
             glyphs.reserve(s.size() * 6);
             const float cell = style.cell;
+            const float gutter = style.gutter;
             const float sy = height / style.em;
             const float sx = sy * style.widthScale;
             float length = 0;
@@ -1214,22 +1219,23 @@ namespace gt4
             for (unsigned char ch : s) {
                 const int i = ch >= 32 && ch < 128 ? ch - 32 : '?' - 32;
                 const float u = float(i % 16) / 16, v = float(i / 16) / 6;
-                ScreenVertex q[] = {{x + skew - .5f, y - .5f, 0, 1, col, u, v},
-                                    {x + (advances[i] + 1) * sx + skew - .5f,
-                                     y - .5f,
+                ScreenVertex q[] = {{x - gutter * sx + skew - .5f, y - gutter * sy - .5f, 0, 1, col, u, v},
+                                    {x + (advances[i] + gutter + 1) * sx + skew - .5f,
+                                     y - gutter * sy - .5f,
                                      0,
                                      1,
                                      col,
-                                     u + (advances[i] + 1) / (16 * cell),
+                                     u + (advances[i] + 2 * gutter + 1) / (16 * cell),
                                      v},
-                                    {x + (advances[i] + 1) * sx - .5f,
-                                     y + cell * sy - .5f,
+                                    {x + (advances[i] + gutter + 1) * sx - .5f,
+                                     y + (cell - gutter) * sy - .5f,
                                      0,
                                      1,
                                      col,
-                                     u + (advances[i] + 1) / (16 * cell),
+                                     u + (advances[i] + 2 * gutter + 1) / (16 * cell),
                                      v + 1.f / 6},
-                                    {x - .5f, y + cell * sy - .5f, 0, 1, col, u, v + 1.f / 6}};
+                                    {x - gutter * sx - .5f, y + (cell - gutter) * sy - .5f,
+                                     0, 1, col, u, v + 1.f / 6}};
                 if (rotation) {
                     const float sine = std::sin(rotation), cosine = std::cos(rotation);
                     for (auto& vertex : q) {
@@ -1448,7 +1454,7 @@ namespace gt4
         }
 
         void studio(IDirect3DDevice9* d, const Camera& cam, double seconds,
-                    std::array<float, 3> backdrop = {1, 0, 0})
+                    std::array<float, 3> backdrop = {1, 0, 0}, bool wallTexture = true)
         {
             studioLight = studioLighting::frame(seconds + 16.);
             useStudioShadow = true;
@@ -1456,8 +1462,8 @@ namespace gt4
             float x = 0, floorY = 0, z = 0, rhw = 0;
             const bool floorVisible = cam.project({0, 0, 0}, x, floorY, z, rhw);
             const float floorShift = floorVisible ? std::clamp(floorY / cam.h - .56f, -.12f, .12f) : 0.f;
-            constexpr int columns = 40;
-            constexpr int rows = 32;
+            constexpr int columns = 64;
+            constexpr int rows = 48;
             constexpr int stride = columns + 1;
             static constexpr auto indices = [] {
                 std::array<uint16_t, columns * rows * 6> result{};
@@ -1484,29 +1490,23 @@ namespace gt4
                 const float v = float(row) / rows;
                 for (int column = 0; column <= columns; ++column) {
                     const float u = float(column) / columns;
-                    const float luminance = studioLighting::luminance(studioLight, u, v - floorShift);
-                    const float floor = ease((v - .47f - floorShift) / .4f);
-                    const float oval = std::exp(-std::pow((u - .5f) / .52f, 2) -
-                                                std::pow((v - .69f - floorShift) / .12f, 2));
-                    const float dark = std::clamp((.23f - luminance) / .14f, 0.f, 1.f);
-                    const uint32_t original = color(0xF7FCFF, 1, std::min(1.f, luminance + oval * .10f * dark));
-                    const float moving = .5f + .08f * std::sin(float(seconds) * .22f);
-                    const float redPool = std::exp(-std::pow((u - moving) / .43f, 2) -
-                                                   std::pow((v - .73f - floorShift) / .24f, 2));
-                    const uint32_t red = viewerBlend(0x030000, 0xB30602,
-                        std::clamp(.05f + floor * .17f + redPool * .72f, 0.f, 1.f));
-                    const float wallPool = std::exp(-std::pow((u - .51f) / .37f, 2) -
-                                                    std::pow((v - .32f) / .45f, 2));
-                    const float texture = .012f * std::sin(u * 113 + std::sin(v * 91) * 3) * std::sin(v * 79);
-                    const uint32_t bike = viewerBlend(0x101113, 0x737578,
-                        std::clamp(.08f + wallPool * .61f + oval * .20f + texture, 0.f, 1.f));
-                    uint32_t rgb = original;
-                    const float extra = backdrop[1] + backdrop[2];
-                    if (extra > .0001f) {
-                        rgb = viewerBlend(rgb, viewerBlend(red, bike, backdrop[2] / extra), extra);
+                    std::array<float, 3> rgb{};
+                    for (int style = 0; style < 3; ++style) {
+                        if (backdrop[size_t(style)] <= 0) {
+                            continue;
+                        }
+                        const auto shade = studioLighting::backdrop(style, u, v - floorShift, studioLight,
+                                                                    wallTexture);
+                        for (size_t channel = 0; channel < rgb.size(); ++channel) {
+                            rgb[channel] += shade[channel] * backdrop[size_t(style)];
+                        }
                     }
+                    const auto channel = [&](size_t index) {
+                        return DWORD(std::clamp(rgb[index], 0.f, 255.f));
+                    };
+                    const DWORD ink = 0xFF000000 | (channel(0) << 16) | (channel(1) << 8) | channel(2);
                     vertices[row * stride + column] = {
-                        u * cam.w - .5f, v * cam.h - .5f, 1.f, 1.f, color(rgb), 0.f, 0.f};
+                        u * cam.w - .5f, v * cam.h - .5f, 1.f, 1.f, ink, 0.f, 0.f};
                 }
             }
 
@@ -2467,6 +2467,7 @@ namespace gt4
     public:
         Rect carHit;
         Camera lastCarCamera{1280, 720, 5};
+        UINT presentationWidth = 0, presentationHeight = 0;
         float lastCarAngle = 0, lastCarSize = 1;
         uint64_t lastCarSerial = 0;
 
@@ -2713,6 +2714,8 @@ namespace gt4
             if (!d || !s.open || (!entries.empty() && s.selected >= entries.size())) {
                 return false;
             }
+            presentationWidth = width;
+            presentationHeight = height;
             RenderTargets targets(d);
             if (!targets.valid()) {
                 return false;
@@ -2898,7 +2901,7 @@ namespace gt4
                                 mainEnvironment.resolution(candidate);
                                 if (mainEnvironment.update(d, style, studioTime, {0, 0, .8f}, [&](const Camera& view) {
                                     ownedState(d);
-                                    studio(d, view, studioTime, s.backgroundBlend);
+                                    studio(d, view, studioTime, s.backgroundBlend, false);
                                     return true;
                                 }, interval)) {
                                     mainEnvironmentResolution = candidate;
@@ -3183,9 +3186,10 @@ namespace gt4
                                         return {shopSerifFont, shopSerifWidths, 48, 80, 1.f};
                                     }
                                 } else if (e.classId == 2 || e.classId == 3 || e.classId == 7) {
-                                    fontAtlas(d, scriptTitleFont, scriptTitleWidths, scriptTitleAsset, 64, 128);
+                                    fontAtlas(d, scriptTitleFont, scriptTitleWidths, scriptTitleAsset,
+                                              64, 128, nullptr, true, 16);
                                     if (scriptTitleFont) {
-                                        return {scriptTitleFont, scriptTitleWidths, 64, 128, 1.f};
+                                        return {scriptTitleFont, scriptTitleWidths, 64, 128, 1.f, 16};
                                     }
                                 } else if (e.classId == 12) {
                                     fontAtlas(d, shopHeadingFont, shopHeadingWidths, shopHeadingAsset, 64, 128);
@@ -3204,7 +3208,8 @@ namespace gt4
                                   name,
                                   W * .77f,
                                   H * .065f,
-                                  fitted(name, 50 * scale, W * .40f, style),
+                                  fitted(name, (e.classId == 2 || e.classId == 3 || e.classId == 7 ? 58.f : 50.f) * scale,
+                                         W * .40f, style),
                                   1 - s.titleMix(),
                                   true,
                                   0,

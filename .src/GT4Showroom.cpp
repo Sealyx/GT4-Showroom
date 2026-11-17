@@ -1258,7 +1258,10 @@ namespace gt4
                     }
                     const auto oldSelected = state.selected;
                     const auto oldPrize = state.prize.serial;
-                    interaction(pad, float(vp.Width), float(vp.Height), dt, tick);
+                    // the native viewport may belong to an auxiliary pass; input follows the displayed layout
+                    const auto width = renderer.presentationWidth ? renderer.presentationWidth : vp.Width;
+                    const auto height = renderer.presentationHeight ? renderer.presentationHeight : vp.Height;
+                    interaction(pad, float(width), float(height), dt, tick);
                     if (state.page != Page::Prize &&
                         (!prizeNative::heldTxds.empty() || !prizeNative::heldModels.empty())) {
                         prizeNative::release();

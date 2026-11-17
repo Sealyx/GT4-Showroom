@@ -67,7 +67,7 @@ void drawSearch(IDirect3DDevice9* device, float width, float height, const Model
     const SearchPanel layout(width, height, keyboard, model.searchOffset(scale));
     const auto box = layout.box;
     const bool dock = model.ui.dock || model.ui.controllerUsed;
-    const int focus = dock ? model.searchRow : model.searchHover;
+    const int focus = dock ? model.searchRow : layout.hit(model.pointerX * width, model.pointerY * height);
     messageWindow(device, box, "Search", scale, alpha);
     messageRow(device, box, 0, "Search By", model.searchById ? "Model ID" : "Model Name",
                scale, alpha, true, false, true, focus == 0);
@@ -110,7 +110,11 @@ void drawSearchNotice(IDirect3DDevice9* device, float width, float height, const
     const float entry = VehicleViewer::ease(float((model.clock - model.searchUntil + 2.8) / .16));
     const float leave = 1 - VehicleViewer::ease(float((model.searchUntil - model.clock) / .16));
     const float boxWidth = std::min(width - 30 * scale, 450 * scale);
-    const float y = height * .735f - 70 * scale;
+    const SearchPanel searchPanel(width, height, model.ui.keyboard.open,
+                                  model.searchOffset(scale));
+    const float y = model.searchFailed
+                        ? std::max(8 * scale, searchPanel.box.y - 76 * scale)
+                        : height * .735f - 84 * scale;
     const UIRect box{(width - boxWidth) * .5f, y + (1 - entry - leave) * 14 * scale,
                      boxWidth, 64 * scale};
     messageWindow(device, box, "Search", scale, alpha);
@@ -153,7 +157,8 @@ void drawPlate(IDirect3DDevice9* device, float width, float height, const Model&
         rect(device, x + scale, input.y + 4 * scale, scale, 15 * scale, color(0x08080C, alpha));
     }
     messageRow(device, panel.box, 1, "Info", "Enter up to 8 characters for your license plate.", scale, alpha, false, true);
-    const int focus = model.ui.dock || model.ui.controllerUsed ? model.plateRow : model.plateHover;
+    const int focus = model.ui.dock || model.ui.controllerUsed
+                          ? model.plateRow : panel.hit(model.pointerX * width, model.pointerY * height);
     const char* labels[]{"Back", "Random", "Spawn Now"};
     for (int i = 0; i < 3; ++i) {
         monitorButton(device, panel.button(i), labels[i], alpha, scale, focus == i + 1, 1.f);

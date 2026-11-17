@@ -403,8 +403,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
     state.ui.menu.vehicleReflections = state.ui.vehicleReflections;
     state.ui.menu.language = state.ui.language;
     state.ui.menu.unitFormat = state.ui.unitFormat;
-    state.ui.menu.japaneseCategory = state.ui.japaneseCategory();
-    state.ui.menu.bikeCategory = state.ui.bikeCategory();
+    state.ui.menu.setCategories(state.ui.japaneseCategory(), state.ui.bikeCategory());
     state.ui.menu.backgroundChoice = state.ui.bikeCategory() ? state.ui.bikeBackground : state.ui.japanBackground;
     state.ui.menu.hotspots = state.hotspotsEnabled();
     state.ui.menu.viewerSettings = state.viewer.settings;

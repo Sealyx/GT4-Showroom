@@ -22,11 +22,14 @@ bool suppliedIcon(IDirect3DDevice9* device, unsigned index, UIRect box, float al
 
 void informationIcon(IDirect3DDevice9* device, float x, float y, float scale, int kind, float alpha)
 {
-    if (suppliedIcon(device, unsigned(kind == 2 ? 5 : kind + 2), {x, y, 44 * scale, 36 * scale}, alpha)) {
-        return;
-    }
     const DWORD background = color(0x55565A, alpha), ink = color(0xEEEEF0, alpha);
     roundedRectangle(device, x, y, 44 * scale, 36 * scale, 7 * scale, background);
+    const float inset = kind == 2 ? 9.f : 6.f;
+    if (suppliedIcon(device, unsigned(kind == 2 ? 5 : kind + 2),
+                     {x + inset * scale, y + (inset - 2) * scale,
+                      (44 - inset * 2) * scale, (40 - inset * 2) * scale}, alpha)) {
+        return;
+    }
     const auto block = [&](float left, float top, float width, float height, DWORD rgb) {
         roundedRectangle(device, x + left * scale, y + top * scale, width * scale, height * scale,
                          2 * scale, rgb);
@@ -123,7 +126,7 @@ void drawInformation(IDirect3DDevice9* device, float width, float height, const 
         rect(device, area.x, area.y + size + 4 * scale, textWidth(labels[i], size, regular), scale, ink);
     }
     write("Version 3.0", 650, 411, 12.5f, 0xD1D1D4);
-    monitorButton(device, panel.target(3), "OK", alpha, scale, model.informationChoice == 3, 1.f, 13.f);
+    monitorButton(device, panel.target(3), "OK", alpha, scale, model.informationChoice == 3, 2.5f, 15.f);
     if (model.pointerVisible && !model.ui.controllerUsed) {
         cursor(device, model.pointerX * width, model.pointerY * height, height / 720.f * .85f, 1);
     }

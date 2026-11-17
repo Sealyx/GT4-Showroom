@@ -184,8 +184,8 @@ void shopWashMeter(IDirect3DDevice9* device, float width, float height, float pr
         };
         device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, slash, sizeof(ScreenVertex));
     }
-    suppliedIcon(device, 0, {x + w * .015f, y - h * .07f, h * .82f, h * .97f}, 1.f);
-    suppliedIcon(device, 1, {x + w - h * .90f, y - h * .07f, h * .82f, h * .97f},
+    suppliedIcon(device, 0, {x + h * .50f, y + h * .12f, h * .62f, h * .72f}, 1.f);
+    suppliedIcon(device, 1, {x + w - h * 1.12f, y + h * .12f, h * .62f, h * .72f},
                  progress >= 1 ? 1.f : .55f);
 }
 
@@ -620,13 +620,16 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
     text(device, months[size_t(std::clamp(int(date.wMonth), 1, 12) - 1)], dateX + dayWidth + monthWidth * .5f,
          top + 2.5f * scale, size, color(0), true, 0, true);
     if (price > 0) {
-        const float x = width * .025f + 71.25f * scale;
-        const float y = height * .362f;
+        const float markScale = scale * (wash ? 1.f : 1.5f);
+        const float x = wash ? width * .09f : width * .025f + 71.25f * scale;
+        const float y = height * (wash ? .8405f : .362f);
         const std::string amount = shopMoney(price);
-        shopPriceMark(device, x, y, scale * 1.5f);
-        text(device, amount, x + 43.5f * scale + scale, y - 28.5f * scale + 2 * scale, 52 * scale, color(0x21150D, .8f),
+        shopPriceMark(device, x, y, markScale * (wash ? 1.15f : 1.f));
+        text(device, amount, x + 29.f * markScale + scale, y - 19.f * markScale + 2 * scale,
+             34.667f * markScale, color(0x21150D, .8f),
              false, 0, true);
-        text(device, amount, x + 43.5f * scale, y - 28.5f * scale, 52 * scale, color(0xFFFFFF, 1), false, 0, true);
+        text(device, amount, x + 29.f * markScale, y - 19.f * markScale, 34.667f * markScale,
+             color(0xFFFFFF, 1), false, 0, true);
     }
     rect(device, 0, height * .922f, width, height * .078f, color(0x090909, 1));
     const std::string controls = model.ui.controllerUsed ? "CIRCLE Return    TRIANGLE Reset"

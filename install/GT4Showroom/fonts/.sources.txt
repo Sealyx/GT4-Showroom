@@ -1,6 +1,6 @@
-
 Copyright 2011 The Michroma Project Authors (https://github.com/googlefonts/Michroma-font)
 Copyright 2012 Red Hat Inc. with Reserved Font Name Liberation.
+Copyright (c) 2014, Indian Type Foundry (info@indiantypefoundry.com).
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
@@ -10,3 +10,8 @@ Kalam-Bold.ttf
 https://github.com/google/fonts/tree/main/ofl/kalam
 Copyright (c) 2014, Indian Type Foundry.
 SIL Open Font License 1.1. Complete license in Kalam-OFL.txt.
+
+LiberationSans-Bold.ttf and LiberationSans-Regular.ttf
+Liberation Fonts 2.1.5, https://github.com/liberationfonts/liberation-fonts
+Copyright 2012 Red Hat, Inc.
+SIL Open Font License 1.1. Complete license and copyright notices in Liberation-OFL.txt.

@@ -30,7 +30,7 @@ void processStudioSearch(const PadActions& pad, float width, float height, doubl
         state.cue = Cue::Accept;
         blockActions();
     };
-    if (click || moved) {
+    if (click || moved || (!state.ui.dock && !state.ui.controllerUsed)) {
         state.ui.dock = false;
         state.ui.controllerUsed = false;
         const int target = panel.hit(x, y);
@@ -141,6 +141,10 @@ void processStudioSearch(const PadActions& pad, float width, float height, doubl
         }
         if ((leftPress || rightPress) && state.searchRow == 0) {
             state.searchById = !state.searchById;
+            state.cue = Cue::Move;
+        } else if ((leftPress || rightPress) && state.searchRow >= 2) {
+            state.searchRow = state.searchRow == 2 ? 3 : 2;
+            state.searchEditing = false;
             state.cue = Cue::Move;
         }
         if (favoritesPress && pad.favorites) {

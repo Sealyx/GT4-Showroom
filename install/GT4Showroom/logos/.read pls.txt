@@ -1,0 +1,13 @@
+Optional vehicle logos
+
+vanilla/<model name>/car.png = vanilla vehicle name logo
+vanilla/<model name>/brand.png = vanilla manufacturer logo
+add-on/<model name>/car.png = add-on vehicle name logo
+add-on/<model name>/brand.png = add-on manufacturer logo
+
+Use the exact internal model name, not its model ID
+Transparent PNG files work best; either image is optional
+Enable Car or Manufacturer independently in Showroom Settings > Logos
+
+Existing logos/<model name>/ folders remain supported for migration
+The vanilla and add-on folders take priority over legacy folders

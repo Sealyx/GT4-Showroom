@@ -30,7 +30,7 @@ void processStudioPlate(const PadActions& pad, float width, float height, double
     }
     const PlatePanel panel(width, height, kb.open, state.plateMotion.offset(state.clock, height));
     const float x = state.pointerX * width, y = state.pointerY * height;
-    if (moved || click) {
+    if (moved || click || (!state.ui.dock && !state.ui.controllerUsed)) {
         state.ui.dock = false;
         state.ui.controllerUsed = false;
         const int target = panel.hit(x, y);

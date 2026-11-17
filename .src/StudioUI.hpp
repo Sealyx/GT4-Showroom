@@ -303,6 +303,31 @@ namespace gt4
             allowHotspots = kind != 9 && kind != 10 && category != 7 && category != 8 && category != 11;
         }
 
+        // contextual rows can move; keep the active branch rather than its old numeric row
+        void setCategories(bool japanese, bool bike)
+        {
+            if (japaneseCategory == japanese && bikeCategory == bike) {
+                return;
+            }
+            const auto before = rootItems();
+            const bool valid = row >= 0 && size_t(row) < before.size();
+            const auto branch = valid ? before[size_t(row)].child : MenuBranch::None;
+            const auto action = valid ? before[size_t(row)].action : StudioAction::None;
+            japaneseCategory = japanese;
+            bikeCategory = bike;
+            const auto after = rootItems();
+            const auto selected = std::find_if(after.begin(), after.end(), [&](const MenuItem& item) {
+                return item.child == branch && item.action == action;
+            });
+            if (valid && selected != after.end()) {
+                row = int(selected - after.begin());
+            } else {
+                row = 0;
+                sub = countries = countryFocus = monitorPicker = false;
+                focusLevel = sortRow = countryRow = 0;
+            }
+        }
+
         void sync(int o,
                   int country,
                   int cls,

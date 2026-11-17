@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 
 namespace gt4::studioLighting
 {
@@ -105,5 +106,73 @@ namespace gt4::studioLighting
         const float poolY = (y - light.poolDepth - (x - .5f) * light.poolSlope) / light.poolWidth;
         const float floorPool = light.floorPool * std::exp(-poolX * poolX - poolY * poolY);
         return std::clamp(wall + wallGlow + floorPool, 0.f, 1.f);
+    }
+
+    inline float wallGrain(float x, float y)
+    {
+        const auto noise = [](float u, float v) {
+            const int ix = int(std::floor(u)), iy = int(std::floor(v));
+            const float tx = smooth(u - ix), ty = smooth(v - iy);
+            const auto sample = [](int px, int py) {
+                uint32_t value = uint32_t(px) * 0x9E3779B9u ^ uint32_t(py) * 0x85EBCA6Bu;
+                value ^= value >> 16;
+                value *= 0x7FEB352Du;
+                value ^= value >> 15;
+                return float(value & 0xFFFFu) / 32767.5f - 1.f;
+            };
+            const float top = sample(ix, iy) * (1.f - tx) + sample(ix + 1, iy) * tx;
+            const float bottom = sample(ix, iy + 1) * (1.f - tx) + sample(ix + 1, iy + 1) * tx;
+            return top * (1.f - ty) + bottom * ty;
+        };
+        return 9.f * noise(x * 7.f, y * 6.f) + 5.f * noise(x * 17.f, y * 14.f) +
+               2.f * noise(x * 31.f, y * 27.f);
+    }
+
+    // wall texture stops at the floor and is omitted from vehicle environment captures
+    inline std::array<float, 3> backdrop(int style, float x, float y, const LightFrame& light,
+                                         bool wallTexture = true)
+    {
+        const auto gaussian = [](float a, float b) {
+            return std::exp(-a * a - b * b);
+        };
+        if (style == 1) {
+            const float wall = gaussian((x - .71706f) / .47605f, (y - .44441f) / .12729f);
+            const float floor = gaussian((x - .51257f) / .44833f, (y - .67265f) / .11901f);
+            return {50.6177f * wall + 131.7988f * floor,
+                    2.7294f * wall + 8.1050f * floor,
+                    .0524f * wall + .1855f * floor};
+        }
+        if (style == 2) {
+            const float floor = smooth((y - .55f) / .10f);
+            const float wall = gaussian((x - .56f) / .30f, (y - .04f) / .61f);
+            const float pool = gaussian((x - .51f) / .37f, (y - .69f) / .09f);
+            const float grain = wallTexture ? wallGrain(x, y) * (1.f - floor) : 0.f;
+            const float value = (28.f + 95.f * wall + grain) * (1.f - floor) +
+                                (28.f + 48.f * pool) * floor;
+            return {value, value, value};
+        }
+        const float floor = smooth((y - .47f) / .26f);
+        const float wall = gaussian((x - .49532f) / .23000f, (y - .33000f) / .12866f);
+        const float pool = gaussian((x - .48728f) / .25164f, (y - .58699f) / .08112f);
+        const std::array<float, 3> darkest{
+            8.7333f + 20.2841f * floor + 45.6214f * wall + 91.3926f * pool,
+            9.4693f + 21.7413f * floor + 47.7169f * wall + 92.8008f * pool,
+            10.1736f + 22.5691f * floor + 49.0526f * wall + 95.2844f * pool};
+        // only the darkest phase is replaced; the existing bright sweep keeps its own lighting
+        const float phase = smooth(std::max((light.wall - .13f) / .022f, (light.floor - .15f) / .27f));
+        if (phase <= 0) {
+            return darkest;
+        }
+        const float brightness = luminance(light, x, y);
+        const float oval = std::exp(-std::pow((x - .5f) / .52f, 2) - std::pow((y - .69f) / .12f, 2));
+        const float dark = std::clamp((.23f - brightness) / .14f, 0.f, 1.f);
+        const float strength = std::min(1.f, brightness + oval * .10f * dark);
+        std::array<float, 3> original{247.f * strength, 252.f * strength, 255.f * strength};
+        if (phase < 1) {
+            for (size_t channel = 0; channel < original.size(); ++channel) {
+                original[channel] = darkest[channel] + (original[channel] - darkest[channel]) * phase;
+            }
+        }
+        return original;
     }
 }
