@@ -387,7 +387,7 @@ namespace gt4
             plateRow = 0;
             plateHover = plateAction = -1;
             plate.clear();
-            plateMotion = {clock};
+            plateMotion = previous == SpawnReview::None ? ReviewMotion{clock} : review;
             ui.keyboard.open = false;
             dragging = false;
             cue = Cue::Open;
@@ -398,7 +398,17 @@ namespace gt4
             if (!plateOpen || plateAction >= 0) {
                 return;
             }
-            plateAction = confirm ? 1 : 0;
+            if (!confirm) {
+                plateOpen = false;
+                spawnReview = plateReturn;
+                review = plateMotion;
+                reviewChoice = 2;
+                pendingReviewChoice = -1;
+                ui.keyboard.open = false;
+                cue = Cue::Back;
+                return;
+            }
+            plateAction = 1;
             plateMotion.dismiss(clock);
             ui.keyboard.open = false;
             cue = confirm ? Cue::Accept : Cue::Back;
@@ -440,6 +450,10 @@ namespace gt4
         void chooseSpawnReview(ReviewChoice choice)
         {
             if (spawnReview == SpawnReview::None || busy() || (choice == ReviewChoice::Spawn && reviewButtons() != 3)) {
+                return;
+            }
+            if (choice == ReviewChoice::Spawn && spawnReview != SpawnReview::ShopReset) {
+                finishSpawnReview(choice);
                 return;
             }
             if (pendingReviewChoice < 0) {
@@ -1205,7 +1219,7 @@ namespace gt4
             x = (box.x + box.w * .5f) / w;
             y = (box.y + box.h * .5f) / h;
         } else if (s.plateOpen) {
-            const PlatePanel panel(w, h, s.ui.keyboard.open, s.plateMotion.offset(s.clock, h));
+            const PlatePanel panel(w, h, s.ui.keyboard.open, s.plateMotion.offset(s.clock, h), s.plateReturn != SpawnReview::None);
             const auto box = s.ui.keyboard.open ? s.ui.keyboard.box(w, h, s.ui.keyboard.selected)
                                                : panel.target(s.plateRow);
             x = (box.x + box.w * .5f) / w;

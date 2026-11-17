@@ -30,6 +30,7 @@
 #include "RenderTargets.hpp"
 #include "PreviewAntialiasing.hpp"
 #include "PreviewOcclusion.hpp"
+#include "CavityOcclusion.hpp"
 #include "ViewerStudio.hpp"
 #include "ViewerPhotoCapture.hpp"
 #include "StudioLighting.hpp"
@@ -359,8 +360,13 @@ namespace gt4
         IDirect3DSurface9* viewerDepth = nullptr;
         UINT viewerTargetWidth = 0, viewerTargetHeight = 0;
 
+        struct OcclusionVertex { Vertex vertex; float cavity = 0; };
+
         struct GpuMesh
         {
+            bool cavityReady = false, cavityUnavailable = false;
+            std::array<float, 9> cavityPose{}, observedPose{};
+            uint64_t poseFrame = 0;
             IDirect3DVertexBuffer9* vb = nullptr;
             std::vector<UINT> starts;
             UINT count = 0;
@@ -368,6 +374,9 @@ namespace gt4
         };
 
         std::unordered_map<uint64_t, GpuMesh> buffers;
+        std::unique_ptr<CavityOcclusion> cavityBake;
+        uint64_t cavitySerial = 0, cavityFrame = 0;
+        std::array<float, 9> cavityPose{};
         std::unique_ptr<Mesh> bikeDisplay;
         uint64_t bikeDisplaySource = 0;
         uint64_t frameSerial = 0;
@@ -417,7 +426,7 @@ namespace gt4
             if (cp.BehaviorFlags & D3DCREATE_SOFTWARE_VERTEXPROCESSING) {
                 usage |= D3DUSAGE_SOFTWAREPROCESSING;
             }
-            if (FAILED(d->CreateVertexBuffer(UINT(count * sizeof(Vertex)),
+            if (FAILED(d->CreateVertexBuffer(UINT(count * sizeof(OcclusionVertex)),
                                              usage,
                                              D3DFVF_XYZ | D3DFVF_NORMAL | D3DFVF_TEX1,
                                              D3DPOOL_MANAGED,
@@ -430,10 +439,9 @@ namespace gt4
                 g.vb->Release();
                 return nullptr;
             }
-            auto* out = static_cast<Vertex*>(data);
+            auto* out = static_cast<OcclusionVertex*>(data);
             for (const auto& b : m.batches) {
-                std::memcpy(out, b.vertices.data(), b.vertices.size() * sizeof(Vertex));
-                out += b.vertices.size();
+                for (const auto& v : b.vertices) { *out++ = {v, 0}; }
             }
             g.vb->Unlock();
             ++uploads;
@@ -445,6 +453,58 @@ namespace gt4
                 buffers.erase(old);
             }
             return &buffers.emplace(m.serial, std::move(g)).first->second;
+        }
+
+        bool prepareCavity(IDirect3DDevice9* d, const Mesh& mesh, GpuMesh& gpu,
+                           const CinematicVehicleState* vehicle, float rideHeight)
+        {
+            (void)d;
+            if (gpu.cavityUnavailable) { return false; }
+            std::array<float, 9> pose{};
+            if (vehicle) {
+                std::copy(vehicle->doors.begin(), vehicle->doors.end(), pose.begin());
+                pose[6] = vehicle->steering;
+                pose[7] = vehicle->rearSteering;
+            }
+            pose[8] = rideHeight;
+            if (gpu.cavityReady && gpu.cavityPose == pose) { return true; }
+            if (gpu.observedPose != pose) {
+                gpu.observedPose = pose;
+                gpu.poseFrame = frameSerial;
+                return false;
+            }
+            if (frameSerial - gpu.poseFrame < 2) { return false; }
+            try {
+                if (!cavityBake || cavitySerial != mesh.serial || cavityPose != pose) {
+                    cavityBake = std::make_unique<CavityOcclusion>(mesh, [&](int component) {
+                        auto part = cinematicPartTransform(mesh.cinematic, vehicle, component);
+                        if (component < int(CinematicComponent::FrontLeftWheel)) { part.position.z += rideHeight; }
+                        return part;
+                    });
+                    cavitySerial = mesh.serial;
+                    cavityPose = pose;
+                }
+                if (cavityFrame != frameSerial) {
+                    cavityBake->step();
+                    cavityFrame = frameSerial;
+                }
+            } catch (const std::bad_alloc&) {
+                gpu.cavityUnavailable = true;
+                cavityBake.reset();
+                return false;
+            }
+            if (!cavityBake->ready()) { return false; }
+            void* data = nullptr;
+            if (FAILED(gpu.vb->Lock(0, 0, &data, 0))) { return false; }
+            auto* vertices = static_cast<OcclusionVertex*>(data);
+            for (size_t i = 0; i < cavityBake->values.size(); ++i) {
+                vertices[i].cavity = cavityBake->values[i];
+            }
+            const bool okay = SUCCEEDED(gpu.vb->Unlock());
+            gpu.cavityReady = okay;
+            gpu.cavityPose = pose;
+            cavityBake.reset();
+            return okay;
         }
 
         void transforms(IDirect3DDevice9* d, const Camera& c, const D3DMATRIX& world)
@@ -1072,6 +1132,8 @@ namespace gt4
                 }
             }
             buffers.clear();
+            cavityBake.reset();
+            cavitySerial = 0;
             releaseTarget();
             if (font) {
                 font->Release();
@@ -1598,7 +1660,7 @@ namespace gt4
             }
             transforms(d, cam, world);
             d->SetFVF(D3DFVF_XYZ | D3DFVF_NORMAL | D3DFVF_TEX1);
-            d->SetStreamSource(0, g->vb, 0, sizeof(Vertex));
+            d->SetStreamSource(0, g->vb, 0, sizeof(OcclusionVertex));
             d->SetRenderState(D3DRS_LIGHTING, !shadow);
             d->SetRenderState(D3DRS_SPECULARENABLE, !shadow);
             d->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
@@ -1635,6 +1697,8 @@ namespace gt4
                 return combined;
             };
             if (occlusionGeometry) {
+                const bool cavity = prepareCavity(d, m, *g, vehicle, rideHeight);
+                d->SetFVF(D3DFVF_XYZ | D3DFVF_NORMAL | D3DFVF_TEX2 | D3DFVF_TEXCOORDSIZE1(1));
                 d->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
                 d->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
                 d->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
@@ -1648,7 +1712,7 @@ namespace gt4
                     d->SetTexture(0, texture);
                     d->SetSamplerState(0, D3DSAMP_ADDRESSU, batch.addressU);
                     d->SetSamplerState(0, D3DSAMP_ADDRESSV, batch.addressV);
-                    occlusionGeometryOkay = occlusion.bindGeometry(d, texture != nullptr) && occlusionGeometryOkay;
+                    occlusionGeometryOkay = occlusion.bindGeometry(d, texture != nullptr, cavity) && occlusionGeometryOkay;
                     if (occlusionGeometryOkay) {
                         occlusionGeometryOkay = SUCCEEDED(d->DrawPrimitive(D3DPT_TRIANGLELIST, g->starts[i],
                             UINT(batch.vertices.size() / 3)));
@@ -1712,7 +1776,7 @@ namespace gt4
                 d->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 48, contact, sizeof(ContactVertex));
                 transforms(d, cam, world);
                 d->SetFVF(D3DFVF_XYZ | D3DFVF_NORMAL | D3DFVF_TEX1);
-                d->SetStreamSource(0, g->vb, 0, sizeof(Vertex));
+                d->SetStreamSource(0, g->vb, 0, sizeof(OcclusionVertex));
                 d->SetRenderState(D3DRS_LIGHTING, TRUE);
             }
             if (viewerSubject) {
@@ -1837,14 +1901,14 @@ namespace gt4
                             return false;
                         }
                         const float extent = m.span() * size;
-                        const Vertex floor[]{{{-extent, -extent, 0}, {0, 0, 1}, 0, 0},
-                                             {{extent, -extent, 0}, {0, 0, 1}, 1, 0},
-                                             {{-extent, extent, 0}, {0, 0, 1}, 0, 1},
-                                             {{extent, extent, 0}, {0, 0, 1}, 1, 1}};
+                        const OcclusionVertex floor[]{{{{-extent, -extent, 0}, {0, 0, 1}, 0, 0}, 0},
+                                                      {{{extent, -extent, 0}, {0, 0, 1}, 1, 0}, 0},
+                                                      {{{-extent, extent, 0}, {0, 0, 1}, 0, 1}, 0},
+                                                      {{{extent, extent, 0}, {0, 0, 1}, 1, 1}, 0}};
                         transforms(d, cam, identity());
                         d->SetTexture(0, nullptr);
                         return occlusion.bindGeometry(d, false) && SUCCEEDED(d->DrawPrimitiveUP(
-                            D3DPT_TRIANGLESTRIP, 2, floor, sizeof(Vertex)));
+                            D3DPT_TRIANGLESTRIP, 2, floor, sizeof(OcclusionVertex)));
                     });
                 }
             }
@@ -3034,7 +3098,7 @@ namespace gt4
                                     RECT clip{clipX, clipY, right, bottom};
                                     d->SetScissorRect(&clip);
                                     d->SetRenderState(D3DRS_SCISSORTESTENABLE, TRUE);
-                                    d->Clear(0, nullptr, D3DCLEAR_ZBUFFER, 0, 1, 0);
+                                    d->Clear(0, nullptr, D3DCLEAR_ZBUFFER | D3DCLEAR_STENCIL, 0, 1, 0);
                                     Camera small = fittedThumbnail(float(fullW),
                                                                    float(fullH),
                                                                    thumb->low,

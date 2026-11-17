@@ -13,11 +13,11 @@ namespace gt4
         float scale;
         UIRect box;
 
-        PlatePanel(float width, float height, bool keyboard, float offset = 0)
+        PlatePanel(float width, float height, bool keyboard, float offset = 0, bool reviewAnchor = false)
             : scale(std::min(height / 720.f, width / 960.f))
         {
             const float w = 520 * scale;
-            box = {(width - w) * .5f, height * (keyboard ? .10f : .43f) + offset, w, 151 * scale};
+            box = {(width - w) * .5f, height * (keyboard ? .10f : reviewAnchor ? .37f : .43f) + offset, w, 151 * scale};
         }
 
         UIRect field() const

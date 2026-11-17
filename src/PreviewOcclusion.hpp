@@ -19,8 +19,8 @@ sampler2D geometry : register(s1);
 float4 projectionInfo : register(c0);
 float4 sampleInfo : register(c1);
 float4 pixelInfo : register(c2);
-struct Input { float3 position : POSITION0; float3 normal : NORMAL0; float2 uv : TEXCOORD0; };
-struct Output { float4 position : POSITION0; float3 normal : TEXCOORD0; float depth : TEXCOORD1; float2 uv : TEXCOORD2; };
+struct Input { float3 position : POSITION0; float3 normal : NORMAL0; float2 uv : TEXCOORD0; float cavity : TEXCOORD1; };
+struct Output { float4 position : POSITION0; float3 normal : TEXCOORD0; float depth : TEXCOORD1; float2 uv : TEXCOORD2; float cavity : TEXCOORD3; };
 Output geometryVertex(Input input)
 {
     Output output;
@@ -28,12 +28,14 @@ Output geometryVertex(Input input)
     output.normal = mul(float4(input.normal, 0), worldView).xyz;
     output.depth = mul(float4(input.position, 1), worldView).z;
     output.uv = input.uv;
+    output.cavity = input.cavity;
     return output;
 }
 float4 geometryPixel(Output input) : COLOR0
 {
     if (material.x > 0) { clip(tex2D(image, input.uv).a - 0.98); }
-    return float4(normalize(input.normal) * 0.5 + 0.5, input.depth);
+    float cavity = material.y * saturate(input.cavity);
+    return float4(normalize(input.normal) * (1 - cavity) * 0.5 + 0.5, input.depth);
 }
 float3 positionAt(float2 uv, float depth)
 {
@@ -65,7 +67,9 @@ float4 occlusionPixel(float2 uv : TEXCOORD0) : COLOR0
         sum += horizon * weight * step(0.001, neighbor.a) * inside;
         valid += inside;
     }
-    return 1 - min(0.35, sum / max(valid, 1) * sampleInfo.z) * sampleInfo.w;
+    float screenAO = min(0.35, sum / max(valid, 1) * sampleInfo.z);
+    float cavityAO = min(0.35, max(0, 1 - length(center.rgb * 2 - 1)));
+    return 1 - max(screenAO, cavityAO) * sampleInfo.w;
 }
 float4 compositePixel(float2 uv : TEXCOORD0) : COLOR0
 {
@@ -79,7 +83,7 @@ float4 compositePixel(float2 uv : TEXCOORD0) : COLOR0
         float2 probe = uv + direction * pixelInfo.xy;
         float4 neighbor = tex2D(geometry, probe);
         float weight = exp(-abs(center.a - neighbor.a) / max(sampleInfo.x * 0.1, 0.001));
-        weight *= saturate(dot(center.rgb * 2 - 1, neighbor.rgb * 2 - 1));
+        weight *= saturate(dot(normalize(center.rgb * 2 - 1), normalize(neighbor.rgb * 2 - 1)));
         value += tex2D(image, probe).r * weight;
         total += weight;
     }
@@ -250,7 +254,7 @@ float4 compositePixel(float2 uv : TEXCOORD0) : COLOR0
             return result;
         }
 
-        bool bindGeometry(IDirect3DDevice9 *device, bool textured)
+        bool bindGeometry(IDirect3DDevice9 *device, bool textured, bool cavity = false)
         {
             D3DMATRIX world{}, view{}, projection{};
             if (FAILED(device->GetTransform(D3DTS_WORLD, &world)) || FAILED(device->GetTransform(D3DTS_VIEW, &view)) ||
@@ -260,7 +264,7 @@ float4 compositePixel(float2 uv : TEXCOORD0) : COLOR0
             }
             const auto worldView = multiply(world, view);
             const auto matrix = multiply(worldView, projection);
-            const float material[]{textured ? 1.f : 0.f, 0, 0, 0};
+            const float material[]{textured ? 1.f : 0.f, cavity ? 1.f : 0.f, 0, 0};
             return SUCCEEDED(device->SetVertexShader(vertex)) && SUCCEEDED(device->SetPixelShader(geometry)) &&
                    SUCCEEDED(device->SetVertexShaderConstantF(0, &matrix.m[0][0], 4)) &&
                    SUCCEEDED(device->SetVertexShaderConstantF(4, &worldView.m[0][0], 4)) &&

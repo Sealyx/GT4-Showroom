@@ -148,7 +148,10 @@ void drawPlate(IDirect3DDevice9* device, float width, float height, const Model&
         return;
     }
     const float alpha = model.plateMotion.reveal(model.clock);
-    const PlatePanel panel(width, height, model.ui.keyboard.open, model.plateMotion.offset(model.clock, height));
+    if (model.plateReturn != SpawnReview::None) {
+        rect(device, 0, 0, width, height, color(0, .2f * alpha));
+    }
+    const PlatePanel panel(width, height, model.ui.keyboard.open, model.plateMotion.offset(model.clock, height), model.plateReturn != SpawnReview::None);
     const float scale = panel.scale;
     messageWindow(device, panel.box, "License Plate", scale, alpha);
     const auto input = messageRow(device, panel.box, 0, "Text", model.plate, scale, alpha);

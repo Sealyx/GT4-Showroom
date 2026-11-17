@@ -5,6 +5,11 @@ void processStudioPlate(const PadActions& pad, float width, float height, double
     if (state.plateAction >= 0) {
         return;
     }
+    if (goBack) {
+        state.finishPlate(false);
+        blockActions();
+        return;
+    }
     auto& kb = state.ui.keyboard;
     const auto choose = [&](int row) {
         if (row == 0) {
@@ -28,7 +33,7 @@ void processStudioPlate(const PadActions& pad, float width, float height, double
         blockActions();
         return;
     }
-    const PlatePanel panel(width, height, kb.open, state.plateMotion.offset(state.clock, height));
+    const PlatePanel panel(width, height, kb.open, state.plateMotion.offset(state.clock, height), state.plateReturn != SpawnReview::None);
     const float x = state.pointerX * width, y = state.pointerY * height;
     if (moved || click || (!state.ui.dock && !state.ui.controllerUsed)) {
         state.ui.dock = false;
@@ -102,7 +107,6 @@ void processStudioPlate(const PadActions& pad, float width, float height, double
             return;
         }
     }
-    // an empty focused field still owns Backspace; it must not unexpectedly leave this prompt
     const auto action = searchInput.poll([](int vk) { return key(vk); }, tick,
                                          state.plate, state.plateEditing, 8);
     state.plate = plateText(state.plate);
