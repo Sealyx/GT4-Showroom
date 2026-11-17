@@ -91,8 +91,7 @@ namespace gt4
             }
             ++countryTotals[size_t(e.country)];
             ++classTotals[size_t(classIndex(e.classId))];
-            if ((state.ui.countryFilter < 0 || int(e.country) == state.ui.countryFilter) &&
-                (state.ui.classFilter < 0 || classIndex(e.classId) == state.ui.classFilter)) {
+            if (state.ui.accepts(e.country, e.classId)) {
                 out.push_back(std::move(e));
             }
         }

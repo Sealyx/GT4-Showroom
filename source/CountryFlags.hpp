@@ -165,24 +165,24 @@ namespace gt4
                 return 0xDE2910;
             }
             case Country::SouthKorea: {
-                const float qx = x * 1.5f, qy = y, r = .48f;
+                const float qx = x * 1.5f, qy = y, r = .59f;
                 if (qx * qx + qy * qy < r * r) {
                     const float boundary =
                         qx < 0 ? std::sqrt(std::max(0.f, r * r * .25f - (qx + r * .5f) * (qx + r * .5f)))
                                : -std::sqrt(std::max(0.f, r * r * .25f - (qx - r * .5f) * (qx - r * .5f)));
                     return qy < boundary ? 0xCD2E3A : 0x0047A0;
                 }
-                const float positions[][3] = {{-.61f, -.61f, -.78539816f},
-                                              {.61f, .61f, -.78539816f},
-                                              {.61f, -.61f, .78539816f},
-                                              {-.61f, .61f, .78539816f}};
+                const float positions[][3] = {{-.52f, -.52f, -.78539816f},
+                                              {.52f, .52f, -.78539816f},
+                                              {.52f, -.52f, .78539816f},
+                                              {-.52f, .52f, .78539816f}};
                 for (int g = 0; g < 4; ++g) {
                     const auto& p = positions[g];
                     float dx = (x - p[0]) * 1.5f, dy = y - p[1], u = dx * std::cos(p[2]) + dy * std::sin(p[2]),
                           v = -dx * std::sin(p[2]) + dy * std::cos(p[2]);
-                    if (std::abs(u) < .29f) {
+                    if (std::abs(u) < .31f) {
                         for (int line = 0; line < 3; ++line) {
-                            if (std::abs(v - (line - 1) * .11f) < .034f) {
+                            if (std::abs(v - (line - 1) * .11f) < .040f) {
                                 bool broken = g == 1 || (g == 2 && line != 1) || (g == 3 && line == 1);
                                 if (!broken || std::abs(u) > .045f) {
                                     return 0x161616;

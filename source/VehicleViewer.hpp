@@ -83,6 +83,10 @@ namespace gt4
 
         const ViewerPalette& lighting() const
         {
+            static constexpr ViewerPalette neutral{"White", 0xFFFFFF, 0x768CA3};
+            if (scene == ViewerScene::Softbox || scene == ViewerScene::Custom) {
+                return neutral;
+            }
             return viewerPalettes[size_t(std::clamp(palette, 0, int(viewerPalettes.size()) - 1))];
         }
 
@@ -254,6 +258,11 @@ namespace gt4
             return heldBackground + (backgroundPaused ? 0 : std::max(0., now - backgroundBegan));
         }
 
+        float shadowPhase(double now) const
+        {
+            return float(backgroundElapsed(now)) * .42f;
+        }
+
         void syncBackground(double now)
         {
             const bool freeze = paused && !settings.animate;
@@ -275,6 +284,14 @@ namespace gt4
             const auto& profile = orbitProfile();
             const double phase = (profile.frontTime - std::fmod(elapsed(now), profile.duration)) / profile.duration;
             return float(phase) * fullTurn + yawOffset;
+        }
+
+        void changeScene(ViewerScene scene, double now)
+        {
+            const float previousYaw = yaw(now);
+            settings.scene = scene;
+            settings.validate();
+            yawOffset = std::remainder(yawOffset + previousYaw - yaw(now), fullTurn);
         }
 
         void toggle(double now)

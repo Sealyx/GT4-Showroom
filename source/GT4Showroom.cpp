@@ -19,10 +19,7 @@
 #include "SearchInput.hpp"
 #include "Controller.hpp"
 #include "PaintSources.hpp"
-#include "SecretFeaturesSchoolNative.hpp"
-#include "SecretFeaturesRenderer.hpp"
 #include "SecretFeatures.hpp"
-#include "SecretFeaturesRecovery.hpp"
 #include "MinHook.h"
 #include <cstdio>
 #include <map>
@@ -55,6 +52,50 @@ namespace gt4
             audio.setGameLevels(effects, music);
         }
     }
+    bool gameVolumeDirty = false;
+
+    bool readGameVolume(std::array<int, 2>& levels)
+    {
+        uint8_t effects = 0, music = 0;
+        if (!gta::read(0xBA6797, effects) || !gta::read(0xBA6798, music) || effects > 64 || music > 64) {
+            return false;
+        }
+        levels = {int(music), int(effects)};
+        return true;
+    }
+
+    // use the game's setters as well as its menu values; direct byte writes alone leave audio unchanged
+    bool setGameVolume(const std::array<int, 2>& levels)
+    {
+        constexpr std::array<uint8_t, 9> expected{0x0F, 0xBE, 0x44, 0x24, 0x04, 0x89, 0x44, 0x24, 0x04};
+        std::array<uint8_t, 9> music{}, effects{};
+        if (!gta::read(0x506DE0, music) || !gta::read(0x506E10, effects) ||
+            music != expected || effects != expected) {
+            return false;
+        }
+        const int radio = std::clamp(levels[0], 0, 64), sfx = std::clamp(levels[1], 0, 64);
+        using SetVolume = void(__thiscall*)(void*, char);
+        reinterpret_cast<SetVolume>(0x506DE0)(reinterpret_cast<void*>(0xB6BC90), char(radio));
+        reinterpret_cast<SetVolume>(0x506E10)(reinterpret_cast<void*>(0xB6BC90), char(sfx));
+        game::at<uint8_t>(0xBA6798) = uint8_t(radio);
+        game::at<uint8_t>(0xBA6797) = uint8_t(sfx);
+        gameVolumeDirty = true;
+        syncGameAudioLevels();
+        return true;
+    }
+
+    // gta_sa.set includes hud/radar state too, so wait until the pause lease has restored gameplay values
+    void commitGameVolume()
+    {
+        constexpr std::array<uint8_t, 7> expected{0x83, 0xEC, 0x0C, 0x56, 0x57, 0x8B, 0xF9};
+        std::array<uint8_t, 7> actual{};
+        if (gameVolumeDirty && !game::loading() && gta::read(0x57C660, actual) && actual == expected) {
+            using Save = void(__thiscall*)(void*);
+            reinterpret_cast<Save>(0x57C660)(reinterpret_cast<void*>(0xBA6748));
+            gameVolumeDirty = false;
+        }
+    }
+
     game::PauseLease pause;
     std::vector<Entry> entries, catalog;
     std::set<int> excluded;
@@ -122,6 +163,11 @@ namespace gt4
         diagnostics.write(logFile, s);
     }
 
+    void syncCaptureDiagnostics()
+    {
+        nativePreview::diagnostic = diagnostics.enabled.load(std::memory_order_relaxed) ? log : nullptr;
+    }
+
     void favorites(bool save)
     {
         const std::wstring file = base + L"GT4Showroom\\favorites.ini";
@@ -151,6 +197,12 @@ namespace gt4
 
     void rebuildCatalogueView(int preferredModel = -1)
     {
+        localization.protectedNames.clear();
+        for (const auto& entry : catalog) {
+            localization.protectedNames.insert(entry.name);
+            localization.protectedNames.insert(entry.title);
+            localization.protectedNames.insert(entry.modelName);
+        }
         buildCatalogueView(
             state, entries, catalog, studioConfig.sort,
             [&](const Entry& e) {
@@ -193,6 +245,7 @@ namespace gt4
         studioConfig = readStudioConfig(ini);
         studioConfig.sort = menuSort(state.ui.sortMode);
         diagnostics.reload(ini, L"GT4Showroom");
+        syncCaptureDiagnostics();
         state.secretUnlocks = readSecretUnlocks(ini);
         char secretReport[200];
         std::snprintf(secretReport, sizeof(secretReport),
@@ -230,6 +283,11 @@ namespace gt4
 
     void close(bool reveal = false)
     {
+        if (state.ui.countryShortcut) {
+            const int model = state.ui.endCountryShortcut();
+            studioConfig.sort = menuSort(state.ui.sortMode);
+            rebuildCatalogueView(model);
+        }
         if (state.ui.menuSnapshot) {
             state.ui.menu.finish(-1);
             finishSettings();
@@ -269,12 +327,14 @@ namespace gt4
         state.spawn = false;
         state.fade.reset();
         state.searching = false;
+        state.informationOpen = false;
         state.ui.resetTransient();
         state.ui.favoritesOnly = false;
         audio.stopBed();
         audio.setShopMusic(false);
         audio.setTransitionGain(1.f);
         pause.end();
+        commitGameVolume();
         favorites(true);
         pending.clear();
     }
@@ -300,7 +360,9 @@ namespace gt4
         get(L"Year", e.year);
         get(L"Power", e.power);
         get(L"Torque", e.torque);
+        const auto nativeInformation = e.information;
         get(L"Information", e.information);
+        e.customInformation = e.information != nativeInformation;
         for (size_t i = 0; i < e.paints.size(); ++i) {
             const auto key = L"Paint" + std::to_wstring(i + 1);
             get(key.c_str(), e.paints[i].name);
@@ -355,20 +417,25 @@ namespace gt4
             e.favorite = GetPrivateProfileIntW(L"Favorites", key.c_str(), 0,
                                                (base + L"GT4Showroom\\favorites.ini").c_str()) != 0;
             known.insert(e.id);
+            localization.protectedNames.insert(e.name);
+            localization.protectedNames.insert(e.title);
+            localization.protectedNames.insert(e.modelName);
             catalog.push_back(e);
             if (exclusionConfig.hides(e)) {
                 excluded.insert(e.id);
             } else if ((!state.ui.favoritesOnly || e.favorite) &&
-                       (state.ui.countryFilter < 0 || int(e.country) == state.ui.countryFilter) &&
-                       (state.ui.classFilter < 0 || classIndex(e.classId) == state.ui.classFilter)) {
+                       state.ui.accepts(e.country, e.classId)) {
                 entries.push_back(std::move(e));
             }
         }
         if (entries.size() != previousCount) {
             sortCatalogue(entries, studioConfig.sort);
             for (size_t i = 0; i < entries.size(); ++i) {
-                if (entries[i].id == selectedId) {
+                if ((!catalogueWarm && !state.open && i == 0) || entries[i].id == selectedId) {
                     state.selected = i;
+                    if (!catalogueWarm && !state.open) {
+                        break;
+                    }
                 }
             }
             state.scroll = state.scrollTarget();
@@ -431,6 +498,10 @@ namespace gt4
         const auto h = handling(game::field<uint16_t>(mi, 0x4A));
         e.topSpeed = h.valid ? h.limit : -1;
         e.information = stats(h);
+        e.handlingMass = h.mass;
+        e.handlingGears = h.gears;
+        e.handlingDrive = h.drive;
+        e.handlingValid = h.valid;
         metadata(e);
         liveryNative::scan(state, e.id);
     }
@@ -576,6 +647,7 @@ namespace gt4
             prizeSerial = 0;
         }
         const auto& selectedEntry = entries[state.selected];
+        state.ui.menu.setVehicleKind(selectedEntry.kind, selectedEntry.classId);
         if (extrasModel != selectedEntry.id) {
             nativeExtras::clear();
             state.ui.menu.setExtras({}, {}, {});
@@ -609,8 +681,23 @@ namespace gt4
         liveryNative::update(state, selectedEntry);
         if (state.postSelectionCinematic) {
             const auto livery = selectedLivery();
+            const int previousCustomizationModel = customizationNative::state.model;
             const bool ready =
                 customizationNative::update(selectedEntry, state.paint, livery.first, livery.second, state.shop.washed);
+            if (diagnostics.enabled.load(std::memory_order_relaxed) &&
+                previousCustomizationModel != customizationNative::state.model) {
+                size_t wheels = 0, components = 0;
+                for (const auto& group : customizationNative::state.groups) {
+                    const size_t options = group.options.empty() ? 0 : group.options.size() - 1;
+                    (group.slot == 34 ? wheels : components) += options;
+                }
+                char detail[192];
+                std::snprintf(detail, sizeof(detail),
+                              "Customization catalogue: model=%d groups=%zu wheel options=%zu component options=%zu",
+                              customizationNative::state.model, customizationNative::state.groups.size(), wheels,
+                              components);
+                log(detail);
+            }
             const bool customized = customizationNative::state.hasSelection();
             state.appearanceReady = ready || !customized;
             state.ui.menu.setCustomization(customizationNative::state, true);
@@ -657,7 +744,7 @@ namespace gt4
                 continue;
             }
             auto it = cache.find(id);
-            if (it != cache.end()) {
+            if (it != cache.end() && (id != want.front() || it->second.mesh->textureLimit == 0)) {
                 it->second.touched = state.clock;
                 continue;
             }
@@ -682,7 +769,14 @@ namespace gt4
             }
             extracted = true;
             pending.erase(id);
-            auto mesh = id == entries[state.selected].id ? nativeExtras::capture(id) : nativePreview::snapshot(id);
+            if (diagnostics.enabled.load(std::memory_order_relaxed)) {
+                char capture[160];
+                std::snprintf(capture, sizeof(capture), "Preview capture begin: model=%d, cache=%zu, pending=%zu",
+                              id, cache.size(), pending.size());
+                log(capture);
+            }
+            const bool selected = id == entries[state.selected].id;
+            auto mesh = selected ? nativeExtras::capture(id) : nativePreview::snapshot(id, nullptr, false, 512);
             static std::set<int> wheelReports;
             if (nativePreview::lastModel == id && wheelReports.size() < 1000 && wheelReports.insert(id).second &&
                 (nativePreview::lastSources || id == 554)) {
@@ -701,30 +795,50 @@ namespace gt4
                 log("Native vehicle capture unavailable; later captures remain enabled");
             }
             if (mesh) {
+                mesh->textureLimit = selected ? 0 : 512;
                 if (diagnostics.enabled) {
                     char textures[260];
                     std::snprintf(textures, sizeof(textures),
                                   "Preview textures model=%d declared=%zu missing=%zu unsupported=%zu "
-                                  "nativeOnlyAtomics=%zu prepared=%d IVF=%d",
+                                  "nativeOnlyAtomics=%zu privateTextureBytes=%zu prepared=%d IVF=%d",
                                   id, mesh->declaredTextures, mesh->missingTextures, mesh->unsupportedTextures,
-                                  mesh->nativeOnly, nativePreview::lastModel == id,
+                                  mesh->nativeOnly, mesh->textureBytes, nativePreview::lastModel == id,
                                   GetModuleHandleW(L"ImVehFt.asi") != nullptr ||
                                       GetModuleHandleW(L"IVF.asi") != nullptr);
                     log(textures);
                 }
-                cache.emplace(id, Cached{std::move(mesh), state.clock});
+                cache.insert_or_assign(id, Cached{std::move(mesh), state.clock});
             } else {
+                if (it != cache.end()) {
+                    it->second.mesh->textureLimit = 0;
+                    log("Full preview capture unavailable; retaining the valid lower-resolution texture snapshot");
+                    continue;
+                }
                 failed.push_back(id);
-                char b[160];
+                char b[512];
                 std::snprintf(b, sizeof(b),
-                              "Preview unavailable for loaded model %d (native-only or invalid geometry).", id);
+                              "Preview unavailable for loaded model %d: %s", id,
+                              nativePreview::captureFailure.empty() ? "capture returned no mesh" :
+                                  nativePreview::captureFailure.c_str());
                 log(b);
             }
         }
-        while (cache.size() > 24) {
-            auto old = std::min_element(cache.begin(), cache.end(), [](const auto& a, const auto& b) {
-                return a.second.touched < b.second.touched;
-            });
+        size_t textureBytes = 0;
+        for (const auto& item : cache) {
+            textureBytes += item.second.mesh->textureBytes;
+        }
+        while (cache.size() > 24 || textureBytes > 192u * 1024 * 1024) {
+            auto old = cache.end();
+            for (auto it = cache.begin(); it != cache.end(); ++it) {
+                if (it->first != entries[state.selected].id &&
+                    (old == cache.end() || it->second.touched < old->second.touched)) {
+                    old = it;
+                }
+            }
+            if (old == cache.end()) {
+                break;
+            }
+            textureBytes -= old->second.mesh->textureBytes;
             cache.erase(old);
         }
         if (pause.owned) {
@@ -732,7 +846,7 @@ namespace gt4
         }
     }
 
-    Key openKey, left, right, up, down, enter, backspace, back, favorite, addFavorite, mouseLeft, mouseRight, searchKey;
+    Key openKey, left, right, up, down, enter, backspace, back, favorite, addFavorite, mouseLeft, mouseRight, searchKey, informationKey;
 
     void blockOpenInput()
     {
@@ -786,6 +900,7 @@ namespace gt4
     {
         state.photo.dragging = state.photo.movingPanel = false;
         searchInput.quarantine();
+        state.ui.keyboard.characterSetKey.blockUntilRelease();
         searchKey.blockUntilRelease();
         cinematicPanels.blockUntilRelease();
         shopResetKey.blockUntilRelease();
@@ -820,6 +935,12 @@ namespace gt4
         openKey.blockUntilRelease();
         studioConfig = readStudioConfig(ini);
         studioConfig.sort = menuSort(state.ui.sortMode);
+        diagnostics.reload(ini, L"GT4Showroom");
+        syncCaptureDiagnostics();
+        diagnostics.begin(logFile);
+        localization.load(std::filesystem::path(base) / L"GT4Showroom/languages");
+        localization.select(state.ui.language);
+        state.ui.language = localization.selected;
         reloadSettings();
         for (auto& e : catalog) {
             void* mi = gta::modelInfo(e.id);
@@ -831,6 +952,8 @@ namespace gt4
             e.favorite = favorite;
             metadata(e);
         }
+        entries.clear();
+        state.selected = 0;
         reloadExclusions();
         refreshSelected();
         renderer.setLogoRoot(std::filesystem::path(base) / L"GT4Showroom/logos");
@@ -838,7 +961,7 @@ namespace gt4
         char message[160];
         std::snprintf(message, sizeof(message),
                       "GTSPAWN settings reloaded: key=%d ctrl=%d active menu order=%d descending=%d Spawn=%d; selected "
-                      "model preserved",
+                      "model reset to first in saved order",
                       hotkey, ctrl, int(studioConfig.sort.by), studioConfig.sort.descending,
                       static_cast<int>(studioConfig.spawn));
         log(message);
@@ -929,6 +1052,16 @@ namespace gt4
         if (!saveStudioPreferences(std::filesystem::path(base) / L"GT4Showroom/settings.dat", state.ui.preferences())) {
             log("Studio preferences could not be saved; current session settings remain active");
         }
+        if (diagnostics.enabled.load(std::memory_order_relaxed)) {
+            char detail[320];
+            std::snprintf(detail, sizeof(detail),
+                "Settings: language=%s format=%d sort=%d countries=0x%lX classes=0x%lX AA=%d AO=%d floor=%d vehicle=%d",
+                Localization::folders[size_t(std::clamp(state.ui.language, 0, 6))], state.ui.unitFormat,
+                state.ui.sortMode, static_cast<unsigned long>(state.ui.countryMask),
+                static_cast<unsigned long>(state.ui.classMask), state.ui.antialiasing, state.ui.ambientOcclusion,
+                state.ui.floorReflections, state.ui.vehicleReflections);
+            log(detail);
+        }
     }
 
 #include "StudioControls.inl"
@@ -1007,7 +1140,7 @@ namespace gt4
             tick, reloadAllowed);
         const bool padReloadRequest =
             reloadChord.poll(controllerReloadRequested(state.open, pad.view, pad.search), tick);
-        if (!state.busy() && reloadAllowed && (typedReloadRequest || padReloadRequest)) {
+        if (!state.busy() && !state.plateOpen && reloadAllowed && (typedReloadRequest || padReloadRequest)) {
             reloadAll();
             blockOpenInput();
             return;
@@ -1062,6 +1195,12 @@ namespace gt4
                     }
                 }
                 state.begin(entries.size());
+                if (GetPrivateProfileIntW(L"GT4Showroom", L"TutorialBox", 1, ini.c_str()) != 0) {
+                    state.informationOpen = true;
+                    state.informationMotion = {state.clock};
+                    state.informationChoice = 3;
+                    WritePrivateProfileStringW(L"GT4Showroom", L"TutorialBox", L"0", ini.c_str());
+                }
                 refreshSelected();
                 failed.clear();
                 pending.clear();
@@ -1192,7 +1331,7 @@ namespace gt4
                                         const bool plugin =
                                             GetModuleHandleW(L"VehFuncs.asi") || GetModuleHandleW(L"ImVehFt.asi") ||
                                             GetModuleHandleW(L"IVF.asi") || GetModuleHandleW(L"ModelExtras.asi");
-                                        return !plugin || nativePreview::initialize(vehicle, id);
+                                        return !plugin || nativePreview::initialize(vehicle, id, state.shop.washed);
                                     },
                                     [&](void* vehicle) {
                                         if (state.page != Page::Prize) {
@@ -1230,6 +1369,9 @@ namespace gt4
                                         }
                                     });
                                 finishShopPurchase(spawned, installedParts);
+                                if (!game::applySpawnPlate(spawned, state.plate)) {
+                                    log("Custom plate could not be created; original vehicle plate retained");
+                                }
                                 if (!prepared) {
                                     log("Spawn native preparation did not reach the render boundary; explicit paint "
                                         "was "
@@ -1505,6 +1647,21 @@ namespace gt4
                 static_cast<unsigned long long>(renderer.triangles), static_cast<unsigned long long>(renderer.uploads),
                 drawSamples ? drawTotal / drawSamples : 0, drawWorst, cache.size(), pending.size());
             log(detail);
+            size_t textureBytes = 0;
+            for (const auto& item : cache) {
+                textureBytes += item.second.mesh->textureBytes;
+            }
+            char resources[320];
+            const auto quality = renderer.qualityResources();
+            std::snprintf(resources, sizeof(resources),
+                "Private resources: textures=%zu bytes, AA=%u samples, AO=%ux%u fallback=%d, environment=%u rejected=%d; language=%s format=%d models=%zu",
+                textureBytes, quality[0], quality[1], quality[2], int(quality[3]),
+                renderer.mainEnvironmentResolution, renderer.mainEnvironmentUnavailable,
+                Localization::folders[size_t(std::clamp(state.ui.language, 0, 6))], state.ui.unitFormat, catalog.size());
+            log(resources);
+            if (drawWorst > 33.3) {
+                log("Performance: showroom CPU submission exceeded 33.3 ms; reduce preview graphics quality or inspect model complexity");
+            }
             lastRenderLog = GetTickCount64();
             drawTotal = drawWorst = 0;
             drawSamples = 0;
@@ -1762,7 +1919,12 @@ namespace gt4
         auto preferences = state.ui.preferences();
         loadStudioPreferences(std::filesystem::path(base) / L"GT4Showroom/settings.dat", preferences);
         state.ui.applyPreferences(preferences);
+        localization.load(std::filesystem::path(base) / L"GT4Showroom/languages");
+        localization.select(state.ui.language);
+        state.ui.language = localization.selected;
         diagnostics.reload(ini, L"GT4Showroom");
+        syncCaptureDiagnostics();
+        diagnostics.begin(logFile);
         if (diagnostics.enabled.load(std::memory_order_relaxed)) {
             log(("Asset root: " + utf8Text(directory.wstring())).c_str());
         }
@@ -1801,6 +1963,9 @@ namespace gt4
         }
         if (!renderer.loadPrizeNameFont((fontPath.parent_path() / L"LiberationSans-Bold.ttf").wstring())) {
             log("Bundled bold prize-name font unavailable; using Arial Bold fallback");
+        }
+        if (!renderer.loadInfoFont((fontPath.parent_path() / L"LiberationSans-Regular.ttf").wstring())) {
+            log("Bundled regular information font unavailable; using the existing settings font");
         }
         if (diagnostics.enabled.load(std::memory_order_relaxed)) {
             log(("Main font: " + renderer.fontReport()).c_str());
@@ -1861,10 +2026,16 @@ namespace gt4
             return 0;
         }
         initialized = true;
-        log("GT4Showroom 2.6.0-dev initialized Persistent showroom preferences, independent native extras, "
-            "post-selection "
-            "Cinematic and individual customization, Vehicle Viewer studios GTSPAWN reload remains "
-            "outside the showroom Studio vehicle drawing uses the GT4 renderer EnableLog defaults off");
+        if (diagnostics.enabled.load(std::memory_order_relaxed)) {
+            char detail[256];
+            std::snprintf(detail, sizeof(detail),
+                          "GT4Showroom 3.0 initialized: language=%s format=%d sort=%d; VehFuncs=%d ProperShaders=%d; "
+                          "private studio renderer, EnableLog defaults off",
+                          Localization::folders[size_t(std::clamp(state.ui.language, 0, 6))], state.ui.unitFormat,
+                          state.ui.sortMode, GetModuleHandleW(L"VehFuncs.asi") != nullptr,
+                          GetModuleHandleW(L"ProperShaders.asi") != nullptr);
+            log(detail);
+        }
         return 1;
     }
 

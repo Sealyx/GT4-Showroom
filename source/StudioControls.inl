@@ -9,7 +9,14 @@ void finishSettings()
     if (ui.menu.closeResult < 0) {
         ui.cinematic = ui.menuCinematic;
         ui.vehicle = ui.menuVehicle;
+        const bool changed = ui.preferences() != ui.menuPreferences;
         ui.applyPreferences(ui.menuPreferences);
+        localization.select(ui.language);
+        if (changed) {
+            saveStudioPreferences();
+        }
+        rebuildCatalogueView();
+        refreshSelected();
         ui.shadows = ui.menuShadows;
         for (size_t group = 0; group < ui.menuExtras.size(); ++group) {
             if (ui.menu.extraChoice[group] != ui.menuExtras[group]) {
@@ -17,6 +24,10 @@ void finishSettings()
             }
         }
         ui.menu.extraChoice = ui.menuExtras;
+        if (ui.menu.volume != ui.menuVolume) {
+            setGameVolume(ui.menuVolume);
+            ui.menu.volume = ui.menuVolume;
+        }
         state.viewer = state.menuViewer;
         state.viewer.lastActivity = state.clock;
     } else if (ui.preferences() != ui.menuPreferences) {
@@ -27,15 +38,148 @@ void finishSettings()
 
 #include "TransFenderControls.inl"
 
+void openStudioSettings(float x, float y, bool keyboard)
+{
+    auto& ui = state.ui;
+    if (state.selected < entries.size()) {
+        const auto& entry = entries[state.selected];
+        ui.menu.setVehicleKind(entry.kind, entry.classId);
+    }
+    state.menuViewer = state.viewer;
+    ui.menuCinematic = ui.cinematic;
+    ui.menuVehicle = ui.vehicle;
+    ui.menuPreferences = ui.preferences();
+    ui.menuShadows = ui.shadows;
+    ui.menuExtras = ui.menu.extraChoice;
+    readGameVolume(ui.menu.volume);
+    ui.menuVolume = ui.menu.volume;
+    ui.menuSnapshot = true;
+    ui.menu.settingsView = SettingsView::Showroom;
+    if (state.viewer.active) {
+        ui.menu.settingsView = SettingsView::VehicleViewer;
+    } else if (ui.cinematic.active) {
+        ui.menu.settingsView = SettingsView::Cinematic;
+    }
+    ui.menu.toggle(x, y, state.clock);
+    ui.menu.monitorKeyboard = keyboard;
+}
+
+// returning to settings ends photo rendering but keeps its separate camera for the next visit
+void closeStudioPhoto(float width, float height)
+{
+    auto& photo = state.photo;
+    const auto panel = photo.panel(width, height);
+    photo.end(state.viewer, state.clock);
+    if (state.ui.cinematic.active || state.viewer.active) {
+        openStudioSettings(panel.x / width, panel.y / height, true);
+        state.ui.dock = true;
+    }
+    state.cue = Cue::Back;
+    blockActions();
+}
+
 void requestStudioAction(StudioAction action)
 {
     if (action == StudioAction::None || state.busy()) {
+        return;
+    }
+    if (action == StudioAction::Language) {
+        if (localization.select(state.ui.menu.choice)) {
+            state.ui.language = localization.selected;
+            state.cue = Cue::Accept;
+        } else {
+            state.cue = Cue::Back;
+        }
+        state.ui.menu.open = true;
+        state.ui.menu.selectedAction();
+        blockActions();
+        return;
+    }
+    if (action == StudioAction::FloorReflections || action == StudioAction::VehicleReflections) {
+        auto& quality = action == StudioAction::FloorReflections ? state.ui.floorReflections : state.ui.vehicleReflections;
+        quality = std::clamp(state.ui.menu.choice, 0, 4);
+        state.ui.menu.open = true;
+        state.ui.menu.selectedAction();
+        state.cue = Cue::Accept;
+        blockActions();
+        return;
+    }
+    if (action == StudioAction::Antialiasing || action == StudioAction::AmbientOcclusion) {
+        auto& quality = action == StudioAction::Antialiasing ? state.ui.antialiasing : state.ui.ambientOcclusion;
+        quality = std::clamp(state.ui.menu.choice, 0, 3);
+        state.ui.menu.open = true;
+        state.ui.menu.selectedAction();
+        state.cue = Cue::Accept;
+        blockActions();
+        return;
+    }
+    if (action == StudioAction::Background) {
+        if (state.ui.bikeCategory()) {
+            state.ui.bikeBackground = std::clamp(state.ui.menu.choice, 0, state.ui.japaneseCategory() ? 2 : 1);
+        } else {
+            state.ui.japanBackground = std::clamp(state.ui.menu.choice, 0, 1);
+        }
+        state.ui.menu.open = true;
+        state.ui.menu.selectedAction();
+        state.cue = Cue::Accept;
+        blockActions();
+        return;
+    }
+    if (action == StudioAction::CinematicAnimation || action == StudioAction::CinematicRotation) {
+        auto& camera = state.ui.cinematic;
+        const bool enabled = state.ui.menu.choice != 0;
+        if (action == StudioAction::CinematicAnimation) {
+            camera.setAnimation(enabled, state.clock);
+        } else if (camera.paused == enabled) {
+            camera.toggle(state.clock);
+        }
+        state.ui.menu.open = true;
+        state.ui.menu.selectedAction();
+        state.cue = Cue::Accept;
+        blockActions();
+        return;
+    }
+    if (action == StudioAction::UnitFormat) {
+        state.ui.unitFormat = std::clamp(state.ui.menu.choice, 0, 2);
+        state.ui.menu.open = true;
+        state.ui.menu.selectedAction();
+        state.cue = Cue::Accept;
+        blockActions();
+        return;
+    }
+    if (action == StudioAction::FilterCountry || action == StudioAction::FilterClass) {
+        auto& ui = state.ui;
+        ui.countryShortcut = false;
+        const bool country = action == StudioAction::FilterCountry;
+        auto& mask = country ? ui.countryMask : ui.classMask;
+        auto& legacy = country ? ui.countryFilter : ui.classFilter;
+        const int choice = ui.menu.choice;
+        if (choice < 0) {
+            mask = 0;
+        } else {
+            if (!mask && legacy >= 0) {
+                mask = 1u << legacy;
+            }
+            mask ^= 1u << choice;
+        }
+        legacy = -1;
+        // filters update the catalogue in place; the picker remains open for the next tick
+        rebuildCatalogueView();
+        refreshSelected();
+        saveStudioPreferences();
+        ui.menu.open = ui.menu.sub = true;
+        ui.menu.countryFocus = true;
+        ui.menu.focusLevel = 2;
+        ui.menu.monitorPicker = true;
+        state.cue = Cue::Accept;
+        blockActions();
         return;
     }
     if (action == StudioAction::EnterPhoto) {
         if ((state.ui.cinematic.active || state.viewer.active) && !state.viewer.transitioning()) {
             state.ui.menu.finish(1);
             finishSettings();
+            state.photo.loadPresets(std::filesystem::path(base) / L"GT4Showroom/photo-presets.dat");
             if (state.viewer.active) {
                 state.photo.begin(state.viewer, state.clock);
             } else {
@@ -78,7 +222,7 @@ void requestStudioAction(StudioAction action)
             viewer.settings.animate = value != 0;
             viewer.syncBackground(state.clock);
         } else if (action == StudioAction::ViewerScene) {
-            viewer.settings.scene = ViewerScene(value);
+            viewer.changeScene(ViewerScene(value), state.clock);
         } else if (action == StudioAction::ViewerColor) {
             viewer.settings.wallColor = value;
         } else if (action == StudioAction::ViewerFloor) {
@@ -129,6 +273,9 @@ void requestStudioAction(StudioAction action)
         return;
     }
     if (action == StudioAction::Hotspots) {
+        if (!state.ui.menu.allowHotspots) {
+            return;
+        }
         auto& visible = state.viewer.active ? state.viewer.hotspots : state.ui.vehicle.hotspots;
         visible = state.ui.menu.choice != 0;
         state.ui.menu.open = true;
@@ -152,15 +299,11 @@ void applyViewTransition()
     const auto action = t.action;
     const bool returnPointer = state.ui.dock;
     int preferredModel = -1;
-    const bool persistentView = (action >= StudioAction::SortAscending && action <= StudioAction::SortModelId) ||
-                                action == StudioAction::FilterCountry || action == StudioAction::FilterClass;
+    const bool persistentView = action >= StudioAction::SortAscending && action <= StudioAction::SortModelId;
     if (action >= StudioAction::SortAscending && action <= StudioAction::SortModelId) {
+        state.ui.countryShortcut = false;
         state.ui.sortMode = int(action) - int(StudioAction::SortAscending);
         studioConfig.sort = menuSort(state.ui.sortMode);
-    } else if (action == StudioAction::FilterCountry) {
-        state.ui.countryFilter = state.ui.menu.choice;
-    } else if (action == StudioAction::FilterClass) {
-        state.ui.classFilter = state.ui.menu.choice;
     } else if (action == StudioAction::Favorites && !state.ui.favoritesOnly) {
         if (state.selected < entries.size()) {
             state.beforeFavoritesModel = entries[state.selected].id;
@@ -231,6 +374,9 @@ void submitStudioSearch()
     blockActions();
 }
 
+#include "SearchControls.inl"
+#include "PlateControls.inl"
+
 void interaction(const PadActions& pad, float W, float H, double dt, uint64_t tick)
 {
     if (!entries.empty() && state.selected < entries.size()) {
@@ -249,9 +395,22 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
                        state.ui.brandLogo,
                        state.ui.displayModelId,
                        state.ui.displayModelName);
+    state.ui.menu.countryMask = state.ui.countryMask;
+    state.ui.menu.classMask = state.ui.classMask;
+    state.ui.menu.antialiasing = state.ui.antialiasing;
+    state.ui.menu.ambientOcclusion = state.ui.ambientOcclusion;
+    state.ui.menu.floorReflections = state.ui.floorReflections;
+    state.ui.menu.vehicleReflections = state.ui.vehicleReflections;
+    state.ui.menu.language = state.ui.language;
+    state.ui.menu.unitFormat = state.ui.unitFormat;
+    state.ui.menu.japaneseCategory = state.ui.japaneseCategory();
+    state.ui.menu.bikeCategory = state.ui.bikeCategory();
+    state.ui.menu.backgroundChoice = state.ui.bikeCategory() ? state.ui.bikeBackground : state.ui.japanBackground;
     state.ui.menu.hotspots = state.hotspotsEnabled();
     state.ui.menu.viewerSettings = state.viewer.settings;
     state.ui.menu.viewerPaused = state.viewer.paused;
+    state.ui.menu.cinematicPaused = state.ui.cinematic.paused;
+    state.ui.menu.cinematicAnimated = state.ui.cinematic.animate;
     const uintptr_t rawMouse = 0xB73418;
     float dx = game::at<float>(rawMouse + 0xC), dy = game::at<float>(rawMouse + 0x10);
     if (game::flag(0xBA6744)) {
@@ -262,16 +421,18 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
     }
     const bool lDown = game::at<uint8_t>(rawMouse) != 0 || key(VK_LBUTTON),
                rDown = game::at<uint8_t>(rawMouse + 1) != 0 || key(VK_RBUTTON);
+    state.cursorPressed = lDown;
     state.pointerMove(dx * mouseSensitivity, dy * mouseSensitivity, W, H);
     const bool click = mouseLeft.poll(lDown, tick), context = mouseRight.poll(rDown || pad.view || key(VK_APPS), tick);
     const bool search = searchKey.poll(key(VK_OEM_3) || pad.search, tick);
     const bool leftPress = left.poll(key(VK_LEFT) || pad.left, tick, true),
                rightPress = right.poll(key(VK_RIGHT) || pad.right, tick, true);
     const bool modal = state.ui.menu.open || state.shop.open() || state.photo.active || state.searching ||
-                       state.spawnReview != SpawnReview::None;
+                       state.spawnReview != SpawnReview::None || state.plateOpen || state.informationOpen;
     const bool upPress = up.poll(key(VK_UP) || pad.up, tick, modal),
                downPress = down.poll(key(VK_DOWN) || pad.down, tick, modal);
-    const bool accept = enter.poll(key(VK_RETURN) || key(VK_SPACE) || pad.accept, tick),
+    const bool editingText = (state.plateOpen && state.plateEditing) || (state.searching && state.searchEditing);
+    const bool accept = enter.poll(key(VK_RETURN) || (!editingText && key(VK_SPACE)) || pad.accept, tick),
                goBack = backspace.poll(key(VK_BACK) || pad.back, tick);
     const bool add = addFavorite.poll(pad.add, tick),
                favoritesPress = favorite.poll((!state.searching && key('F')) || pad.favorites, tick);
@@ -299,6 +460,54 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
     const bool activeInput = moved || click || context || accept || goBack || leftPress || rightPress || upPress ||
                              downPress || search || favoritesPress || add || previousHotspot || nextHotspot ||
                              pauseView || togglePanels || wheel || pad.orbitX || pad.orbitY || pad.zoom;
+    const bool information = informationKey.poll(key('I') || (pad.add && pad.favorites), tick);
+    if (state.informationOpen) {
+        if (state.informationMotion.leaving >= 0 || state.clock - state.opened < MenuFade::entryDuration) {
+            return;
+        }
+        if (upPress || downPress || leftPress || rightPress) {
+            const int direction = int(downPress || rightPress) - int(upPress || leftPress);
+            state.informationChoice = (std::max(0, state.informationChoice) + direction + 4) % 4;
+            state.ui.dock = true;
+            state.cue = Cue::Move;
+        }
+        const InformationPanel panel(W, H, state.informationMotion.offset(state.clock, H));
+        if (moved || click) {
+            const int target = panel.hit(state.pointerX * W, state.pointerY * H);
+            if (target != state.informationChoice && target >= 0) {
+                state.cue = Cue::Move;
+            }
+            state.informationChoice = target;
+        }
+        if (goBack || information || ((click || accept) && state.informationChoice == 3)) {
+            state.informationMotion.dismiss(state.clock);
+            state.cue = Cue::Back;
+            blockActions();
+        } else if ((click || accept) && state.informationChoice >= 0 && state.informationChoice < 3) {
+            state.cue = openInformationLink(state.informationChoice) ? Cue::Accept : Cue::Error;
+            blockActions();
+        }
+        if (state.ui.dock && state.informationChoice >= 0) {
+            const auto target = panel.target(state.informationChoice);
+            state.pointerX = (target.x + target.w * .5f) / W;
+            state.pointerY = (target.y + target.h * .5f) / H;
+        }
+        return;
+    }
+    if (information && !modal && state.page == Page::Cars && !state.ui.cinematic.active && !state.busy()) {
+        state.informationOpen = true;
+        state.informationChoice = 3;
+        state.informationMotion = {state.clock};
+        state.cue = Cue::Open;
+        state.ui.dock = true;
+        blockActions();
+        return;
+    }
+    if (state.plateOpen) {
+        processStudioPlate(pad, W, H, dt, tick, leftPress, rightPress, upPress, downPress,
+                           accept, goBack, click, moved, add, context);
+        return;
+    }
     if (state.photo.active) {
         auto& photo = state.photo;
         if (key('H') || key('W') || key('A') || key('S') || key('D') || key('Q') || key('E') || key(VK_OEM_PLUS) ||
@@ -306,10 +515,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
             state.ui.controllerUsed = false;
         }
         if ((!state.ui.cinematic.active && !state.viewer.active) || goBack) {
-            photo.active = photo.requested = false;
-            photo.dragging = photo.movingPanel = false;
-            state.cue = Cue::Back;
-            blockActions();
+            closeStudioPhoto(W, H);
             return;
         }
         if (photo.requested) {
@@ -325,9 +531,9 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         if (photoReset.poll(key('R') || pad.favorites, tick)) {
             const float panelX = photo.panelX, panelY = photo.panelY;
             if (state.viewer.active) {
-                photo.begin(state.viewer, state.clock);
+                photo.begin(state.viewer, state.clock, false);
             } else {
-                photo.beginCinematic(state.clock);
+                photo.beginCinematic(state.clock, false);
             }
             photo.panelX = panelX;
             photo.panelY = panelY;
@@ -381,7 +587,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
             if (photo.row < ViewerPhoto::settingCount) {
                 state.cue = photo.adjust(direction) ? Cue::Slider : Cue::Error;
             } else {
-                photo.row = photo.row == 4 ? 5 : 4;
+                photo.row = photo.row == ViewerPhoto::captureRow ? ViewerPhoto::backRow : ViewerPhoto::captureRow;
                 state.cue = Cue::Move;
             }
         }
@@ -428,13 +634,24 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         if (activate) {
             if (photo.row < ViewerPhoto::settingCount) {
                 state.cue = photo.adjust(clickedDirection ? clickedDirection : photo.side) ? Cue::Slider : Cue::Error;
-            } else if (photo.row == 4) {
+            } else if (photo.row == ViewerPhoto::saveRow) {
+                const bool stored = photo.storePreset() &&
+                    photo.savePresets(std::filesystem::path(base) / L"GT4Showroom/photo-presets.dat");
+                photo.status = stored ? "Preset saved" : "Preset could not be saved";
+                photo.statusUntil = state.clock + 3;
+                state.cue = stored ? Cue::Accept : Cue::Error;
+                blockActions();
+            } else if (photo.row == ViewerPhoto::loadRow) {
+                const bool loaded = photo.restorePreset(state.viewer, state.clock);
+                photo.status = loaded ? "Preset loaded" : "This preset is empty";
+                photo.statusUntil = state.clock + 3;
+                state.cue = loaded ? Cue::Accept : Cue::Error;
+                blockActions();
+            } else if (photo.row == ViewerPhoto::captureRow) {
                 photo.requested = true;
                 blockActions();
-            } else if (photo.row == 5) {
-                photo.active = false;
-                state.cue = Cue::Back;
-                blockActions();
+            } else if (photo.row == ViewerPhoto::backRow) {
+                closeStudioPhoto(W, H);
             }
         }
         if (photo.active) {
@@ -485,7 +702,8 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         }
         const int buttonCount = state.reviewButtons();
         if (leftPress || upPress) {
-            state.reviewChoice = (state.reviewChoice + buttonCount - 1) % buttonCount;
+            state.reviewChoice = state.reviewChoice < 0 ? buttonCount - 1
+                                                       : (state.reviewChoice + buttonCount - 1) % buttonCount;
             state.cue = Cue::Move;
         }
         if (rightPress || downPress) {
@@ -493,11 +711,16 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
             state.cue = Cue::Move;
         }
         if (moved || click) {
+            const int previous = state.reviewChoice;
+            state.reviewChoice = -1;
             for (int i = 0; i < buttonCount; ++i) {
                 auto button = spawnReviewButton(W, H, i, buttonCount);
                 button.y += state.reviewOffset(H);
                 if (button.contains(state.pointerX * W, state.pointerY * H)) {
                     state.reviewChoice = i;
+                    if (previous != i) {
+                        state.cue = Cue::Move;
+                    }
                     if (click) {
                         state.chooseSpawnReview(static_cast<ReviewChoice>(i));
                         blockActions();
@@ -506,14 +729,14 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
                 }
             }
         }
-        if (accept) {
+        if (accept && state.reviewChoice >= 0) {
             state.chooseSpawnReview(static_cast<ReviewChoice>(state.reviewChoice));
             blockActions();
         } else if (goBack || context) {
             state.back();
             blockActions();
         }
-        if (state.ui.dock) {
+        if (state.ui.dock && state.reviewChoice >= 0) {
             auto target = spawnReviewButton(W, H, state.reviewChoice, buttonCount);
             target.y += state.reviewOffset(H);
             state.pointerX = (target.x + target.w * .5f) / W;
@@ -521,7 +744,11 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         }
         return;
     }
-    if (state.ui.cinematic.active && !state.ui.menu.open && photoHide.poll(key('H') || pad.search, tick)) {
+    const bool hideFooter = key('H') || (state.ui.cinematic.active ? pad.search : pad.togglePanels);
+    if (!modal && photoHide.poll(hideFooter, tick)) {
+        if (!state.ui.cinematic.active && pad.togglePanels) {
+            state.ui.controllerUsed = true;
+        }
         state.ui.footerHidden = !state.ui.footerHidden;
         state.cue = state.ui.footerHidden ? Cue::Back : Cue::Open;
         blockActions();
@@ -545,91 +772,16 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         return;
     }
     if (state.searching) {
-        if (state.ui.keyboard.open) {
-            auto& kb = state.ui.keyboard;
-            if (leftPress) {
-                kb.move(-1, 0);
-            }
-            if (rightPress) {
-                kb.move(1, 0);
-            }
-            if (upPress) {
-                kb.move(0, -1);
-            }
-            if (downPress) {
-                kb.move(0, 1);
-            }
-            int action = 0;
-            if (accept && pad.accept) {
-                action = kb.type(state.query);
-            }
-            if (add && !state.query.empty()) {
-                state.query.pop_back();
-            }
-            if (favoritesPress) {
-                action = 1;
-            }
-            if (goBack && pad.back) {
-                action = -1;
-            }
-            if (click) {
-                for (int i = 0; i < 40; ++i) {
-                    if (kb.box(W, H, i).contains(state.pointerX * W, state.pointerY * H)) {
-                        kb.selected = i;
-                        action = kb.type(state.query);
-                        break;
-                    }
-                }
-            }
-            if (action == 1) {
-                submitStudioSearch();
-                return;
-            }
-            if (action < 0) {
-                state.closeSearch();
-                kb.open = false;
-                blockActions();
-                return;
-            }
-        } else if (goBack && pad.back) {
-            state.closeSearch();
-            blockActions();
-            return;
-        }
-        const auto action = searchInput.poll(
-            [](int v) {
-                return key(v);
-            },
-            tick,
-            state.query);
-        if (action == SearchAction::Submit) {
-            submitStudioSearch();
-        } else if (action == SearchAction::Cancel) {
-            state.closeSearch();
-            state.ui.keyboard.open = false;
-            blockActions();
-        }
-        dockPointer(state, entries, W, H, dt);
+        processStudioSearch(pad, W, H, dt, tick, leftPress, rightPress, upPress, downPress,
+                            accept, goBack, click, moved, add, favoritesPress, context);
         return;
     }
+
     if (context && state.page != Page::Prize) {
         auto& ui = state.ui;
         const bool opened = !ui.menu.open;
         if (opened) {
-            state.menuViewer = state.viewer;
-            ui.menuCinematic = ui.cinematic;
-            ui.menuVehicle = ui.vehicle;
-            ui.menuPreferences = ui.preferences();
-            ui.menuShadows = ui.shadows;
-            ui.menuExtras = ui.menu.extraChoice;
-            ui.menuSnapshot = true;
-            ui.menu.settingsView = SettingsView::Showroom;
-            if (state.viewer.active) {
-                ui.menu.settingsView = SettingsView::VehicleViewer;
-            } else if (ui.cinematic.active) {
-                ui.menu.settingsView = SettingsView::Cinematic;
-            }
-            ui.menu.toggle(state.pointerX, state.pointerY, state.clock);
+            openStudioSettings(state.pointerX, state.pointerY, pad.view || key(VK_APPS));
         } else {
             ui.menu.monitorDragLevel = ui.menu.sliderDrag = -1;
             ui.menu.monitorBack();
@@ -668,6 +820,10 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
                 if (group >= 0 && !selectStudioExtra(group, m.extraChoice[size_t(group)])) {
                     state.cue = Cue::Error;
                 }
+            }
+            if (m.childBranch() == MenuBranch::Volume && !setGameVolume(m.volume)) {
+                readGameVolume(m.volume);
+                state.cue = Cue::Error;
             }
             m.sliderChanged = false;
             if (state.cue == Cue::None) {
@@ -739,7 +895,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
             return;
         }
         const Mesh* mesh = entries.empty() ? nullptr : lookup(entries[state.selected].id);
-        if (togglePanels && mesh) {
+        if (togglePanels && mesh && state.ui.menu.allowHotspots) {
             v.togglePanels(mesh->cinematic);
         }
         const bool hasHotspots = mesh && state.hotspotsEnabled() && mesh->cinematic.any();
@@ -858,6 +1014,51 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
             }
         }
         return;
+    }
+    if (state.page == Page::Cars && !state.busy() && !entries.empty()) {
+        const float scale = H / 720.f;
+        const float x = state.pointerX * W, y = state.pointerY * H;
+        const auto& entry = entries[state.selected];
+        if (click && entry.country != Country::Unknown &&
+            UIRect{46 * scale, 33 * scale, 34 * scale, 28 * scale}.contains(x, y)) {
+            auto& ui = state.ui;
+            if (!ui.countryShortcut) {
+                ui.shortcutCountry = ui.countryFilter;
+                ui.shortcutMask = ui.countryMask;
+                ui.shortcutOrder = ui.sortMode;
+                ui.shortcutModel = entry.id;
+            }
+            ui.countryShortcut = true;
+            ui.countryFilter = int(entry.country);
+            ui.countryMask = 0;
+            ui.sortMode = 4;
+            studioConfig.sort = menuSort(4);
+            rebuildCatalogueView(entry.id);
+            refreshSelected();
+            state.cue = Cue::Accept;
+            blockActions();
+            return;
+        }
+        if (click && classIndex(entry.classId) == 5 &&
+            UIRect{104 * scale, 19 * scale, 170 * scale, 34 * scale}.contains(x, y)) {
+            if (state.clock - state.classClick <= .35) {
+                state.heavyUntil = state.clock + 10;
+                state.classClick = -10;
+                state.cue = Cue::Accept;
+            } else {
+                state.classClick = state.clock;
+            }
+            return;
+        }
+        if (goBack && state.ui.countryShortcut) {
+            const int model = state.ui.endCountryShortcut();
+            studioConfig.sort = menuSort(state.ui.sortMode);
+            rebuildCatalogueView(model);
+            refreshSelected();
+            state.cue = Cue::Back;
+            blockActions();
+            return;
+        }
     }
     if (leftPress) {
         state.move(-1, entries);

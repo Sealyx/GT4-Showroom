@@ -72,7 +72,7 @@ struct ShopGeometry
         game::extractAtomic(atomic, &context);
         result->compact();
         result->bounds();
-        parts.emplace(id, result->empty() ? nullptr : std::move(result));
+        parts.emplace(id, result->empty() || result->textureCaptureFailed ? nullptr : std::move(result));
         return true;
     }
 };
@@ -251,6 +251,14 @@ bool shopSetRideHeight(void* vehicle, int rideHeight)
 
 void finishShopPurchase(void* vehicle, bool installedParts)
 {
+    if (state.shop.washed && vehicle) {
+        char detail[192]{};
+        std::snprintf(detail, sizeof(detail),
+                      "Wash spawn purchase: model=%d selected=%d cost=%d dirtBefore=%.3f",
+                      game::field<int16_t>(vehicle, 0x22), state.postSelectionCinematic,
+                      state.shop.pendingCost(), game::field<float>(vehicle, 0x4B0));
+        log(detail);
+    }
     if (!state.postSelectionCinematic || !vehicle || !state.shop.pendingCost()) {
         return;
     }
@@ -269,6 +277,7 @@ void finishShopPurchase(void* vehicle, bool installedParts)
     }
     if (state.shop.washed) {
         game::field<float>(vehicle, 0x4B0) = 0.f;
+        log("Wash spawn purchase: dirt reset to zero after native tuning");
         charge += TransFender::washPrice;
     }
     *wallet -= charge;

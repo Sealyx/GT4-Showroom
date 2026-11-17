@@ -12,6 +12,7 @@
 #include "NativeTexture.hpp"
 #include "PreviewPlate.hpp"
 #include "HookEntry.hpp"
+#include "TextureSnapshot.hpp"
 #include <memory>
 
 namespace gt4::game
@@ -24,6 +25,108 @@ namespace gt4::game
     template <class T> T& field(void* p, size_t o)
     {
         return *reinterpret_cast<T*>(static_cast<uint8_t*>(p) + o);
+    }
+
+    inline bool applyPlateSymbols(void* texture, const char* text)
+    {
+        const std::string value(text, 8);
+        if (!plateHasSymbols(value)) {
+            return true;
+        }
+        std::array<uint8_t, 64 * 16> mask{};
+        if (!plateSymbolMask(value, mask)) {
+            return false;
+        }
+        void* raster = nullptr;
+        void* charset = nullptr;
+        void* charsetRaster = nullptr;
+        const uint8_t* charsetPixels = nullptr;
+        int charsetStride = 0;
+        if (!gta::read(uintptr_t(texture), raster) || !raster ||
+            field<int>(raster, 12) != 64 || field<int>(raster, 16) != 16 || field<int>(raster, 20) != 32 ||
+            !gta::read(0xC3EF5C, charset) || !charset || !gta::read(uintptr_t(charset), charsetRaster) || !charsetRaster ||
+            !gta::read(0xC3EF78, charsetPixels) || !charsetPixels ||
+            !gta::read(uintptr_t(charsetRaster) + 24, charsetStride) || charsetStride < 32 * 4 || charsetStride > 16384) {
+            return false;
+        }
+        DWORD ink = 0;
+        unsigned darkest = 766;
+        for (unsigned y = 0; y < 16; ++y) {
+            std::array<DWORD, 8> row{};
+            if (!gta::reader(uintptr_t(charsetPixels) + size_t(y) * size_t(charsetStride), row.data(), sizeof(row))) {
+                return false;
+            }
+            for (DWORD color : row) {
+                const unsigned light = (color & 255) + ((color >> 8) & 255) + ((color >> 16) & 255);
+                if (light < darkest) {
+                    darkest = light;
+                    ink = color;
+                }
+            }
+        }
+        auto* pixels = reinterpret_cast<uint8_t*(__cdecl*)(void*, uint8_t, int)>(0x7FB2D0)(raster, 0, 3);
+        if (!pixels) {
+            return false;
+        }
+        const int stride = field<int>(raster, 24);
+        const bool valid = stride >= 64 * 4 && stride <= 16384;
+        if (valid) {
+            for (unsigned y = 0; y < 16; ++y) {
+                for (unsigned x = 0; x < 64; ++x) {
+                    const unsigned alpha = mask[size_t(y) * 64 + x];
+                    if (!alpha) {
+                        continue;
+                    }
+                    auto& pixel = reinterpret_cast<DWORD*>(pixels + size_t(y) * stride)[x];
+                    DWORD blended = pixel & 0xFF000000;
+                    for (unsigned channel : {0u, 8u, 16u}) {
+                        const unsigned background = (pixel >> channel) & 255;
+                        const unsigned foreground = (ink >> channel) & 255;
+                        blended |= ((background * (255 - alpha) + foreground * alpha + 127) / 255) << channel;
+                    }
+                    pixel = blended;
+                }
+            }
+        }
+        reinterpret_cast<void*(__cdecl*)(void*)>(0x7FAEC0)(raster);
+        return valid;
+    }
+
+    // this is the vehicle's owned reference, never the shared model's plate material
+    inline bool applySpawnPlate(void* vehicle, const std::string& text)
+    {
+        if (text.empty()) {
+            return true;
+        }
+        void* original = nullptr;
+        if (!vehicle || !gta::read(uintptr_t(vehicle) + 0x588, original)) {
+            return false;
+        }
+        if (!original) {
+            return true;
+        }
+        constexpr std::array<uint8_t, 8> createPrefix{{0x53, 0x8A, 0x5C, 0x24, 0x0C, 0x80, 0xFB, 0xFF}};
+        constexpr std::array<uint8_t, 8> destroyPrefix{{0x56, 0x8B, 0x74, 0x24, 0x08, 0x8B, 0x56, 0x54}};
+        std::array<uint8_t, 8> create{}, destroy{};
+        void* charset = nullptr;
+        void* pixels = nullptr;
+        if (!gta::read(0x6FDEA0, create) || create != createPrefix ||
+            !gta::read(0x7F3820, destroy) || destroy != destroyPrefix ||
+            !gta::read(0xC3EF5C, charset) || !charset || !gta::read(0xC3EF78, pixels) || !pixels) {
+            return false;
+        }
+        return replacePlateTexture(field<void*>(vehicle, 0x588), text,
+            [](const char* nativeText) {
+                void* texture = reinterpret_cast<void*(__cdecl*)(const char*, uint8_t)>(0x6FDEA0)(nativeText, 255);
+                if (texture && !applyPlateSymbols(texture, nativeText)) {
+                    reinterpret_cast<bool(__cdecl*)(void*)>(0x7F3820)(texture);
+                    return static_cast<void*>(nullptr);
+                }
+                return texture;
+            },
+            [](void* texture) {
+                reinterpret_cast<bool(__cdecl*)(void*)>(0x7F3820)(texture);
+            });
     }
 
     struct Matrix
@@ -228,6 +331,10 @@ namespace gt4::game
         e.paints = paints(mi);
         const auto h = handling(field<uint16_t>(mi, 0x4A));
         e.topSpeed = h.valid ? h.limit : -1;
+        e.handlingMass = h.mass;
+        e.handlingGears = h.gears;
+        e.handlingDrive = h.drive;
+        e.handlingValid = h.valid;
         e.information = stats(h);
         return e;
     }
@@ -342,16 +449,20 @@ namespace gt4::game
         void* plateMaterial = nullptr;
         const std::array<void*, cinematicComponentCount>* componentFrames = nullptr;
         int (*component)(void*, const std::array<void*, cinematicComponentCount>*) = nullptr;
+        TextureSnapshots textures{};
+        void (*observeTexture)(const char*, void*, IDirect3DTexture9*, bool) = nullptr;
     };
 
     inline void* __cdecl extractAtomic(void* atomic, void* data)
     {
         auto& c = *static_cast<Extract*>(data);
+        ++c.out->visitedAtomics;
         if (!(field<uint8_t>(atomic, 2) & 4) || c.count >= 120000) {
             return atomic;
         }
         void *g = field<void*>(atomic, 0x18), *f = field<void*>(atomic, 4);
         if (!g || !f || (c.visible && !c.visible(f))) {
+            ++c.out->hiddenAtomics;
             return atomic;
         }
         if (field<uint32_t>(g, 8) & 0x01000000) {
@@ -446,16 +557,58 @@ namespace gt4::game
                 }
             }
             if (bound.texture) {
-                b.texture = bound.texture;
-                b.texture->AddRef();
+                std::vector<uint8_t> lockedCopy;
+                int lockedStride = 0;
+                void* charset = nullptr;
+                void* pixels = nullptr;
+                void* raster = nullptr;
+                if (!c.textures.copies.count(bound.texture) && gta::read(0xC3EF5C, charset) && tex == charset &&
+                    gta::read(0xC3EF78, pixels) && pixels && gta::read(uintptr_t(charset), raster) && raster) {
+                    int width = 0, height = 0, depth = 0;
+                    D3DSURFACE_DESC desc{};
+                    void* rasterPixels = nullptr;
+                    if (gta::read(uintptr_t(raster) + 4, rasterPixels) && rasterPixels == pixels &&
+                        gta::read(uintptr_t(raster) + 12, width) && gta::read(uintptr_t(raster) + 16, height) &&
+                        gta::read(uintptr_t(raster) + 20, depth) && gta::read(uintptr_t(raster) + 24, lockedStride) &&
+                        width > 0 && width <= 2048 && height > 0 && height <= 2048 && depth == 32 &&
+                        lockedStride >= width * 4 && lockedStride <= 16384 &&
+                        size_t(lockedStride) * size_t(height) <= TextureSnapshots::perTextureBudget &&
+                        SUCCEEDED(bound.texture->GetLevelDesc(0, &desc)) && desc.Width == unsigned(width) &&
+                        desc.Height == unsigned(height) && desc.Format == D3DFMT_A8R8G8B8) {
+                        lockedCopy.resize(size_t(lockedStride) * size_t(height));
+                        if (!gta::reader(uintptr_t(pixels), lockedCopy.data(), lockedCopy.size())) {
+                            lockedCopy.clear();
+                        }
+                    }
+                }
+                b.texture = c.textures.get(device(), bound.texture,
+                                           lockedCopy.empty() ? nullptr : lockedCopy.data(), size_t(lockedStride));
+                if (c.observeTexture && b.texture) {
+                    c.observeTexture(textureName.data(), tex, b.texture, false);
+                }
+                c.out->textureCaptureFailed |= b.texture == nullptr;
+                if (!b.texture && c.out->failedTexture.empty()) {
+                    c.out->failedTexture = textureName.data();
+                    D3DSURFACE_DESC desc{};
+                    if (SUCCEEDED(bound.texture->GetLevelDesc(0, &desc))) {
+                        c.out->failedTextureFormat = unsigned(desc.Format);
+                        c.out->failedTextureWidth = desc.Width;
+                        c.out->failedTextureHeight = desc.Height;
+                    }
+                }
+                c.out->textureBytes = c.textures.bytes;
                 std::array<void*, 16> dirtTextures{};
                 if (gta::read(0xC02BD0, dirtTextures) && dirtTextures[0] &&
                     std::find(dirtTextures.begin(), dirtTextures.end(), tex) != dirtTextures.end()) {
                     const auto clean = nativeTexture(dirtTextures[0], at<int>(0xB4E9E0));
                     if (clean.texture && clean.uScale == bound.uScale && clean.vScale == bound.vScale &&
                         clean.uOffset == bound.uOffset && clean.vOffset == bound.vOffset) {
-                        b.cleanTexture = clean.texture;
-                        b.cleanTexture->AddRef();
+                        b.cleanTexture = c.textures.get(device(), clean.texture);
+                        if (c.observeTexture && b.cleanTexture) {
+                            c.observeTexture(textureName.data(), dirtTextures[0], b.cleanTexture, true);
+                        }
+                        c.out->textureCaptureFailed |= b.cleanTexture == nullptr;
+                        c.out->textureBytes = c.textures.bytes;
                     }
                 }
             }
@@ -601,7 +754,7 @@ namespace gt4::game
         reinterpret_cast<void(__thiscall*)(void*)>(0x4C4BB0)(mi);
         out->compact();
         out->bounds();
-        return out->empty() ? nullptr : std::move(out);
+        return out->empty() || out->textureCaptureFailed ? nullptr : std::move(out);
     }
 
     struct PauseLease : PauseOwnership

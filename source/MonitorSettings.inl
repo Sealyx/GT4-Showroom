@@ -123,6 +123,14 @@ inline UIRect ContextMenu::pointerTarget(float w, float h) const
         const auto r = monitorDropdown(w, h);
         return monitorListRow(r, 2, countryRow, h);
     }
+    if (level == 1 && sliderWindow()) {
+        auto target = monitorSlider(sortRow, w, h);
+        const float scale = h / 720.f;
+        const int maximum = sliderMaximum(sortRow);
+        target.x += target.w * (maximum > 0 ? float(sliderValue(sortRow)) / maximum : 0.f) - 4 * scale;
+        target.w = 8 * scale;
+        return target;
+    }
     if (level == 1 && !monitorSubWindow()) {
         const auto r = monitorPanels(w, h)[1];
         return monitorListRow(r, 1, sortRow, h);
@@ -152,6 +160,10 @@ inline std::string ContextMenu::monitorTitle(int level) const
             return "Logos";
         case MenuBranch::Extras:
             return "Extras";
+        case MenuBranch::Volume:
+            return "Volume";
+        case MenuBranch::Reflections:
+            return "Reflections";
         case MenuBranch::Display:
             return "Display Settings";
         case MenuBranch::BrandLogo:
@@ -178,18 +190,49 @@ inline std::string ContextMenu::monitorValue(int level, int index) const
     const auto& item = rows[size_t(index)];
     const auto branch = item.child;
     if (branch != MenuBranch::None) {
+        if (branch == MenuBranch::Language) {
+            return Localization::names[size_t(std::clamp(language, 0, 6))];
+        }
+        if (branch == MenuBranch::FloorReflections || branch == MenuBranch::VehicleReflections) {
+            constexpr const char* names[]{"Off", "Low", "Medium", "High", "Ultra"};
+            return names[std::clamp(branch == MenuBranch::FloorReflections ? floorReflections : vehicleReflections, 0, 4)];
+        }
+        if (branch == MenuBranch::Antialiasing || branch == MenuBranch::AmbientOcclusion) {
+            constexpr const char* names[]{"Off", "Standard", "High", "Ultra"};
+            return names[std::clamp(branch == MenuBranch::Antialiasing ? antialiasing : ambientOcclusion, 0, 3)];
+        }
+        if (branch == MenuBranch::Background) {
+            return bikeCategory ? backgroundChoice == 0 ? "Dark Gray" : backgroundChoice == 2 ? "Red" : "Default"
+                                : backgroundChoice == 0 ? "Red" : "Default";
+        }
+        if (branch == MenuBranch::UnitFormat) {
+            static constexpr const char* names[] = {"Auto", "Metric", "Imperial"};
+            return names[std::clamp(unitFormat, 0, 2)];
+        }
         if (branch == MenuBranch::Sort) {
             static const char* labels[] = {
                 "Ascending", "Descending", "Class", "Top Speed", "Countries", "Model ID"};
             return labels[std::clamp(order, 0, 5)];
         }
         if (branch == MenuBranch::Countries) {
+            if (countryMask) {
+                return "Selected Countries";
+            }
             return countryFilter < 0    ? "All Countries"
                    : countryFilter == 0 ? "Unassigned"
                                         : countryLabel(Country(countryFilter));
         }
         if (branch == MenuBranch::Classes) {
+            if (classMask) {
+                return "Selected Classes";
+            }
             return classFilter < 0 ? "All Classes" : classNames[size_t(classFilter)];
+        }
+        if (branch == MenuBranch::CinematicAnimation) {
+            return cinematicAnimated ? "On" : "Off";
+        }
+        if (branch == MenuBranch::CinematicRotation) {
+            return cinematicPaused ? "Off" : "On";
         }
         if (branch == MenuBranch::ViewerAnimate) {
             return viewerSettings.animate ? "On" : "Off";
@@ -259,13 +302,9 @@ inline std::string ContextMenu::help() const
     if (!open || (!monitorHover && monitorDragLevel < 0)) {
         return {};
     }
-    if (monitorDragLevel >= 0 || monitorHeaderHover) {
-        return "Drag the title bar to move this settings window";
-    }
-    if (monitorFooter >= 0) {
-        return monitorFooter        ? "Close this settings window"
-               : monitorFooterLevel ? "Return to the previous settings window"
-                                    : "Close showroom settings";
+    if (monitorDragLevel >= 0 || monitorHeaderHover || monitorFooter >= 0 ||
+        (!monitorKeyboard && monitorHoverLevel < 0 && sliderDrag < 0)) {
+        return {};
     }
     const int level = monitorHelpLevel >= 0 ? monitorHelpLevel : focus();
     const auto rows = items(level);
@@ -275,11 +314,20 @@ inline std::string ContextMenu::help() const
     }
     const auto item = rows[size_t(index)];
     const auto branch = item.child;
+    if (branch == MenuBranch::CinematicAnimation || item.action == StudioAction::CinematicAnimation) {
+        return "Pause or resume the studio background and shadow animation";
+    }
+    if (branch == MenuBranch::CinematicRotation || item.action == StudioAction::CinematicRotation) {
+        return "Pause or resume vehicle rotation without changing the studio animation";
+    }
     if (item.action == StudioAction::ViewerEnter) {
         return "View the vehicle in animated studios with adjustable backgrounds, reflections and camera controls";
     }
     if (branch == MenuBranch::ViewerAnimate || item.action == StudioAction::ViewerAnimate) {
-        return "Keep the ribbon or wave animation playing while vehicle rotation is paused";
+        if (viewerSettings.scene == ViewerScene::Softbox) {
+            return "Keep the studio shadows moving while vehicle rotation is paused";
+        }
+        return "Keep the studio animation and shadows moving while vehicle rotation is paused";
     }
     if (branch == MenuBranch::ViewerScene || item.action == StudioAction::ViewerScene) {
         return "Choose the studio surrounding the vehicle";
@@ -304,6 +352,26 @@ inline std::string ContextMenu::help() const
     }
     if (branch == MenuBranch::Hotspots) {
         return "Show interactive hotspots on the vehicle";
+    }
+    if (branch == MenuBranch::Language || item.action == StudioAction::Language) {
+        return "Choose the menu and description language";
+    }
+    if (branch == MenuBranch::Reflections || branch == MenuBranch::FloorReflections ||
+        branch == MenuBranch::VehicleReflections || item.action == StudioAction::FloorReflections ||
+        item.action == StudioAction::VehicleReflections) {
+        return "Adjust separate floor mirrors and masked vehicle reflections; quality adapts to supported render targets";
+    }
+    if (branch == MenuBranch::AmbientOcclusion || item.action == StudioAction::AmbientOcclusion) {
+        return "Shade nearby surfaces independently of cast shadows; High and Ultra use private depth and normals when supported";
+    }
+    if (branch == MenuBranch::Antialiasing || item.action == StudioAction::Antialiasing) {
+        return "Smooth rendered edges with capability-tested multisampling and bounded render-target memory";
+    }
+    if (branch == MenuBranch::Background || item.action == StudioAction::Background) {
+        return "Choose a background for this vehicle category without changing other categories";
+    }
+    if (branch == MenuBranch::UnitFormat || item.action == StudioAction::UnitFormat) {
+        return "Choose Windows measurement units, metric units or imperial units";
     }
     if (branch == MenuBranch::Sort) {
         return "Choose the order of the vehicle list";
@@ -334,6 +402,9 @@ inline std::string ContextMenu::help() const
     }
     if (branch == MenuBranch::CarLogo || item.action == StudioAction::CarLogo) {
         return "Use a supplied car name logo when available";
+    }
+    if (branch == MenuBranch::Volume || item.action == StudioAction::Volume) {
+        return "Adjust the game's radio/music and sound effects volume";
     }
     if (branch == MenuBranch::Extras) {
         return "Drag a slider to preview and select an available extra configuration";
@@ -388,7 +459,7 @@ inline bool ContextMenu::fieldOpensWindow(int level, int index) const
         return false;
     }
     const auto b = rows[size_t(index)].child;
-    return b == MenuBranch::Display || b == MenuBranch::Logos || b == MenuBranch::Extras ||
+    return b == MenuBranch::Display || b == MenuBranch::Logos || b == MenuBranch::Extras || b == MenuBranch::Volume || b == MenuBranch::Reflections ||
            rows[size_t(index)].action == StudioAction::EnterTransFender ||
            rows[size_t(index)].action == StudioAction::EnterPhoto ||
            rows[size_t(index)].action == StudioAction::ViewerEnter ||

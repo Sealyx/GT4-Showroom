@@ -184,6 +184,10 @@ namespace gt4
         const float softbox = std::pow(std::max(0.f, std::cos(angle + .4f)), 4);
         uint32_t wall = viewerBlend(0x282D30, 0x4A535A, .28f + .58f * softbox);
         uint32_t ground = viewerBlend(0x707A80, 0xA2AAAE, .49f * pool + .21f * fill);
+        if (scene == ViewerScene::Softbox) {
+            wall = viewerBlend(0x323B40, 0x808A8E, .10f + .55f * softbox);
+            ground = viewerBlend(0x87969C, 0xE2ECEF, std::clamp(.70f * pool + .18f * fill, 0.f, 1.f));
+        }
         wall = viewerBlend(wall, tint, .035f * softbox);
         ground = viewerBlend(ground, tint, .04f + .1f * pool);
         if (viewerWaveScene(scene)) {
@@ -268,10 +272,14 @@ namespace gt4
         return viewerPatternFields(viewerWaveKeys, patternTime, viewerWavePatternDuration);
     }
 
+    inline V3 viewerPatternPoint(float angle, float height);
+
     struct ViewerWorldCurve
     {
-        static constexpr float radius = 9;
+        static constexpr float radius = 24;
         std::array<float, viewerPatternColumns + 2> angles{}, heights{};
+        std::array<float, viewerPatternColumns + 2> directionOffsets{};
+        float rearVariation = 0;
 
         ViewerWorldCurve(const Camera& camera, const std::array<float, viewerPatternColumns>& rows)
         {
@@ -284,26 +292,43 @@ namespace gt4
                 const float b = 2 * (camera.eye.x * ray.x + camera.eye.y * ray.y);
                 const float c = camera.eye.x * camera.eye.x + camera.eye.y * camera.eye.y - radius * radius;
                 const float distance = (-b + std::sqrt(std::max(0.f, b * b - 4 * a * c))) / (2 * a);
-                const V3 point = camera.eye + ray * distance;
-                float angle = std::atan2(point.y, point.x);
+                const V3 cylinderPoint = camera.eye + ray * distance;
+                const V3 point = viewerSurface(camera, x, y, VehicleViewer{}, 0).point;
+                const float radial = std::sqrt(point.x * point.x + point.y * point.y);
+                float height = point.z;
+                if (point.z < 4.f) {
+                    height = radial > 20
+                        ? 4 - 4 * std::atan2(4 - point.z, radial - 20)
+                        : 4 - 2 * pi + 20 * std::log(std::max(radial, .01f) / 20);
+                } else if (point.z >= 15.999f && radial < radius) {
+                    height = 16 + radius * std::log(radius / std::max(radial, .01f));
+                }
+                float angle = std::atan2(cylinderPoint.y, cylinderPoint.x);
                 if (column != 0) {
                     angle = angles[column - 1] + std::remainder(angle - angles[column - 1], VehicleViewer::fullTurn);
                 }
                 angles[column] = angle;
-                heights[column] = std::clamp(point.z, -2.f, 12.f);
+                heights[column] = std::clamp(height, -64.f, 64.f);
+                directionOffsets[column] = std::remainder(std::atan2(point.y, point.x) - angle,
+                                                          VehicleViewer::fullTurn);
             }
             constexpr size_t last = viewerPatternColumns - 1;
             if (angles[last] < angles[0]) {
                 std::reverse(angles.begin(), angles.begin() + viewerPatternColumns);
                 std::reverse(heights.begin(), heights.begin() + viewerPatternColumns);
+                std::reverse(directionOffsets.begin(), directionOffsets.begin() + viewerPatternColumns);
             }
             angles[viewerPatternColumns] = (angles[last] + angles[0] + VehicleViewer::fullTurn) * .5f;
             heights[viewerPatternColumns] = (heights[last] + heights[0]) * .5f;
             angles[viewerPatternColumns + 1] = angles[0] + VehicleViewer::fullTurn;
             heights[viewerPatternColumns + 1] = heights[0];
+            directionOffsets[viewerPatternColumns] = (directionOffsets[last] + directionOffsets[0]) * .5f;
+            directionOffsets[viewerPatternColumns + 1] = directionOffsets[0];
+            const auto range = std::minmax_element(heights.begin(), heights.begin() + viewerPatternColumns);
+            rearVariation = std::clamp((*range.second - *range.first) * .3f, .2f, 2.f);
         }
 
-        float at(float angle) const
+        float at(float angle, bool direction = false) const
         {
             angle = angles[0] + std::fmod(std::fmod(angle - angles[0], VehicleViewer::fullTurn) + VehicleViewer::fullTurn,
                                           VehicleViewer::fullTurn);
@@ -321,16 +346,26 @@ namespace gt4
             const float finish = angles[following] + (second == last ? VehicleViewer::fullTurn : 0);
             const float interval = end - start;
             const float u = std::clamp((angle - start) / interval, 0.f, 1.f);
-            const float a = heights[first];
-            const float b = heights[second];
-            const float tangentA = (b - heights[previous]) / (end - before) * interval;
-            const float tangentB = (heights[following] - a) / (finish - start) * interval;
+            const auto& values = direction ? directionOffsets : heights;
+            const float a = values[first];
+            const float b = values[second];
+            const float tangentA = (b - values[previous]) / (end - before) * interval;
+            const float tangentB = (values[following] - a) / (finish - start) * interval;
             const float u2 = u * u;
             const float u3 = u2 * u;
-            return std::clamp((2 * u3 - 3 * u2 + 1) * a + (u3 - 2 * u2 + u) * tangentA + (-2 * u3 + 3 * u2) * b +
-                                  (u3 - u2) * tangentB,
-                              -2.f,
-                              12.f);
+            float height = (2 * u3 - 3 * u2 + 1) * a + (u3 - 2 * u2 + u) * tangentA +
+                           (-2 * u3 + 3 * u2) * b + (u3 - u2) * tangentB;
+            if (!direction && first >= viewerPatternColumns - 1) {
+                // keep the unseen side wavy too, with zero extra slope at either join
+                const float envelope = std::sin(pi * u);
+                height += rearVariation * envelope * envelope * std::sin(2 * pi * u);
+            }
+            return direction ? height : std::clamp(height, -64.f, 64.f);
+        }
+
+        V3 pointAt(float angle) const
+        {
+            return viewerPatternPoint(angle + at(angle, true), at(angle));
         }
     };
 
@@ -340,6 +375,28 @@ namespace gt4
         uint32_t rgb = 0;
         float alpha = 0;
     };
+
+    // continue the wall artwork around the room's curved floor instead of chopping it at ground level
+    inline V3 viewerPatternPoint(float angle, float height)
+    {
+        float radius = ViewerWorldCurve::radius;
+        if (height > 16.f) {
+            radius *= std::exp(-(height - 16) / radius);
+            height = 16;
+        } else if (height < 4.f) {
+            const float distance = 4.f - height;
+            const float arc = 2 * pi;
+            if (distance <= arc) {
+                const float bend = distance / 4;
+                radius = 20 + 4 * std::cos(bend);
+                height = 4 - 4 * std::sin(bend);
+            } else {
+                radius = 20 * std::exp(-(distance - arc) / 20);
+                height = 0;
+            }
+        }
+        return {std::cos(angle) * radius, std::sin(angle) * radius, height};
+    }
 
     inline ViewerWaveVertex
     viewerWaveBetween(const ViewerWaveVertex& first, const ViewerWaveVertex& second, float amount)
@@ -424,9 +481,7 @@ namespace gt4
             const float halfHeight = std::max(.1f, (high - low) * .5f);
             std::array<ViewerWaveVertex, 13> result{};
             for (unsigned band = 0; band < result.size(); ++band) {
-                result[band] = {{std::cos(angle) * ViewerWorldCurve::radius,
-                                 std::sin(angle) * ViewerWorldCurve::radius,
-                                 std::clamp(center + levels[band] * halfHeight, -2.f, 12.f)},
+                result[band] = {viewerPatternPoint(angle + middle.at(angle, true), center + levels[band] * halfHeight),
                                 colors[band],
                                 alphas[band]};
             }
@@ -444,7 +499,7 @@ namespace gt4
         }
     }
 
-    inline constexpr int viewerRibbonSegmentCount = 128;
+    inline constexpr int viewerRibbonSegmentCount = 256;
 
     template <class Emit> inline void viewerPatternLines(const VehicleViewer& viewer, double now, Emit emit)
     {
@@ -473,8 +528,7 @@ namespace gt4
                     const float low = bottom.at(angle);
                     const float bend = middle.at(angle) - (high + low) * .5f;
                     const float height = low * (1 - level) + high * level + 4 * level * (1 - level) * bend;
-                    return V3{
-                        std::cos(angle) * ViewerWorldCurve::radius, std::sin(angle) * ViewerWorldCurve::radius, height};
+                    return viewerPatternPoint(angle + middle.at(angle, true), height);
                 };
                 for (int segment = 0; segment < viewerRibbonSegmentCount; ++segment) {
                     emit(point(segment), point(segment + 1), rgb, rgb, 1.f, 1.2f);
@@ -498,10 +552,9 @@ namespace gt4
             const float low = bottom.at(angle);
             const float center = middle.at(angle);
             const float halfHeight = std::max(.1f, (high - low) * .5f);
-            const V3 a{std::cos(angle) * ViewerWorldCurve::radius,
-                       std::sin(angle) * ViewerWorldCurve::radius,
-                       std::clamp(center - halfHeight, -2.f, 12.f)};
-            const V3 b{a.x, a.y, std::clamp(center + halfHeight, -2.f, 12.f)};
+            const float direction = angle + middle.at(angle, true);
+            const V3 a = viewerPatternPoint(direction, center - halfHeight);
+            const V3 b = viewerPatternPoint(direction, center + halfHeight);
             emit(a, b, lighting.halo, lighting.halo, .025f, .35f);
         }
     }

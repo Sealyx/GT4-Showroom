@@ -82,21 +82,30 @@ void processShopInput(
             return;
         }
         if (horizontal || vertical) {
-            shop.reviewChoice = 1 - shop.reviewChoice;
+            if (shop.reviewChoice < 0) {
+                shop.reviewChoice = horizontal + vertical < 0 ? 1 : 0;
+            } else {
+                shop.reviewChoice = 1 - shop.reviewChoice;
+            }
             moveCue();
         }
         if (moved || click) {
+            const int previous = shop.reviewChoice;
+            shop.reviewChoice = -1;
             for (int i = 0; i < 2; ++i) {
                 auto button = spawnReviewButton(width, height, i, 2);
                 button.y += shop.review.offset(state.clock, height);
                 if (button.contains(state.pointerX * width, state.pointerY * height)) {
                     shop.reviewChoice = i;
+                    if (previous != i) {
+                        moveCue();
+                    }
                     accept = accept || click;
                     break;
                 }
             }
         }
-        if (cancel || accept) {
+        if (cancel || (accept && shop.reviewChoice >= 0)) {
             if (!cancel && shop.reviewChoice == 1) {
                 int total = 0;
                 for (const auto& selection : groups) {
@@ -149,8 +158,12 @@ void processShopInput(
     }
     if (shop.page == ShopPage::Menu) {
         if (horizontal || vertical) {
-            shop.section = (shop.section + horizontal + vertical + int(shopSections.size())) % int(shopSections.size());
-            moveCue();
+            const int next = (shop.section + horizontal + vertical + int(shopSections.size())) % int(shopSections.size());
+            if (shop.section != next) {
+                shop.section = next;
+                shop.status.clear();
+                moveCue();
+            }
         }
         if (click || (moved && !horizontal && !vertical)) {
             for (size_t i = 0; i < shopSections.size(); ++i) {
@@ -158,6 +171,7 @@ void processShopInput(
                     state.pointerY >= shopIconY[i] - .095f && state.pointerY <= shopIconY[i] + .096f) {
                     if (shop.section != int(i)) {
                         shop.section = int(i);
+                        shop.status.clear();
                         moveCue();
                     }
                     accept = accept || click;
@@ -177,12 +191,15 @@ void processShopInput(
                 return;
             }
             shop.option = 0;
-            previewShopPart(shop.option);
         }
         shop.request(page, state.clock);
         state.cue = Cue::Accept;
         blockActions();
         return;
+    }
+    if (shop.pendingPartPreview) {
+        shop.pendingPartPreview = false;
+        previewShopPart(shop.option);
     }
     if (shop.page == ShopPage::Wheels || shop.page == ShopPage::Components) {
         const int count = int(shop.parts.size());

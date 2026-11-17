@@ -153,6 +153,7 @@ namespace gt4
         int section = 0, option = 0;
         std::vector<ShopPart> parts;
         bool partReview = false;
+        bool pendingPartPreview = false;
         int reviewChoice = 0;
         ReviewMotion review;
         std::array<int, 32> confirmedParts{};
@@ -182,6 +183,7 @@ namespace gt4
                 return;
             }
             destination = next;
+            pendingPartPreview = next == ShopPage::Wheels || next == ShopPage::Components;
             transitionStart = now;
             midpoint = false;
             stripDrag = liftDrag = false;
@@ -211,7 +213,7 @@ namespace gt4
             if (washStart >= 0. && now - washStart >= washSeconds) {
                 washStart = -1.;
                 washed = true;
-                status = "Wash complete";
+                status = "Wash complete. Texture-painted dirt may remain.";
             }
         }
 

@@ -31,6 +31,16 @@ void drawShopTile(IDirect3DDevice9* device, float width, float height, float x, 
             camera.offsetX -= ((minX + maxX) * .5f - width * x) * fit;
         }
     }
+    struct RestoreOcclusion
+    {
+        int& value;
+        int previous;
+        ~RestoreOcclusion()
+        {
+            value = previous;
+        }
+    } restoreOcclusion{occlusionQuality, occlusionQuality};
+    occlusionQuality = 0;
     if (shadow) {
         mesh(device, *part, camera, angle, paint, .34f, normalized, true);
     }
@@ -39,9 +49,11 @@ void drawShopTile(IDirect3DDevice9* device, float width, float height, float x, 
 }
 
 void shopMirror(IDirect3DDevice9* device, const Mesh& car, const Camera& camera, float angle, const Paint& paint,
-                float alpha, float size, float rideHeight, bool clean)
+                float alpha, float size, float rideHeight, bool clean, int quality = 2,
+                const CinematicVehicleState* vehicle = nullptr)
 {
-    const float scale = std::min(.5f, 720.f / std::max(camera.w, camera.h));
+    const float requested = .25f * std::clamp(quality, 1, 4);
+    const float scale = std::min(requested, 1440.f / std::max(camera.w, camera.h));
     const UINT width = UINT(std::max(1.f, std::round(camera.w * scale)));
     const UINT height = UINT(std::max(1.f, std::round(camera.h * scale)));
     if (!allocateViewerTarget(device, width, height)) {
@@ -62,7 +74,7 @@ void shopMirror(IDirect3DDevice9* device, const Mesh& car, const Camera& camera,
         device->SetRenderState(D3DRS_DESTBLENDALPHA, D3DBLEND_INVSRCALPHA);
         device->SetRenderState(D3DRS_BLENDOPALPHA, D3DBLENDOP_ADD);
         device->SetRenderState(D3DRS_SEPARATEALPHABLENDENABLE, TRUE);
-        mesh(device, car, reduced, angle, paint, 1, size, false, true, false, nullptr, false, rideHeight, false, clean);
+        mesh(device, car, reduced, angle, paint, 1, size, false, true, false, vehicle, false, rideHeight, false, clean);
         device->SetRenderState(D3DRS_SEPARATEALPHABLENDENABLE, FALSE);
     }
     if (!layers.restore() || !ready) {
@@ -94,7 +106,7 @@ void shopPriceMark(IDirect3DDevice9* device, float x, float y, float scale)
         shopStrokeTried = true;
     }
     if (shopStroke.texture && shopStroke.width) {
-        const float width = 95 * scale;
+        const float width = 105 * scale;
         const float height = width * shopStroke.height / shopStroke.width;
         rect(device, x - width * .50f, y - height * .52f, width, height, color(0xFFFFFF), shopStroke.texture);
     }
@@ -172,18 +184,9 @@ void shopWashMeter(IDirect3DDevice9* device, float width, float height, float pr
         };
         device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, slash, sizeof(ScreenVertex));
     }
-    const float spray = x + w * .050f;
-    const DWORD water = color(0xB5E5FF, progress > 0 ? .94f : .65f);
-    rect(device, spray - h * .20f, y + h * .65f, h * .40f, h * .085f, water);
-    for (int i = -1; i <= 1; ++i) {
-        rect(device, spray + i * h * .14f - h * .035f, y + h * .29f, h * .07f, h * .29f, water);
-    }
-    const DWORD finish = color(0x241608, .85f);
-    const float mark = x + w * .95f;
-    rect(device, mark - h * .22f, y + h * .38f, h * .42f, h * .25f, finish);
-    rect(device, mark - h * .12f, y + h * .29f, h * .23f, h * .11f, finish);
-    rect(device, mark - h * .17f, y + h * .57f, h * .07f, h * .16f, finish);
-    rect(device, mark + h * .12f, y + h * .57f, h * .07f, h * .16f, finish);
+    suppliedIcon(device, 0, {x + w * .015f, y - h * .07f, h * .82f, h * .97f}, 1.f);
+    suppliedIcon(device, 1, {x + w - h * .90f, y - h * .07f, h * .82f, h * .97f},
+                 progress >= 1 ? 1.f : .55f);
 }
 
 void shopWashBack(IDirect3DDevice9* device, float x, float y, float scale)
@@ -233,7 +236,7 @@ void drawShopBackdrop(IDirect3DDevice9* device, float width, float height, ShopP
     const size_t section = size_t(page);
     auto& artwork = shopArtwork[section];
     if (!shopArtworkTried[section]) {
-        artwork = VehicleLogos::load(device, assetPath(shopLogoPath.parent_path() / images[section]), 1024);
+        artwork = VehicleLogos::load(device, assetPath(shopLogoPath.parent_path() / images[section]), 2048);
         shopArtworkTried[section] = true;
     }
     const uint32_t tint = tints[section];
@@ -257,12 +260,12 @@ void drawShopBackdrop(IDirect3DDevice9* device, float width, float height, ShopP
         const float y = float(i) / 20;
         const float edgeX = boundary(y);
         const float v = vStart + y * vRange;
-        edge[2 * i] = {0, y * panelHeight, 0, 1, color(tint, .97f), uStart, v};
+        edge[2 * i] = {0, y * panelHeight, 0, 1, color(tint, .65f), uStart, v};
         edge[2 * i + 1] = {edgeX,
                            y * panelHeight,
                            0,
                            1,
-                           color(viewerBlend(tint, 0xFFFFFF, .2f), .93f),
+                           color(viewerBlend(tint, 0xFFFFFF, .2f), .65f),
                            uStart + edgeX / panelWidth * uRange,
                            v};
     }
@@ -353,28 +356,66 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
     std::string detail;
     int price = 0;
     if (menu) {
+        fontAtlas(device, shopSerifFont, shopSerifWidths, prizeNameAsset, 48, 80, L"Times New Roman");
+        const TextStyle serif = shopSerifFont
+            ? TextStyle{shopSerifFont, shopSerifWidths, 48, 80, 1.f} : textStyle(true);
+        text(device, "TransFender", width * .025f + scale, height * .020f + 2 * scale, 35 * scale,
+             color(0x251811, .82f), false, 0, serif);
+        text(device, "TransFender", width * .025f, height * .020f, 35 * scale,
+             color(0xFFF4E5, 1), false, 0, serif);
         if (!shopLogoTried) {
             shopLogo = VehicleLogos::load(device, assetPath(shopLogoPath));
             shopLogoTried = true;
         }
-        const float logoX = width * .014f;
-        const float logoWidth = std::min(width * .29f, 310 * scale);
+        const float logoX = width * .027f;
+        const float logoWidth = std::min(width * .33f, 350 * scale);
+        const float logoY = height * .092f;
+        const float logoHeight = shopLogo.width ? logoWidth * shopLogo.height / shopLogo.width : 60 * scale;
         if (shopLogo.texture && shopLogo.width) {
-            rect(device, logoX, height * .041f, logoWidth, logoWidth * shopLogo.height / shopLogo.width,
+            rect(device, logoX, logoY, logoWidth, logoHeight,
                  0xFFFFFFFF, shopLogo.texture);
         }
-        const std::string tagline = "Providing cheap car services since 1986";
+        const std::string tagline = "Providing cheap car services since 1986. We're not like Pay n' Spray, we provide more services at a discounted rate and we make sure we have no such things as 'Snitches'. Operating in San Andreas is already driving us insane, so please be nice to us.";
         const float taglineX = logoX;
-        const float taglineY = height * .132f;
-        const float taglineBaseSize = 12 * scale;
-        const float panelY = std::clamp((taglineY + taglineBaseSize + scale) / (height * .92f), 0.f, 1.f);
-        const float darkEdge = width * (.46f * (1.f - panelY) * (1.f - panelY)
-                                       - (.065f - .038f * panelY));
-        const float taglineWidth = std::max(scale, std::min(logoWidth, darkEdge - taglineX - 2 * scale));
-        const float taglineSize = fitted(tagline, taglineBaseSize, taglineWidth, true);
-        text(device, tagline, taglineX + scale, taglineY + scale, taglineSize,
-             color(0x21150D, .8f), false, 0, true);
-        text(device, tagline, taglineX, taglineY, taglineSize, color(0xE7E5E3), false, 0, true);
+        float taglineY = logoY + logoHeight + 20 * scale;
+        const float taglineBaseSize = 11 * scale;
+        const float available = std::min(width * .42f, 440 * scale);
+        // wrapping every prefix also repeats localization lookups; keep this static layout until its inputs change
+        if (shopTaglineLines.empty() || shopTaglineWidth != available || shopTaglineSize != taglineBaseSize ||
+            shopTaglineLanguage != localization.selected) {
+            shopTaglineLines.clear();
+            shopTaglineWidth = available;
+            shopTaglineSize = taglineBaseSize;
+            shopTaglineLanguage = localization.selected;
+            std::string remaining = localized(tagline);
+            while (!remaining.empty()) {
+                size_t count = remaining.size();
+                while (count > 1 && textWidth(remaining.substr(0, count), taglineBaseSize, true) > available) {
+                    --count;
+                    while (count && count < remaining.size() &&
+                           (static_cast<unsigned char>(remaining[count]) & 0xC0) == 0x80) {
+                        --count;
+                    }
+                }
+                if (count < remaining.size()) {
+                    const auto space = remaining.rfind(' ', count);
+                    if (space != std::string::npos && space) {
+                        count = space;
+                    }
+                }
+                shopTaglineLines.push_back(remaining.substr(0, count));
+                remaining.erase(0, count);
+                while (!remaining.empty() && remaining.front() == ' ') {
+                    remaining.erase(0, 1);
+                }
+            }
+        }
+        for (const auto& line : shopTaglineLines) {
+            text(device, line, taglineX + scale, taglineY + scale, taglineBaseSize,
+                 color(0x21150D, .8f), false, 0, true);
+            text(device, line, taglineX, taglineY, taglineBaseSize, color(0xE7E5E3), false, 0, true);
+            taglineY += 15 * scale;
+        }
         const std::array<int, 4> iconModels{5409, entry.id, 1082, 1147};
         constexpr std::array<float, 4> angles{3.9f, 3.76f, -1.30f, 2.46f};
         constexpr std::array<float, 4> sizes{.43f, .41f, .38f, .42f};
@@ -497,7 +538,7 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
         const float x = width * .027f;
         const float size = 16 * scale;
         float y = height * .197f;
-        std::string remaining = explanation;
+        std::string remaining = localized(std::string(explanation));
         // wrap against the curved backdrop instead of squeezing the whole sentence into one line
         while (!remaining.empty()) {
             const float panelY = std::clamp((y + size) / (height * .92f), 0.f, 1.f);
@@ -506,6 +547,10 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
             size_t count = remaining.size();
             while (count > 1 && textWidth(remaining.substr(0, count), size, true) > available) {
                 --count;
+                while (count > 0 && count < remaining.size() &&
+                       (static_cast<unsigned char>(remaining[count]) & 0xC0) == 0x80) {
+                    --count;
+                }
             }
             if (count < remaining.size()) {
                 const size_t space = remaining.rfind(' ', count);
@@ -556,11 +601,11 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
         marker[2 * i + 1] = {markerX + 12 * scale, y, 0, 1, color(markerColors[i]), 0, 0};
     }
     device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 8, marker.data(), sizeof(ScreenVertex));
-    text(device, entry.name, nameX + scale, top + 2 * scale, nameSize, color(0, .9f), false, 0, true);
-    text(device, entry.name, nameX, top + scale, nameSize, color(0xFFFFFF), false, 0, true);
+    text(device, entry.name, nameX + scale, top + 4 * scale, nameSize, color(0, .9f), false, 0, true);
+    text(device, entry.name, nameX, top + 3 * scale, nameSize, color(0xFFFFFF), false, 0, true);
     shopDollar(device, coinX, top + barHeight * .5f, 10 * scale);
-    text(device, balance, moneyX + scale, top + 2 * scale, size, color(0, .9f), false, 0, true);
-    text(device, balance, moneyX, top + scale, size, color(0xFFFFFF), false, 0, true);
+    text(device, balance, moneyX + scale, top + 4 * scale, size, color(0, .9f), false, 0, true);
+    text(device, balance, moneyX, top + 3 * scale, size, color(0xFFFFFF), false, 0, true);
     rect(device, dateX, top, dayWidth, barHeight, color(0xFFBD00));
     rect(device, dateX + dayWidth, top, monthWidth, barHeight, color(0xF4F4F4));
     ScreenVertex shade[] = {
@@ -584,14 +629,19 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
         text(device, amount, x + 43.5f * scale, y - 28.5f * scale, 52 * scale, color(0xFFFFFF, 1), false, 0, true);
     }
     rect(device, 0, height * .922f, width, height * .078f, color(0x090909, 1));
-    const std::string controls = model.ui.controllerUsed ? "CIRCLE RETURN    TRIANGLE RESET"
-                                                         : "BACKSPACE RETURN    R RESET";
-    const std::string footer = shop.status.empty()
-        ? (int(std::max(0., model.clock - shop.pageStart)) % 8 < 5 ? detail : controls)
-        : shop.status;
-    const float footerAlpha = footerReveal(footer, model.clock);
-    text(device, footer, width * .5f, height * .936f + (1.f - footerAlpha) * 9 * scale,
-         fitted(footer, 18 * scale, width * .90f, true), color(0xE7E5E3, footerAlpha), true, 0, true);
+    const std::string controls = model.ui.controllerUsed ? "CIRCLE Return    TRIANGLE Reset"
+                                                        : "BACKSPACE Return    R Reset";
+    const bool washing = shop.washStart >= 0.;
+    const bool describe = washing || !shop.status.empty() || int(std::max(0., model.clock - shop.pageStart)) % 8 < 5;
+    std::string message = controls;
+    if (washing) {
+        message = "Washing vehicle...";
+    } else if (!shop.status.empty()) {
+        message = shop.status;
+    } else if (describe) {
+        message = detail;
+    }
+    drawFooterText(device, width, height, message, describe, model.clock, false, true, describe ? 0 : 3);
     if (shop.partReview && hasParts) {
         const auto selected = shop.parts[size_t(shop.option)];
         const auto& group = groups[size_t(selected.group)];
@@ -604,7 +654,7 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
         drawReviewPanel(device, width, height, shop.review.reveal(model.clock), shop.review.offset(model.clock, height),
                         shopTitle(page), message, priceText, buttons.data(), int(buttons.size()), shop.reviewChoice);
     }
-    if (model.spawnReview == SpawnReview::None && model.pointerVisible && !model.ui.controllerUsed) {
+    if (model.spawnReview == SpawnReview::None && !model.plateOpen && model.pointerVisible && !model.ui.controllerUsed) {
         cursor(device, model.pointerX * width, model.pointerY * height, scale * .85f, 1);
     }
     const float fade = shop.fade(model.clock);

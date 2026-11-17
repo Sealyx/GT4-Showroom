@@ -79,7 +79,7 @@ namespace gt4::nativeStudio
         bool complete = false;
         bool cleanupOnDestruction = true;
 
-        static constexpr unsigned cubeSize = CaptureSphere ? 256 : 128;
+        unsigned cubeSize = CaptureSphere ? 256 : 128;
         static constexpr unsigned sphereSize = 512;
         static constexpr unsigned sphereSegments = 96;
         static constexpr DWORD textureUsage = D3DUSAGE_RENDERTARGET | D3DUSAGE_AUTOGENMIPMAP;
@@ -257,6 +257,15 @@ namespace gt4::nativeStudio
 
         EnvironmentMap(const EnvironmentMap&) = delete;
         EnvironmentMap& operator=(const EnvironmentMap&) = delete;
+
+        void resolution(unsigned value)
+        {
+            value = std::clamp(value, 64u, 512u);
+            if (cubeSize != value) {
+                reset();
+                cubeSize = value;
+            }
+        }
 
         void reset()
         {

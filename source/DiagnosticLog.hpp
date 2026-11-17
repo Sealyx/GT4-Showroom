@@ -8,6 +8,17 @@ struct DiagnosticLog
 {
     std::atomic<bool> enabled{false};
 
+    void begin(const std::wstring& path) const
+    {
+        if (!enabled.load(std::memory_order_relaxed)) {
+            return;
+        }
+        FILE* file = nullptr;
+        if (_wfopen_s(&file, path.c_str(), L"wb") == 0 && file) {
+            std::fclose(file);
+        }
+    }
+
     void reload(const std::wstring& ini, const wchar_t* section)
     {
         enabled.store(GetPrivateProfileIntW(section, L"EnableLog", 0, ini.c_str()) == 1, std::memory_order_relaxed);

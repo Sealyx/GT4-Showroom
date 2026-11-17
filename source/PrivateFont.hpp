@@ -1,5 +1,6 @@
 #pragma once
 #include "AssetPaths.hpp"
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -18,6 +19,7 @@ namespace gt4
         std::array<uint8_t, 54> head{};
         const char* result = "not-loaded";
         DWORD error = ERROR_SUCCESS;
+        int weight = FW_BOLD;
 
         static uint32_t bigEndian(const uint8_t* value)
         {
@@ -48,13 +50,13 @@ namespace gt4
             return false;
         }
 
-        static HFONT makeFont(const wchar_t* family, int em)
+        static HFONT makeFont(const wchar_t* family, int em, int weight)
         {
             return CreateFontW(-em,
                                0,
                                0,
                                0,
-                               FW_BOLD,
+                               weight,
                                FALSE,
                                FALSE,
                                FALSE,
@@ -84,9 +86,10 @@ namespace gt4
         PrivateFont(const PrivateFont&) = delete;
         PrivateFont& operator=(const PrivateFont&) = delete;
 
-        bool load(const std::wstring& path, const std::wstring& family)
+        bool load(const std::wstring& path, const std::wstring& family, int requestedWeight = FW_BOLD)
         {
             unload();
+            weight = std::clamp(requestedWeight, 1, 1000);
             const auto native = assetPath(path);
             const DWORD attributes = GetFileAttributesW(native.c_str());
             if (path.empty() || family.empty() || attributes == INVALID_FILE_ATTRIBUTES ||
@@ -141,12 +144,12 @@ namespace gt4
 
         HFONT createFont(HDC dc, int em)
         {
-            HFONT font = makeFont(selected.c_str(), em);
+            HFONT font = makeFont(selected.c_str(), em, weight);
             if (!font) {
                 result = "font-object-failed";
                 releaseResource();
                 selected = L"Arial";
-                return makeFont(selected.c_str(), em);
+                return makeFont(selected.c_str(), em, weight);
             }
             const auto previous = SelectObject(dc, font);
             if (!previous || previous == HGDI_ERROR) {
@@ -154,7 +157,7 @@ namespace gt4
                 DeleteObject(font);
                 releaseResource();
                 selected = L"Arial";
-                return makeFont(selected.c_str(), em);
+                return makeFont(selected.c_str(), em, weight);
             }
             wchar_t family[128]{};
             const int characters = GetTextFaceW(dc, 128, family);
@@ -171,7 +174,7 @@ namespace gt4
                 DeleteObject(font);
                 releaseResource();
                 selected = L"Arial";
-                return makeFont(selected.c_str(), em);
+                return makeFont(selected.c_str(), em, weight);
             }
             if (resource) {
                 result = "ready";

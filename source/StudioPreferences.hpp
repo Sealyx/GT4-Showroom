@@ -7,6 +7,12 @@ namespace gt4
     struct StudioPreferences
     {
         int sortMode = 5, countryFilter = -1, classFilter = -1;
+        uint32_t countryMask = 0, classMask = 0;
+        int unitFormat = 0, japanBackground = 0, bikeBackground = 0;
+        bool shadows = true;
+        int antialiasing = 2, ambientOcclusion = 2;
+        int floorReflections = 0, vehicleReflections = 3;
+        int language = 0;
         bool carLogo = false, brandLogo = false, displayModelId = true, displayModelName = true;
         // bytes keep existing settings readable. playback uses gta's sliders
         AudioLevels audio;
@@ -14,7 +20,12 @@ namespace gt4
         bool valid() const
         {
             return sortMode >= 0 && sortMode <= 5 && countryFilter >= -1 && countryFilter < int(countryCount) &&
-                   classFilter >= -1 && classFilter <= 12 &&
+                   classFilter >= -1 && classFilter <= 12 && unitFormat >= 0 && unitFormat <= 2 &&
+                   japanBackground >= 0 && japanBackground <= 1 && bikeBackground >= 0 && bikeBackground <= 2 &&
+                   antialiasing >= 0 && antialiasing <= 3 && ambientOcclusion >= 0 && ambientOcclusion <= 3 &&
+                   floorReflections >= 0 && floorReflections <= 4 && vehicleReflections >= 0 && vehicleReflections <= 4 &&
+                   language >= 0 && language < 7 &&
+                   (countryMask >> countryCount) == 0 && (classMask >> 13) == 0 &&
                    std::all_of(
                        audio.value.begin(),
                        audio.value.end(),
@@ -28,7 +39,11 @@ namespace gt4
             return sortMode == other.sortMode && countryFilter == other.countryFilter &&
                    classFilter == other.classFilter && carLogo == other.carLogo && brandLogo == other.brandLogo &&
                    displayModelId == other.displayModelId && displayModelName == other.displayModelName &&
-                   audio == other.audio;
+                   audio == other.audio && countryMask == other.countryMask && classMask == other.classMask &&
+                   unitFormat == other.unitFormat && shadows == other.shadows &&
+                   japanBackground == other.japanBackground && bikeBackground == other.bikeBackground &&
+                   antialiasing == other.antialiasing && ambientOcclusion == other.ambientOcclusion && floorReflections == other.floorReflections &&
+                   vehicleReflections == other.vehicleReflections && language == other.language;
         }
 
         bool operator!=(const StudioPreferences& other) const
@@ -40,23 +55,26 @@ namespace gt4
     inline bool loadStudioPreferences(const std::filesystem::path& path, StudioPreferences& result)
     {
         std::ifstream input(path, std::ios::binary);
-        std::array<uint8_t, 20> bytes{};
-        if (!input.read(reinterpret_cast<char*>(bytes.data()), bytes.size()) ||
-            input.peek() != std::char_traits<char>::eof()) {
+        std::array<uint8_t, 32> bytes{};
+        input.read(reinterpret_cast<char*>(bytes.data()), bytes.size());
+        const size_t size = size_t(input.gcount());
+        if ((size != 20 && size != bytes.size()) || input.peek() != std::char_traits<char>::eof()) {
             return false;
         }
-        const std::array<uint8_t, 5> magic{{'G', 'T', '4', 'P', 1}};
-        if (!std::equal(magic.begin(), magic.end(), bytes.begin()) || (bytes[8] & 0xF0) != 0 ||
-            std::any_of(bytes.begin() + 12, bytes.begin() + 19, [](uint8_t value) {
+        const std::array<uint8_t, 4> magic{{'G', 'T', '4', 'P'}};
+        const bool legacy = size == 20 && bytes[4] == 1;
+        if (!std::equal(magic.begin(), magic.end(), bytes.begin()) || (!legacy && (size != 32 || bytes[4] != 2)) ||
+            (bytes[8] & 0xF0) != 0 ||
+            std::any_of(bytes.begin() + (legacy ? 12 : 27), bytes.begin() + size - 1, [](uint8_t value) {
                 return value != 0;
             })) {
             return false;
         }
         uint8_t check = 0xA7;
-        for (size_t i = 0; i < bytes.size() - 1; ++i) {
+        for (size_t i = 0; i < size - 1; ++i) {
             check ^= bytes[i];
         }
-        if (check != bytes.back()) {
+        if (check != bytes[size - 1]) {
             return false;
         }
         StudioPreferences loaded;
@@ -70,6 +88,24 @@ namespace gt4
         for (size_t i = 0; i < loaded.audio.value.size(); ++i) {
             loaded.audio.value[i] = bytes[9 + i];
         }
+        if (!legacy) {
+            for (unsigned i = 0; i < 4; ++i) {
+                loaded.countryMask |= uint32_t(bytes[12 + i]) << (8 * i);
+            }
+            loaded.classMask = uint32_t(bytes[16]) | (uint32_t(bytes[17]) << 8);
+            loaded.unitFormat = bytes[18];
+            if (bytes[19] > 1) {
+                return false;
+            }
+            loaded.shadows = bytes[19] != 0;
+            loaded.japanBackground = bytes[20];
+            loaded.bikeBackground = bytes[21];
+            loaded.antialiasing = bytes[22];
+            loaded.ambientOcclusion = bytes[23];
+            loaded.floorReflections = bytes[24];
+            loaded.vehicleReflections = bytes[25];
+            loaded.language = bytes[26];
+        }
         if (!loaded.valid()) {
             return false;
         }
@@ -82,7 +118,7 @@ namespace gt4
         if (!preferences.valid()) {
             return false;
         }
-        std::array<uint8_t, 20> bytes{{'G', 'T', '4', 'P', 1}};
+        std::array<uint8_t, 32> bytes{{'G', 'T', '4', 'P', 2}};
         bytes[5] = uint8_t(preferences.sortMode);
         bytes[6] = uint8_t(preferences.countryFilter + 1);
         bytes[7] = uint8_t(preferences.classFilter + 1);
@@ -91,6 +127,20 @@ namespace gt4
         for (size_t i = 0; i < preferences.audio.value.size(); ++i) {
             bytes[9 + i] = uint8_t(preferences.audio.value[i]);
         }
+        for (unsigned i = 0; i < 4; ++i) {
+            bytes[12 + i] = uint8_t(preferences.countryMask >> (8 * i));
+        }
+        bytes[16] = uint8_t(preferences.classMask);
+        bytes[17] = uint8_t(preferences.classMask >> 8);
+        bytes[18] = uint8_t(preferences.unitFormat);
+        bytes[19] = uint8_t(preferences.shadows);
+        bytes[20] = uint8_t(preferences.japanBackground);
+        bytes[21] = uint8_t(preferences.bikeBackground);
+        bytes[22] = uint8_t(preferences.antialiasing);
+        bytes[23] = uint8_t(preferences.ambientOcclusion);
+        bytes[24] = uint8_t(preferences.floorReflections);
+        bytes[25] = uint8_t(preferences.vehicleReflections);
+        bytes[26] = uint8_t(preferences.language);
         bytes.back() = 0xA7;
         for (size_t i = 0; i < bytes.size() - 1; ++i) {
             bytes.back() ^= bytes[i];

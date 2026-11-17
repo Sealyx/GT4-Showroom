@@ -27,15 +27,17 @@ namespace gt4
         void parse(std::istream& in, bool sectionsOnly = false)
         {
             std::string line;
-            bool cars = false;
+            bool cars = false, mergedHandling = false;
             while (std::getline(in, line)) {
                 line = trimName(line.substr(0, line.find_first_of("#;")));
                 const auto folded = lowerName(line);
                 if (!folded.empty() && folded.front() == '[' && folded.back() == ']') {
-                    cars = folded == "[vehicles.ide]";
+                    cars = folded == "[vehicles.ide]" || folded == "[vehicle.ide]";
+                    mergedHandling = sectionsOnly && folded == "[handling.cfg]";
                     continue;
                 }
                 if (folded == "cars") {
+                    mergedHandling = false;
                     if (!sectionsOnly) {
                         cars = true;
                     }
@@ -43,9 +45,10 @@ namespace gt4
                 }
                 if (folded == "end") {
                     cars = false;
+                    mergedHandling = false;
                     continue;
                 }
-                if (!cars || line.empty()) {
+                if (line.empty()) {
                     continue;
                 }
                 std::replace(line.begin(), line.end(), ',', ' ');
@@ -54,6 +57,23 @@ namespace gt4
                 int id = 0;
                 if (!(fields >> number >> name) || !decimalModelId(number, id) || name.empty() || name.size() > 96) {
                     continue;
+                }
+                if (!cars) {
+                    // some merged text files mislabel IDE rows; require their complete native vehicle prefix
+                    std::string texture, type;
+                    if (!mergedHandling || !(fields >> texture >> type)) {
+                        continue;
+                    }
+                    const auto kind = lowerName(type);
+                    const bool vehicle = kind == "car" || kind == "mtruck" || kind == "quad" || kind == "bike" ||
+                                         kind == "bmx" || kind == "boat" || kind == "train" || kind == "plane" ||
+                                         kind == "heli" || kind == "trailer" || kind == "f_heli" || kind == "f_plane";
+                    if (!vehicle || texture.empty() || texture.size() > 96 ||
+                        !std::all_of(texture.begin(), texture.end(), [](unsigned char c) {
+                            return std::isalnum(c) || c == '_' || c == '-';
+                        })) {
+                        continue;
+                    }
                 }
                 if (!std::all_of(name.begin(), name.end(), [](unsigned char c) {
                         return std::isalnum(c) || c == '_' || c == '-';

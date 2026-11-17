@@ -7,9 +7,11 @@
 #include "Countries.hpp"
 #include "AudioLevels.hpp"
 #include "StudioPreferences.hpp"
-#include "CinematicVehicle.hpp"
+#include "Localization.hpp"
+#include "Cinematic.hpp"
 #include "VehicleViewer.hpp"
 #include "CustomizationState.hpp"
+#include "InputState.hpp"
 
 namespace gt4
 {
@@ -56,7 +58,18 @@ namespace gt4
         ViewerShadows,
         ViewerPause,
         EnterTransFender,
-        EnterPhoto
+        EnterPhoto,
+        UnitFormat,
+        CinematicAnimation,
+        CinematicRotation,
+        Volume,
+        Background,
+        Antialiasing,
+        AmbientOcclusion,
+        FloorReflections,
+        VehicleReflections,
+        Reflections,
+        Language
     };
 
     inline int extraActionGroup(StudioAction action)
@@ -170,7 +183,18 @@ namespace gt4
         ViewerPalette,
         ViewerReflections,
         ViewerShadows,
-        ViewerPause
+        ViewerPause,
+        UnitFormat,
+        CinematicAnimation,
+        CinematicRotation,
+        Volume,
+        Background,
+        Antialiasing,
+        AmbientOcclusion,
+        FloorReflections,
+        VehicleReflections,
+        Reflections,
+        Language
     };
 
     inline int extraBranchGroup(MenuBranch branch)
@@ -242,10 +266,13 @@ namespace gt4
         double monitorChanged = 0;
         int closeResult = 0, sliderDrag = -1;
         bool sliderChanged = false;
+        std::array<int, 2> volume{{64, 64}};
         bool hotspots = true;
+        bool allowHotspots = true;
+
         ViewerSettings viewerSettings;
         SettingsView settingsView = SettingsView::Showroom;
-        bool viewerPaused = false;
+        bool viewerPaused = false, cinematicPaused = false, cinematicAnimated = true;
         bool customizationEnabled = false;
         int customizationModel = -1;
         uint64_t customizationGeneration = 0, customizationRevision = 0;
@@ -263,6 +290,18 @@ namespace gt4
         bool shadows = true, carLogo = false, brandLogo = false,
              displayModelId = true, displayModelName = true;
         int order = 0, countryFilter = -1, classFilter = -1;
+        uint32_t countryMask = 0, classMask = 0;
+        int unitFormat = 0, backgroundChoice = 0;
+        bool japaneseCategory = false, bikeCategory = false;
+        int antialiasing = 2, ambientOcclusion = 2;
+        int floorReflections = 0, vehicleReflections = 3;
+        int language = 0;
+
+        // availability follows the selected vehicle without changing the saved car preference
+        void setVehicleKind(int kind, int category)
+        {
+            allowHotspots = kind != 9 && kind != 10 && category != 7 && category != 8 && category != 11;
+        }
 
         void sync(int o,
                   int country,
@@ -393,14 +432,20 @@ namespace gt4
                     if (viewerSettings.scene != ViewerScene::Softbox) {
                         rows.push_back({"Lighting", StudioAction::None, -1, MenuBranch::ViewerPalette});
                     }
+                }
+                rows.push_back({"Anti-Aliasing", StudioAction::None, -1, MenuBranch::Antialiasing});
+                rows.push_back({"Ambient Occlusion", StudioAction::None, -1, MenuBranch::AmbientOcclusion});
+                if (viewerSettings.scene != ViewerScene::Custom) {
                     rows.push_back({"Reflections", StudioAction::None, -1, MenuBranch::ViewerReflections});
                 }
                 rows.push_back({"Shadows", StudioAction::None, -1, MenuBranch::ViewerShadows});
-                if (viewerSettings.scene == ViewerScene::Ribbons || viewerSettings.scene == ViewerScene::Wave) {
-                    rows.push_back({"Animate", StudioAction::None, -1, MenuBranch::ViewerAnimate});
+                if (viewerSettings.scene != ViewerScene::Custom) {
+                    rows.push_back({"Animation", StudioAction::None, -1, MenuBranch::ViewerAnimate});
                 }
                 rows.push_back({"Rotation", StudioAction::None, -1, MenuBranch::ViewerPause});
-                rows.push_back({"Hotspots", StudioAction::None, -1, MenuBranch::Hotspots});
+                if (allowHotspots) {
+                    rows.push_back({"Hotspots", StudioAction::None, -1, MenuBranch::Hotspots});
+                }
                 if (customizationEnabled) {
                     rows.push_back({"Customization", StudioAction::EnterTransFender});
                 }
@@ -409,7 +454,15 @@ namespace gt4
             }
             if (settingsView == SettingsView::Cinematic) {
                 std::vector<MenuItem> rows{{"Hotspots", StudioAction::None, -1, MenuBranch::Hotspots},
-                                           {"Shadows", StudioAction::None, -1, MenuBranch::Shadows}};
+                                           {"Shadows", StudioAction::None, -1, MenuBranch::Shadows},
+                                           {"Anti-Aliasing", StudioAction::None, -1, MenuBranch::Antialiasing},
+                                           {"Ambient Occlusion", StudioAction::None, -1, MenuBranch::AmbientOcclusion},
+                                           {"Reflections", StudioAction::None, -1, MenuBranch::Reflections},
+                                           {"Animation", StudioAction::None, -1, MenuBranch::CinematicAnimation},
+                                           {"Rotation", StudioAction::None, -1, MenuBranch::CinematicRotation}};
+                if (!allowHotspots) {
+                    rows.erase(rows.begin());
+                }
                 if (customizationEnabled) {
                     rows.push_back({"Customization", StudioAction::EnterTransFender});
                 }
@@ -418,27 +471,96 @@ namespace gt4
                 return rows;
             }
             std::vector<MenuItem> rows{{"Sort by", StudioAction::None, -1, MenuBranch::Sort},
+                                       {"Format", StudioAction::None, -1, MenuBranch::UnitFormat},
+                                       {"Language", StudioAction::None, -1, MenuBranch::Language},
                                        {"Display", StudioAction::None, -1, MenuBranch::Display},
                                        {"Logos", StudioAction::None, -1, MenuBranch::Logos},
-                                       {"Shadows", StudioAction::None, -1, MenuBranch::Shadows}};
+                                       {"Shadows", StudioAction::None, -1, MenuBranch::Shadows},
+                                       {"Anti-Aliasing", StudioAction::None, -1, MenuBranch::Antialiasing},
+                                       {"Ambient Occlusion", StudioAction::None, -1, MenuBranch::AmbientOcclusion},
+                                       {"Reflections", StudioAction::None, -1, MenuBranch::Reflections}};
             if (!extras[0].empty() || !extras[1].empty() || !extras[2].empty()) {
                 rows.push_back({"Extras", StudioAction::None, -1, MenuBranch::Extras});
             }
+            if (japaneseCategory || bikeCategory) {
+                rows.insert(rows.begin(), {"Background", StudioAction::None, -1, MenuBranch::Background});
+            }
             rows.push_back({"Cinematic", StudioAction::Cinematic});
             rows.push_back({"Vehicle Viewer", StudioAction::ViewerEnter});
+            rows.push_back({"Volume", StudioAction::None, -1, MenuBranch::Volume});
             return rows;
         }
 
         std::vector<MenuItem> branchItems(MenuBranch branch) const
         {
             switch (branch) {
+                case MenuBranch::CinematicAnimation:
+                    return {{"On", StudioAction::CinematicAnimation, 1, MenuBranch::None, cinematicAnimated},
+                            {"Off", StudioAction::CinematicAnimation, 0, MenuBranch::None, !cinematicAnimated}};
+                case MenuBranch::CinematicRotation:
+                    return {{"On", StudioAction::CinematicRotation, 1, MenuBranch::None, !cinematicPaused},
+                            {"Off", StudioAction::CinematicRotation, 0, MenuBranch::None, cinematicPaused}};
+                case MenuBranch::Language: {
+                    std::vector<MenuItem> rows;
+                    for (int i = 0; i < int(Localization::names.size()); ++i) {
+                        if (localization.ready[size_t(i)]) {
+                            rows.push_back({Localization::names[size_t(i)], StudioAction::Language, i,
+                                            MenuBranch::None, language == i});
+                        }
+                    }
+                    return rows;
+                }
+                case MenuBranch::Reflections:
+                    return {{"Floor", StudioAction::None, -1, MenuBranch::FloorReflections},
+                            {"Vehicle", StudioAction::None, -1, MenuBranch::VehicleReflections}};
+                case MenuBranch::FloorReflections:
+                case MenuBranch::VehicleReflections: {
+                    constexpr const char* names[]{"Off", "Low", "Medium", "High", "Ultra"};
+                    const bool floor = branch == MenuBranch::FloorReflections;
+                    std::vector<MenuItem> rows;
+                    for (int i = 0; i < 5; ++i) {
+                        rows.push_back({names[i], floor ? StudioAction::FloorReflections : StudioAction::VehicleReflections,
+                                        i, MenuBranch::None, (floor ? floorReflections : vehicleReflections) == i});
+                    }
+                    return rows;
+                }
+                case MenuBranch::AmbientOcclusion:
+                case MenuBranch::Antialiasing: {
+                    constexpr const char* names[]{"Off", "Standard", "High", "Ultra"};
+                    std::vector<MenuItem> rows;
+                    for (int i = 0; i < 4; ++i) {
+                        const bool ao = branch == MenuBranch::AmbientOcclusion;
+                        rows.push_back({names[i], ao ? StudioAction::AmbientOcclusion : StudioAction::Antialiasing,
+                                        i, MenuBranch::None, (ao ? ambientOcclusion : antialiasing) == i});
+                    }
+                    return rows;
+                }
+                case MenuBranch::Background: {
+                    if (bikeCategory) {
+                        std::vector<MenuItem> rows{
+                            {"Dark Gray", StudioAction::Background, 0, MenuBranch::None, backgroundChoice == 0},
+                            {"Default", StudioAction::Background, 1, MenuBranch::None, backgroundChoice == 1}};
+                        if (japaneseCategory) {
+                            rows.push_back({"Red", StudioAction::Background, 2, MenuBranch::None, backgroundChoice == 2});
+                        }
+                        return rows;
+                    }
+                    return {{"Red", StudioAction::Background, 0, MenuBranch::None, backgroundChoice == 0},
+                            {"Default", StudioAction::Background, 1, MenuBranch::None, backgroundChoice == 1}};
+                }
+                case MenuBranch::Volume:
+                    return {{"Music", StudioAction::Volume, 0}, {"SFX", StudioAction::Volume, 1}};
+                case MenuBranch::UnitFormat:
+                    return {{"Auto", StudioAction::UnitFormat, 0, MenuBranch::None, unitFormat == 0},
+                            {"Metric", StudioAction::UnitFormat, 1, MenuBranch::None, unitFormat == 1},
+                            {"Imperial", StudioAction::UnitFormat, 2, MenuBranch::None, unitFormat == 2}};
                 case MenuBranch::Sort:
-                    return {{"Ascending", StudioAction::SortAscending, 0, MenuBranch::None, order == 0},
+                    return {{"Model ID", StudioAction::SortModelId, 5, MenuBranch::None, order == 5},
+                            {"Ascending", StudioAction::SortAscending, 0, MenuBranch::None, order == 0},
                             {"Descending", StudioAction::SortDescending, 1, MenuBranch::None, order == 1},
-                            {"Class", StudioAction::None, -1, MenuBranch::Classes, classFilter >= 0},
-                            {"Top Speed", StudioAction::SortSpeed, 3, MenuBranch::None, order == 3},
-                            {"Countries", StudioAction::None, -1, MenuBranch::Countries, countryFilter >= 0},
-                            {"Model ID", StudioAction::SortModelId, 5, MenuBranch::None, order == 5}};
+                            {"Class", StudioAction::None, -1, MenuBranch::Classes, classFilter >= 0 || classMask != 0},
+                            {"Countries", StudioAction::None, -1, MenuBranch::Countries, countryFilter >= 0 || countryMask != 0},
+                            {"Top Speed", StudioAction::SortSpeed, 3, MenuBranch::None, order == 3}};
                 case MenuBranch::Countries: {
                     std::vector<MenuItem> r;
                     for (int c : available) {
@@ -446,7 +568,7 @@ namespace gt4
                         if (c >= 0) {
                             label += "  (" + std::to_string(counts[size_t(c)]) + ")";
                         }
-                        r.push_back({label, StudioAction::FilterCountry, c, MenuBranch::None, countryFilter == c});
+                        r.push_back({label, StudioAction::FilterCountry, c, MenuBranch::None, (countryMask ? (c >= 0 && (countryMask & (1u << c))) : countryFilter == c)});
                     }
                     return r;
                 }
@@ -457,7 +579,7 @@ namespace gt4
                         if (c >= 0) {
                             label += "  (" + std::to_string(classCounts[size_t(c)]) + ")";
                         }
-                        r.push_back({label, StudioAction::FilterClass, c, MenuBranch::None, classFilter == c});
+                        r.push_back({label, StudioAction::FilterClass, c, MenuBranch::None, (classMask ? (c >= 0 && (classMask & (1u << c))) : classFilter == c)});
                     }
                     return r;
                 }
@@ -520,7 +642,7 @@ namespace gt4
                             {"Off", StudioAction::Shadows, 0, MenuBranch::None, !shadows}};
                 case MenuBranch::Logos:
                     return {{"Manufacturer", StudioAction::None, -1, MenuBranch::BrandLogo, brandLogo},
-                            {"Car name", StudioAction::None, -1, MenuBranch::CarLogo, carLogo}};
+                            {"Name", StudioAction::None, -1, MenuBranch::CarLogo, carLogo}};
                 case MenuBranch::BrandLogo:
                     return {{"On", StudioAction::BrandLogo, 1, MenuBranch::None, brandLogo},
                             {"Off", StudioAction::BrandLogo, 0, MenuBranch::None, !brandLogo}};
@@ -529,7 +651,7 @@ namespace gt4
                             {"Off", StudioAction::CarLogo, 0, MenuBranch::None, !carLogo}};
                 case MenuBranch::Display:
                     return {{"Model ID", StudioAction::None, -1, MenuBranch::DisplayModelId, displayModelId},
-                            {"Model name", StudioAction::None, -1, MenuBranch::DisplayModelName, displayModelName}};
+                            {"Model Name", StudioAction::None, -1, MenuBranch::DisplayModelName, displayModelName}};
                 case MenuBranch::DisplayModelId:
                     return {{"On", StudioAction::DisplayModelId, 1, MenuBranch::None, displayModelId},
                             {"Off", StudioAction::DisplayModelId, 0, MenuBranch::None, !displayModelId}};
@@ -580,7 +702,8 @@ namespace gt4
                 return MenuBranch::None;
             }
             const auto branch = childBranch();
-            if ((branch == MenuBranch::Logos || branch == MenuBranch::Extras || branch == MenuBranch::Display) &&
+            if ((branch == MenuBranch::Logos || branch == MenuBranch::Extras || branch == MenuBranch::Display ||
+                 branch == MenuBranch::Reflections) &&
                 focus() == 0) {
                 return MenuBranch::None;
             }
@@ -695,7 +818,7 @@ namespace gt4
         bool monitorSubWindow() const
         {
             const auto b = childBranch();
-            return b == MenuBranch::Logos || b == MenuBranch::Extras || b == MenuBranch::Display;
+            return b == MenuBranch::Logos || b == MenuBranch::Extras || b == MenuBranch::Display || b == MenuBranch::Volume || b == MenuBranch::Reflections;
         }
 
         bool monitorSelectorWindow() const
@@ -715,7 +838,7 @@ namespace gt4
 
         bool sliderWindow() const
         {
-            return childBranch() == MenuBranch::Extras;
+            return childBranch() == MenuBranch::Extras || childBranch() == MenuBranch::Volume;
         }
 
         int extraGroup(int index) const
@@ -726,12 +849,18 @@ namespace gt4
 
         int sliderMaximum(int index) const
         {
+            if (childBranch() == MenuBranch::Volume) {
+                return index >= 0 && index < 2 ? 64 : 0;
+            }
             const int group = extraGroup(index);
             return group >= 0 ? std::max(0, int(extras[size_t(group)].size()) - 1) : 0;
         }
 
         int sliderValue(int index) const
         {
+            if (childBranch() == MenuBranch::Volume) {
+                return index >= 0 && index < 2 ? volume[size_t(index)] : 0;
+            }
             const int group = extraGroup(index);
             return group >= 0 ? extraChoice[size_t(group)] : 0;
         }
@@ -740,7 +869,8 @@ namespace gt4
         {
             value = std::clamp(value, 0, sliderMaximum(index));
             const int group = extraGroup(index);
-            int* target = group >= 0 ? &extraChoice[size_t(group)] : nullptr;
+            int* target = childBranch() == MenuBranch::Volume && index >= 0 && index < 2
+                ? &volume[size_t(index)] : group >= 0 ? &extraChoice[size_t(group)] : nullptr;
             if (!target || *target == value) {
                 return false;
             }
@@ -793,7 +923,7 @@ namespace gt4
 
     struct CinematicView
     {
-        bool active = false, paused = false, grabbed = false, dragged = false;
+        bool active = false, paused = false, grabbed = false, dragged = false, animate = true;
         float mix = 0, yaw = 0, pitch = .23f, zoom = 1, zoomTarget = 1;
         double began = 0, lightHeld = 0, lightBegan = 0;
         float grabX = 0, grabY = 0;
@@ -805,13 +935,14 @@ namespace gt4
 
         double lightTime(double now) const
         {
-            return lightHeld + (!paused ? now - lightBegan : 0.);
+            return lightHeld + (animate ? now - lightBegan : 0.);
         }
 
         void enter(double now, float angle)
         {
             active = true;
             paused = grabbed = dragged = false;
+            animate = true;
             yaw = angle;
             began = lightBegan = now;
             lightHeld = now;
@@ -819,8 +950,16 @@ namespace gt4
             zoomTarget = 1.10f;
         }
 
+        void setAnimation(bool enabled, double now)
+        {
+            lightHeld = lightTime(now);
+            lightBegan = now;
+            animate = enabled;
+        }
+
         void leave()
         {
+            animate = true;
             active = grabbed = false;
             zoomTarget = 1;
         }
@@ -862,15 +1001,30 @@ namespace gt4
     {
         bool open = false;
         int selected = 0;
+        int characterSet = 0;
+        Key characterSetKey;
 
-        static std::string key(int i)
+        std::string key(int i) const
         {
-            static const std::string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+            static const std::array<std::string, 3> sets{
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+                "abcdefghijklmnopqrstuvwxyz0123456789",
+                "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~0123"};
+            const auto& chars = sets[size_t(characterSet)];
             return i < 36    ? chars.substr(size_t(i), 1)
                    : i == 36 ? "SPACE"
                    : i == 37 ? "DEL"
                    : i == 38 ? "FIND"
                              : "CLOSE";
+        }
+
+        bool changeCharacters(bool previous, bool next, uint64_t tick)
+        {
+            if (!characterSetKey.poll(previous || next, tick)) {
+                return false;
+            }
+            characterSet = (characterSet + (previous ? 2 : 1)) % 3;
+            return true;
         }
 
         void move(int dx, int dy)
@@ -884,7 +1038,7 @@ namespace gt4
             return {(w - 10 * cw) * .5f + (i % 10) * cw, h * .68f + (i / 10) * ch, cw - 3 * s, ch - 3 * s};
         }
 
-        int type(std::string& query)
+        int type(std::string& query, size_t limit = 48)
         {
             if (selected == 38) {
                 return 1;
@@ -896,7 +1050,7 @@ namespace gt4
                 if (!query.empty()) {
                     query.pop_back();
                 }
-            } else if (query.size() < 48) {
+            } else if (query.size() < limit) {
                 query += selected == 36 ? " " : key(selected);
             }
             return 0;
@@ -911,19 +1065,80 @@ namespace gt4
         AudioLevels audioLevels;
         StudioPreferences menuPreferences;
         std::array<int, 3> menuExtras{{0, 0, 0}};
+        std::array<int, 2> menuVolume{{64, 64}};
         bool menuShadows = true;
         bool menuSnapshot = false;
         ControllerKeyboard keyboard;
         ViewTransition transition;
         bool favoritesOnly = false, controllerUsed = false, footerHidden = false;
         int sortMode = 5, countryFilter = -1, classFilter = -1;
+        uint32_t countryMask = 0, classMask = 0;
+        int unitFormat = 0, japanBackground = 0, bikeBackground = 0, antialiasing = 2, ambientOcclusion = 2;
+        int floorReflections = 0, vehicleReflections = 3;
+        int language = 0;
+
+        bool japaneseCategory() const
+        {
+            return countryMask ? countryMask == (1u << unsigned(Country::Japan)) : countryFilter == int(Country::Japan);
+        }
+
+        bool bikeCategory() const
+        {
+            constexpr uint32_t bikes = (1u << 7) | (1u << 8) | (1u << 11);
+            return classMask ? (classMask & ~bikes) == 0
+                             : classFilter >= 0 && (bikes & (1u << classFilter)) != 0;
+        }
+
+        int backgroundStyle() const
+        {
+            if (bikeCategory()) {
+                return bikeBackground == 0 ? 2 : bikeBackground == 2 && japaneseCategory() ? 1 : 0;
+            }
+            return japaneseCategory() && japanBackground == 0 ? 1 : 0;
+        }
+
+        bool accepts(Country country, int category) const
+        {
+            const int index = classIndex(category);
+            const bool hasCountry = countryMask ? (countryMask & (1u << unsigned(country))) != 0
+                                               : countryFilter < 0 || countryFilter == int(country);
+            const bool hasClass = classMask ? (classMask & (1u << index)) != 0
+                                           : classFilter < 0 || classFilter == index;
+            return hasCountry && hasClass;
+        }
         bool shadows = true, carLogo = false, brandLogo = false, displayModelId = true, displayModelName = true;
         double pointerMoved = 0;
+        bool countryShortcut = false;
+        int shortcutCountry = -1, shortcutOrder = 5, shortcutModel = -1;
+        uint32_t shortcutMask = 0;
+
+        int endCountryShortcut()
+        {
+            if (!countryShortcut) {
+                return -1;
+            }
+            countryFilter = shortcutCountry;
+            countryMask = shortcutMask;
+            sortMode = shortcutOrder;
+            countryShortcut = false;
+            return shortcutModel;
+        }
         bool dock = false;
 
         StudioPreferences preferences() const
         {
             StudioPreferences result;
+            result.countryMask = countryMask;
+            result.classMask = classMask;
+            result.antialiasing = antialiasing;
+            result.ambientOcclusion = ambientOcclusion;
+            result.floorReflections = floorReflections;
+            result.vehicleReflections = vehicleReflections;
+            result.language = language;
+            result.unitFormat = unitFormat;
+            result.japanBackground = japanBackground;
+            result.bikeBackground = bikeBackground;
+            result.shadows = shadows;
             result.sortMode = sortMode;
             result.countryFilter = countryFilter;
             result.classFilter = classFilter;
@@ -932,11 +1147,27 @@ namespace gt4
             result.displayModelId = displayModelId;
             result.displayModelName = displayModelName;
             result.audio = audioLevels;
+            if (countryShortcut) {
+                result.countryFilter = shortcutCountry;
+                result.countryMask = shortcutMask;
+                result.sortMode = shortcutOrder;
+            }
             return result;
         }
 
         void applyPreferences(const StudioPreferences& preferences)
         {
+            countryMask = preferences.countryMask;
+            classMask = preferences.classMask;
+            antialiasing = preferences.antialiasing;
+            ambientOcclusion = preferences.ambientOcclusion;
+            floorReflections = preferences.floorReflections;
+            vehicleReflections = preferences.vehicleReflections;
+            language = preferences.language;
+            unitFormat = preferences.unitFormat;
+            japanBackground = preferences.japanBackground;
+            bikeBackground = preferences.bikeBackground;
+            shadows = preferences.shadows;
             sortMode = preferences.sortMode;
             countryFilter = preferences.countryFilter;
             classFilter = preferences.classFilter;

@@ -2,6 +2,25 @@
 
 namespace gt4
 {
+    struct PreviewDirtScope
+    {
+        inline static float level = -1.f;
+        float previous;
+
+        explicit PreviewDirtScope(float desired) : previous(level)
+        {
+            level = desired;
+        }
+
+        ~PreviewDirtScope()
+        {
+            level = previous;
+        }
+
+        PreviewDirtScope(const PreviewDirtScope&) = delete;
+        PreviewDirtScope& operator=(const PreviewDirtScope&) = delete;
+    };
+
     template <class Vehicle, class Setup, class Draw, class Reset>
     void previewMaterialCycle(Vehicle vehicle, Setup setup, Draw draw, Reset reset)
     {

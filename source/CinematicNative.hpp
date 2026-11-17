@@ -1,6 +1,6 @@
 #pragma once
 #include "Game.hpp"
-#include "CinematicVehicle.hpp"
+#include "Cinematic.hpp"
 
 namespace gt4::cinematicNative
 {
@@ -81,6 +81,39 @@ namespace gt4::cinematicNative
             }
             p.present = true;
             frames[i] = frame;
+        }
+        return frames;
+    }
+
+    // cbike and cbmx share the node array, but their handlebar indices differ
+    inline std::array<void*, cinematicComponentCount>
+    captureBikeSteering(void* vehicle, int kind, std::array<CinematicPart, 2>& steering)
+    {
+        std::array<void*, cinematicComponentCount> frames{};
+        steering = {};
+        if (!vehicle || (kind != 9 && kind != 10)) {
+            return frames;
+        }
+        void* fork = nullptr;
+        game::Matrix basis{};
+        if (!gta::read(uintptr_t(vehicle) + 0x5A0 + 2 * sizeof(void*), fork) || !matrix(fork, basis)) {
+            return frames;
+        }
+        const auto axis = cinematicUnit(point(basis.forward));
+        const int handlebar = kind == 10 ? 6 : 7;
+        for (size_t index = 0; index < steering.size(); ++index) {
+            void* frame = fork;
+            if (index == 1 && !gta::read(uintptr_t(vehicle) + 0x5A0 + size_t(handlebar) * sizeof(void*), frame)) {
+                continue;
+            }
+            if (!frame) {
+                continue;
+            }
+            auto& part = steering[index];
+            part.present = true;
+            part.pivot = point(basis.pos);
+            part.axis = axis;
+            frames[size_t(CinematicComponent::FrontLeftWheel) + index] = frame;
         }
         return frames;
     }

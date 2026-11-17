@@ -7,6 +7,13 @@
 
 namespace gt4
 {
+    enum class SearchKind
+    {
+        Any,
+        Name,
+        Id
+    };
+
     inline std::string trimName(const std::string& s)
     {
         const auto a = s.find_first_not_of(" \t\r\n"), b = s.find_last_not_of(" \t\r\n");
@@ -57,7 +64,10 @@ namespace gt4
         return (e.modelKey && e.modelKey == modelNameKey(name)) || lowerName(e.name) == lowerName(name);
     }
 
-    template <class E> size_t findModel(const std::vector<E>& entries, const std::string& raw)
+    // keep exact names first, then cycle partial matches without retaining native pointers
+    template <class E>
+    size_t findModel(const std::vector<E>& entries, const std::string& raw, int previousModel = -1,
+                     SearchKind kind = SearchKind::Any)
     {
         const auto query = trimName(raw);
         if (query.empty()) {
@@ -69,7 +79,7 @@ namespace gt4
         for (char c : query) {
             onlyDigits = onlyDigits && c >= '0' && c <= '9';
         }
-        if (numeric || onlyDigits) {
+        if (kind == SearchKind::Id || (kind == SearchKind::Any && (numeric || onlyDigits))) {
             for (size_t i = 0; i < entries.size(); ++i) {
                 if (numeric && entries[i].id == id) {
                     return i;
@@ -77,22 +87,37 @@ namespace gt4
             }
             return entries.size();
         }
-        for (size_t i = 0; i < entries.size(); ++i) {
-            if (sameModelName(entries[i], query)) {
-                return i;
-            }
-        }
         const auto text = lowerName(query);
-        for (size_t i = 0; i < entries.size(); ++i) {
-            if (lowerName(entries[i].name).rfind(text, 0) == 0) {
-                return i;
+        const auto rank = [&](const E& entry) {
+            const auto display = lowerName(entry.name);
+            const auto model = lowerName(entry.modelName);
+            if (sameModelName(entry, query) || model == text) {
+                return 0;
+            }
+            if (display.rfind(text, 0) == 0 || model.rfind(text, 0) == 0) {
+                return 1;
+            }
+            if (display.find(text) != std::string::npos || model.find(text) != std::string::npos) {
+                return 2;
+            }
+            return -1;
+        };
+        size_t first = entries.size();
+        bool afterPrevious = previousModel < 0;
+        for (int priority = 0; priority < 3; ++priority) {
+            for (size_t i = 0; i < entries.size(); ++i) {
+                if (rank(entries[i]) != priority) {
+                    continue;
+                }
+                if (first == entries.size()) {
+                    first = i;
+                }
+                if (afterPrevious) {
+                    return i;
+                }
+                afterPrevious = entries[i].id == previousModel;
             }
         }
-        for (size_t i = 0; i < entries.size(); ++i) {
-            if (lowerName(entries[i].name).find(text) != std::string::npos) {
-                return i;
-            }
-        }
-        return entries.size();
+        return first;
     }
 }

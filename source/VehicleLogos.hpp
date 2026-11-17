@@ -136,22 +136,37 @@ namespace gt4
             if (!std::filesystem::is_directory(root, ec)) {
                 return;
             }
-            for (std::filesystem::directory_iterator
-                     it(root, std::filesystem::directory_options::skip_permission_denied, ec),
-                 end;
-                 it != end && folders.size() < 4096;
-                 it.increment(ec)) {
-                if (ec) {
-                    ec.clear();
-                    continue;
+            const auto scan = [&](const std::filesystem::path& parent, bool legacy) {
+                std::error_code error;
+                if (!std::filesystem::is_directory(parent, error)) {
+                    return;
                 }
-                if (it->is_directory(ec) && !it->is_symlink(ec)) {
-                    const auto name = it->path().filename().u8string();
-                    if (!name.empty() && name[0] != '.') {
-                        folders.emplace(modelNameKey(name), it->path());
+                for (std::filesystem::directory_iterator
+                         it(parent, std::filesystem::directory_options::skip_permission_denied, error), end;
+                     it != end && folders.size() < 4096; it.increment(error)) {
+                    if (error) {
+                        error.clear();
+                        continue;
+                    }
+                    if (it->is_directory(error) && !it->is_symlink(error)) {
+                        const auto name = it->path().filename().u8string();
+                        const auto folded = lowerName(name);
+                        if (!name.empty() && name[0] != '.' && (!legacy || (folded != "vanilla" && folded != "add-on"))) {
+                            folders[modelNameKey(name)] = it->path();
+                        }
                     }
                 }
-            }
+            };
+            scan(root, true);
+            scan(root / "vanilla", false);
+            scan(root / "add-on", false);
+        }
+
+        std::filesystem::path imagePath(uint32_t model, bool brand) const
+        {
+            const auto folder = folders.find(model);
+            return folder == folders.end() ? std::filesystem::path{}
+                                          : folder->second / (brand ? L"brand.png" : L"car.png");
         }
 
         IDirect3DTexture9* get(IDirect3DDevice9* d, uint32_t model, bool brand, unsigned& w, unsigned& h)
@@ -167,7 +182,7 @@ namespace gt4
                     release(cache.begin()->second.texture);
                     cache.erase(cache.begin());
                 }
-                found = cache.emplace(key, load(d, folder->second / (brand ? L"brand.png" : L"car.png"))).first;
+                found = cache.emplace(key, load(d, imagePath(model, brand))).first;
             }
             w = found->second.width;
             h = found->second.height;

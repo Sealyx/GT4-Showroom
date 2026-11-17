@@ -13,6 +13,9 @@
 #include "VehicleViewer.hpp"
 #include "TransFender.hpp"
 #include "ViewerPhoto.hpp"
+#include "SearchPanel.hpp"
+#include "LicensePlate.hpp"
+#include "InformationPanel.hpp"
 
 namespace gt4
 // main showroom controller
@@ -91,7 +94,10 @@ namespace gt4
         Country country = Country::Unknown;
         int id = 0, kind = 0, classId = 0;
         uint32_t modelKey = 0;
-        float topSpeed = -1;
+        float topSpeed = -1, handlingMass = 0;
+        unsigned handlingGears = 0;
+        char handlingDrive = '?';
+        bool handlingValid = false, customInformation = false;
         std::string category = "NORMAL", name, modelName, brand = "SAN ANDREAS", title, year, power, torque,
                     information;
         std::vector<Paint> paints;
@@ -115,21 +121,22 @@ namespace gt4
     {
         if (controller) {
             if (page == Page::Cars) {
-                return "CROSS Paint    SQUARE Favorite    TRIANGLE Favorites    SELECT Menu    L3 SEARCH";
+                return "CROSS Paint    SQUARE Favorite    TRIANGLE Favorites    SELECT Menu    L3 Search    SQUARE+TRIANGLE Info    L1+R1 Hide UI";
             }
             if (page == Page::Livery) {
-                return "CROSS Spawn    CIRCLE Colors    SELECT Menu";
+                return "CROSS Spawn    CIRCLE Colors    SELECT Menu    L1+R1 Hide UI";
             }
-            return liveries ? "CROSS Liveries    CIRCLE Cars    SELECT Menu"
-                            : "CROSS Spawn    CIRCLE Cars    SELECT Menu";
+            return liveries ? "CROSS Liveries    CIRCLE Vehicles    SELECT Menu    L1+R1 Hide UI"
+                            : "CROSS Spawn    CIRCLE Vehicles    SELECT Menu    L1+R1 Hide UI";
         }
         if (page == Page::Cars) {
-            return "ENTER Paint    UP Favorite    F Favorites    RMB Menu    ` SEARCH";
+            return "ENTER Paint    UP Favorite    F Favorites    RMB Menu    ` Search    I Info    H Hide UI";
         }
         if (page == Page::Livery) {
-            return "ENTER Spawn    BACKSPACE Colors    RMB Menu";
+            return "ENTER Spawn    BACKSPACE Colors    RMB Menu    H Hide UI";
         }
-        return liveries ? "ENTER Liveries    BACKSPACE Cars    RMB Menu" : "ENTER Spawn    BACKSPACE Cars    RMB Menu";
+        return liveries ? "ENTER Liveries    BACKSPACE Vehicles    RMB Menu    H Hide UI"
+                        : "ENTER Spawn    BACKSPACE Vehicles    RMB Menu    H Hide UI";
     }
     enum class Cue
     {
@@ -190,10 +197,19 @@ namespace gt4
         VehicleViewer menuViewer;
         TransFender shop;
         ViewerPhoto photo;
+        bool informationOpen = false;
+        int informationChoice = 3;
+        ReviewMotion informationMotion;
         bool viewerSnapshot = false, postSelectionCinematic = false, appearanceReady = true;
         double viewerBegan = 0;
         SpawnReview spawnReview = SpawnReview::None;
         ReviewMotion review;
+        bool plateOpen = false, plateEditing = false;
+        int plateRow = 3, plateHover = -1;
+        int plateAction = -1;
+        SpawnReview plateReturn = SpawnReview::None;
+        ReviewMotion plateMotion;
+        std::string plate;
         int pendingReviewChoice = -1;
         bool whitePaintRequested = false;
         int whitePaintModel = -1;
@@ -290,7 +306,8 @@ namespace gt4
 
         bool busy() const
         {
-            return fade.action != CloseAction::None || ui.transition.active() || viewer.transitioning();
+            return fade.action != CloseAction::None || ui.transition.active() || viewer.transitioning() ||
+                   (page == Page::Paint && clock - colorsReturned < .20);
         }
 
         void recovered()
@@ -318,7 +335,7 @@ namespace gt4
 
         bool hotspotsEnabled() const
         {
-            return viewer.active ? viewer.hotspots : ui.vehicle.hotspots;
+            return ui.menu.allowHotspots && (viewer.active ? viewer.hotspots : ui.vehicle.hotspots);
         }
 
         float entryAudioGain() const
@@ -360,6 +377,31 @@ namespace gt4
             dragging = false;
             fade.request(CloseAction::Spawn, clock, blackAlpha());
             cue = Cue::Spawn;
+        }
+
+        void beginPlate(SpawnReview previous)
+        {
+            plateReturn = previous;
+            plateOpen = true;
+            plateEditing = true;
+            plateRow = 0;
+            plateHover = plateAction = -1;
+            plate.clear();
+            plateMotion = {clock};
+            ui.keyboard.open = false;
+            dragging = false;
+            cue = Cue::Open;
+        }
+
+        void finishPlate(bool confirm)
+        {
+            if (!plateOpen || plateAction >= 0) {
+                return;
+            }
+            plateAction = confirm ? 1 : 0;
+            plateMotion.dismiss(clock);
+            ui.keyboard.open = false;
+            cue = confirm ? Cue::Accept : Cue::Back;
         }
 
         void returnToCarSelection()
@@ -433,17 +475,13 @@ namespace gt4
                 cue = Cue::Back;
                 return;
             }
-            if (review == SpawnReview::ShopExit && choice == ReviewChoice::Spawn) {
-                shop.page = shop.destination = ShopPage::Closed;
-                shop.transitionStart = -1.;
-            }
             if (choice == ReviewChoice::Exit) {
                 returnToCarSelection();
                 cue = Cue::Back;
                 return;
             }
             if (choice == ReviewChoice::Spawn) {
-                requestSpawn();
+                beginPlate(review);
                 return;
             }
             if (review == SpawnReview::Viewer) {
@@ -462,6 +500,11 @@ namespace gt4
         size_t selected = 0, paint = 0;
         int beforeFavoritesModel = -1;
         double clock = 0, changed = 0, opened = 0, stripChanged = 0;
+        double classClick = -10, heavyUntil = -1;
+        double colorsReturned = -10;
+        bool cursorPressed = false;
+        float cursorPressMix = 0;
+        std::array<float, 3> backgroundBlend{{1, 0, 0}};
         float scroll = 0, paintMix = 0;
         size_t count = 0;
         float pointerX = .5f, pointerY = .79f;
@@ -470,10 +513,32 @@ namespace gt4
         std::string status;
         bool searching = false, searchFailed = false;
         std::string query, searchNotice;
+        std::string lastSearch;
+        int lastSearchModel = -1;
+        bool searchById = false, lastSearchById = false, searchPicker = false, searchEditing = true;
+        int searchRow = 1, searchHover = -1, searchResultId = -1, searchModeCursor = 0;
+        std::string searchResultName;
         double searchUntil = 0;
         double searchBegan = -1, searchClosed = -1;
         float searchCloseAlpha = 0;
         bool searchKeyboard = false;
+
+        float searchOffset(float scale) const
+        {
+            if (searching) {
+                return (1 - searchOpacity()) * 14 * scale;
+            }
+            const float start = (1 - searchCloseAlpha) * 14 * scale;
+            const float amount = VehicleViewer::ease(float((clock - searchClosed) / .16));
+            return start - amount * (start + 14 * scale);
+        }
+
+        float searchNoticeOpacity() const
+        {
+            const float entry = VehicleViewer::ease(float((clock - searchUntil + 2.8) / .16));
+            const float leave = VehicleViewer::ease(float((searchUntil - clock) / .16));
+            return std::min(entry, leave);
+        }
 
         float searchOpacity() const
         {
@@ -500,7 +565,7 @@ namespace gt4
 
         void beginSearch()
         {
-            if (busy()) {
+            if (busy() || plateOpen) {
                 return;
             }
             ui.menu.open = false;
@@ -514,6 +579,11 @@ namespace gt4
             searchBegan = clock;
             searchClosed = -1;
             searchKeyboard = false;
+            searchPicker = false;
+            searchEditing = true;
+            searchRow = 1;
+            searchHover = searchResultId = -1;
+            searchResultName.clear();
             cue = Cue::Open;
             query.clear();
             searchNotice.clear();
@@ -532,6 +602,13 @@ namespace gt4
                 return;
             }
             const auto command = lowerName(trimName(query));
+            if (command != lastSearch || searchById != lastSearchById) {
+                lastSearchModel = -1;
+            }
+            lastSearch = command;
+            lastSearchById = searchById;
+            searchResultId = -1;
+            searchResultName.clear();
             if (command == "realbig") {
                 const auto next = rollPrize(cars, random, secretUnlocks);
                 if (!next) {
@@ -574,13 +651,18 @@ namespace gt4
                 cue = Cue::Accept;
                 return;
             }
-            const auto index = findModel(cars, query);
+            const auto kind = searchById ? SearchKind::Id : SearchKind::Name;
+            const auto index = findModel(cars, query, lastSearchModel, kind);
             searchFailed = index == cars.size();
             searchUntil = clock + 2.8;
             if (searchFailed) {
+                lastSearchModel = -1;
                 searchNotice = "MODEL NOT FOUND";
                 cue = Cue::Error;
             } else {
+                lastSearchModel = cars[index].id;
+                searchResultId = cars[index].id;
+                searchResultName = cars[index].name;
                 select(index, cars);
                 closeSearch();
                 searchNotice = "MODEL FOUND: " + cars[index].name + "  /  " + std::to_string(cars[index].id);
@@ -590,6 +672,9 @@ namespace gt4
 
         void begin(size_t total)
         {
+            plateOpen = plateEditing = false;
+            plate.clear();
+            plateAction = -1;
             if (!total) {
                 return;
             }
@@ -617,12 +702,20 @@ namespace gt4
             searchCloseAlpha = 0;
             query.clear();
             searchNotice.clear();
+            lastSearch.clear();
+            lastSearchModel = -1;
+            searchById = lastSearchById = searchPicker = false;
+            searchEditing = true;
+            searchRow = 1;
+            searchHover = searchResultId = -1;
+            searchResultName.clear();
             spawn = false;
             dragging = false;
             page = Page::Cars;
             paint = 0;
             selected = std::min(selected, count - 1);
             opened = changed = clock;
+            informationOpen = false;
             stripChanged = clock;
             scroll = scrollTarget();
             pointerX = .5f;
@@ -636,6 +729,25 @@ namespace gt4
         {
             seconds = std::isfinite(seconds) ? std::clamp(seconds, 0., 1.) : 0;
             clock += seconds;
+            if (informationOpen && informationMotion.finished(clock)) {
+                informationOpen = false;
+            }
+            if (plateOpen && plateAction >= 0 && plateMotion.finished(clock)) {
+                plateOpen = false;
+                if (plateAction == 1) {
+                    if (plateReturn == SpawnReview::ShopExit) {
+                        shop.page = shop.destination = ShopPage::Closed;
+                        shop.transitionStart = -1.;
+                    }
+                    requestSpawn();
+                } else {
+                    spawnReview = plateReturn;
+                    review = {clock};
+                    reviewChoice = 2;
+                    pendingReviewChoice = -1;
+                }
+                plateAction = -1;
+            }
             if (spawnReview != SpawnReview::None && pendingReviewChoice >= 0 && review.finished(clock)) {
                 finishSpawnReview(static_cast<ReviewChoice>(pendingReviewChoice));
             }
@@ -645,11 +757,17 @@ namespace gt4
                 cue = Cue::WashComplete;
             }
             ui.cinematic.step(seconds);
+            cursorPressMix += (float(cursorPressed) - cursorPressMix) * float(1 - std::exp(-seconds * 35));
+            const int style = ui.backgroundStyle();
+            for (int i = 0; i < 3; ++i) {
+                backgroundBlend[size_t(i)] += (float(i == style) - backgroundBlend[size_t(i)]) *
+                                             float(1 - std::exp(-seconds * 7));
+            }
             ui.vehicle.step(seconds);
             ui.transition.step(clock);
             viewer.step(clock,
                         open && ui.cinematic.active && !ui.modal() && !shop.open() && !photo.active && !searching &&
-                            spawnReview == SpawnReview::None && fade.action == CloseAction::None &&
+                            spawnReview == SpawnReview::None && !plateOpen && fade.action == CloseAction::None &&
                             !ui.transition.active() && (!postSelectionCinematic || appearanceReady));
             if (viewer.active && !ui.cinematic.active) {
                 ui.cinematic.enter(clock, enthusia ? enthusiaPose(clock - motionBegan).yaw : heading() + pi);
@@ -736,6 +854,9 @@ namespace gt4
 
         void accept(const std::vector<Entry>& cars)
         {
+            if (plateOpen) {
+                return;
+            }
             if (!open || busy() || cars.empty()) {
                 return;
             }
@@ -779,6 +900,10 @@ namespace gt4
 
         void back()
         {
+            if (plateOpen) {
+                finishPlate(false);
+                return;
+            }
             if (!open || busy()) {
                 return;
             }
@@ -821,6 +946,7 @@ namespace gt4
             }
             if (page == Page::Livery) {
                 page = Page::Paint;
+                colorsReturned = clock;
                 stripChanged = clock;
                 cue = Cue::Back;
             } else if (page == Page::Paint) {
@@ -866,7 +992,18 @@ namespace gt4
 
         float titleMix() const
         {
-            return ease(float(std::sin((clock - changed) * 1.4) * 1.8));
+            constexpr double hold = 5., transition = .3;
+            const double phase = std::fmod(std::max(0., clock - changed), 2 * (hold + transition));
+            if (phase < hold) {
+                return 0;
+            }
+            if (phase < hold + transition) {
+                return ease(float((phase - hold) / transition));
+            }
+            if (phase < 2 * hold + transition) {
+                return 1;
+            }
+            return 1 - ease(float((phase - 2 * hold - transition) / transition));
         }
 
         float opening() const
@@ -1002,8 +1139,12 @@ namespace gt4
         } else if (model.page == Page::Livery) {
             for (size_t i = 0; i < model.liveries.size(); ++i) {
                 if (liveryBox(w, h, i, model.liveries.size()).contains(x, y)) {
-                    model.livery = i;
-                    model.cue = Cue::Move;
+                    if (model.livery == i) {
+                        model.accept(cars);
+                    } else {
+                        model.livery = i;
+                        model.cue = Cue::Move;
+                    }
                     return;
                 }
             }
@@ -1011,8 +1152,12 @@ namespace gt4
             const size_t n = std::max(size_t(1), cars[model.selected].paints.size());
             for (size_t i = 0; i < n; ++i) {
                 if (paintBox(w, h, i, n).contains(x, y)) {
-                    model.paint = i;
-                    model.cue = Cue::Move;
+                    if (model.paint == i) {
+                        model.accept(cars);
+                    } else {
+                        model.paint = i;
+                        model.cue = Cue::Move;
+                    }
                     return;
                 }
             }
@@ -1059,7 +1204,16 @@ namespace gt4
             const auto box = s.photo.pointerTarget(w, h);
             x = (box.x + box.w * .5f) / w;
             y = (box.y + box.h * .5f) / h;
+        } else if (s.plateOpen) {
+            const PlatePanel panel(w, h, s.ui.keyboard.open, s.plateMotion.offset(s.clock, h));
+            const auto box = s.ui.keyboard.open ? s.ui.keyboard.box(w, h, s.ui.keyboard.selected)
+                                               : panel.target(s.plateRow);
+            x = (box.x + box.w * .5f) / w;
+            y = (box.y + box.h * .5f) / h;
         } else if (s.spawnReview != SpawnReview::None) {
+            if (s.reviewChoice < 0) {
+                return;
+            }
             auto button = spawnReviewButton(w, h, s.reviewChoice, s.reviewButtons());
             button.y += s.reviewOffset(h);
             x = (button.x + button.w * .5f) / w;
@@ -1070,6 +1224,9 @@ namespace gt4
                 return;
             }
             if (shop.partReview) {
+                if (shop.reviewChoice < 0) {
+                    return;
+                }
                 auto button = spawnReviewButton(w, h, shop.reviewChoice, 2);
                 button.y += shop.review.offset(s.clock, h);
                 x = (button.x + button.w * .5f) / w;
@@ -1109,11 +1266,18 @@ namespace gt4
             }
         } else if (s.searching) {
             if (!s.ui.keyboard.open) {
-                return;
+                if (s.searchRow < 0) {
+                    return;
+                }
+                const SearchPanel panel(w, h, false, s.searchOffset(SearchPanel(w, h, false).scale));
+                const auto box = panel.target(s.searchRow, s.searchPicker, s.searchById);
+                x = (box.x + box.w * .5f) / w;
+                y = (box.y + box.h * .5f) / h;
+            } else {
+                const auto b = s.ui.keyboard.box(w, h, s.ui.keyboard.selected);
+                x = (b.x + b.w * .65f) / w;
+                y = (b.y + b.h * .62f) / h;
             }
-            const auto b = s.ui.keyboard.box(w, h, s.ui.keyboard.selected);
-            x = (b.x + b.w * .65f) / w;
-            y = (b.y + b.h * .62f) / h;
         } else if (s.page == Page::Prize) {
             x = .5f;
             y = prizeButtonTop + prizeButtonHeight * .45f;

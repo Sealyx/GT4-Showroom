@@ -632,10 +632,8 @@ void drawReviewPanel(IDirect3DDevice9* d,
     const float scale = height / 720.f;
     auto panel = spawnReviewPanel(width, height);
     panel.y += offset;
-    const float edge = std::max(.6f, scale);
     rect(d, 0, 0, width, height, color(0, .2f * reveal));
     rect(d, panel.x + 4 * scale, panel.y + 5 * scale, panel.w, panel.h, color(0, .28f * reveal));
-    rect(d, panel.x - edge, panel.y - edge, panel.w + 2 * edge, panel.h + 2 * edge, color(0x747579, reveal));
     rect(d, panel.x, panel.y, panel.w, panel.h, color(0xB3B3B8, reveal));
     rect(d, panel.x, panel.y, panel.w, 29 * scale, color(0x17130B, reveal));
     text(d,
@@ -647,11 +645,16 @@ void drawReviewPanel(IDirect3DDevice9* d,
          true,
          0,
          true);
+    float bodySize = std::min(fitted(first, 14.5f * scale, panel.w - 32 * scale, true),
+                              fitted(second, 14.5f * scale, panel.w - 32 * scale, true));
+    if (third) {
+        bodySize = std::min(bodySize, fitted(third, 14.5f * scale, panel.w - 32 * scale, true));
+    }
     text(d,
          first,
          width * .5f,
          panel.y + 48 * scale,
-         fitted(first, 14.5f * scale, panel.w - 32 * scale, true),
+         bodySize,
          color(0x111214, reveal),
          true,
          0,
@@ -659,8 +662,8 @@ void drawReviewPanel(IDirect3DDevice9* d,
     text(d,
          second,
          width * .5f,
-         panel.y + 66 * scale,
-         fitted(second, 12.5f * scale, panel.w - 32 * scale, true),
+         panel.y + 75 * scale,
+         bodySize,
          color(0x111214, reveal),
          true,
          0,
@@ -669,8 +672,8 @@ void drawReviewPanel(IDirect3DDevice9* d,
         text(d,
              third,
              width * .5f,
-             panel.y + 84 * scale,
-             fitted(third, 12.5f * scale, panel.w - 32 * scale, true),
+             panel.y + 96 * scale,
+             bodySize,
              color(0x111214, reveal),
              true,
              0,
@@ -696,12 +699,11 @@ void spawnReviewDialog(IDirect3DDevice9* d, float width, float height, const Mod
                         state.reviewReveal(),
                         state.reviewOffset(height),
                         "Livery Warning",
-                        "This vehicle has custom liveries and it's recommended for you",
-                        "to switch its color to white. Would you like the switch or would you",
+                        "This vehicle has liveries and it's recommended to switch its color to white.",
+                        "Would you like the switch or would you rather keep your chosen color?",
                         buttons.data(),
                         int(buttons.size()),
-                        state.reviewChoice,
-                        "rather keep whichever color you chose?");
+                        state.reviewChoice);
         return;
     }
     if (state.spawnReview == SpawnReview::ShopReset) {
@@ -713,7 +715,7 @@ void spawnReviewDialog(IDirect3DDevice9* d, float width, float height, const Mod
                         state.reviewOffset(height),
                         "Customization",
                         "Return the wheels or body components to stock?",
-                        "Choose the parts you would like to reset",
+                        "Choose the parts you would like to reset.",
                         buttons.data(),
                         int(buttons.size()),
                         state.reviewChoice);
@@ -729,7 +731,7 @@ void spawnReviewDialog(IDirect3DDevice9* d, float width, float height, const Mod
                         state.reviewOffset(height),
                         "Vehicle Viewer",
                         "Are you sure you would like to spawn the vehicle now?",
-                        "Return to your previous view or exit to the vehicle selection",
+                        "Return to your previous view or exit to the vehicle selection.",
                         buttons.data(),
                         int(buttons.size()),
                         state.reviewChoice);
@@ -739,8 +741,8 @@ void spawnReviewDialog(IDirect3DDevice9* d, float width, float height, const Mod
     const std::string first = canSpawn ? "Are you sure you would like to spawn the vehicle now?"
                                        : "Return to Cinematic or exit to the vehicle selection?";
     const std::string second = state.spawnReview == SpawnReview::Initial
-                                   ? "You can enter Cinematic Mode to inspect your vehicle"
-                                   : "Use Back to return to the previous view";
+                                   ? "You can enter Cinematic to inspect and customize your vehicle."
+                                   : "Use Back to return to the previous view.";
     const char* primary = state.spawnReview == SpawnReview::Initial ? "Enter Cinematic" : "Back to Cinematic";
     const std::array<const char*, 3> buttons{primary, "Exit", "Spawn Now"};
     const int count = state.reviewButtons();

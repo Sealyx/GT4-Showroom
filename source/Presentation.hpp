@@ -16,6 +16,57 @@ namespace gt4
         }
     };
 
+    struct FooterHelpClock
+    {
+        std::string message;
+        int target = -1;
+        double began = -1;
+
+        bool describe(const std::string& help, int source, double now)
+        {
+            if (help.empty()) {
+                message.clear();
+                target = -1;
+                began = -1;
+                return false;
+            }
+            if (message != help || target != source || began < 0 || now < began) {
+                message = help;
+                target = source;
+                began = now;
+            }
+            return std::fmod(std::max(0., now - began), 40.) < 30.;
+        }
+    };
+
+    inline std::string footerSentence(std::string message)
+    {
+        if (!message.empty() && message.back() != '.' && message.back() != '?' && message.back() != '!') {
+            message += '.';
+        }
+        return message;
+    }
+
+    inline float footerMarquee(float contentWidth, float availableWidth, double elapsed, float scale)
+    {
+        const float overflow = std::max(0.f, contentWidth - availableWidth);
+        if (overflow <= 0 || !std::isfinite(elapsed)) {
+            return 0;
+        }
+        const double travel = overflow / std::max(1.f, 30.f * scale);
+        const double phase = std::fmod(std::max(0., elapsed), 4. + 2. * travel);
+        if (phase < 2.) {
+            return 0;
+        }
+        if (phase < 2. + travel) {
+            return overflow * float((phase - 2.) / travel);
+        }
+        if (phase < 4. + travel) {
+            return overflow;
+        }
+        return overflow * float(1. - (phase - 4. - travel) / travel);
+    }
+
     inline float sideOnHeading(V3 player, V3 vehicle)
     {
         return std::atan2(-(vehicle.x - player.x), vehicle.y - player.y) + pi * .5f;
