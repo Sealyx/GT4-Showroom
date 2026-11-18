@@ -165,13 +165,46 @@ namespace gt4::studioLighting
         const int column = std::min(7, int(u));
         const auto next = std::upper_bound(std::begin(studioRows) + 1, std::end(studioRows) - 1, v);
         const size_t row = size_t(next - studioRows - 1);
-        const float tx = u - column, ty = (v - studioRows[row]) / (studioRows[row + 1] - studioRows[row]);
+        const auto interpolate = [](float previous, float left, float right, float following,
+                                    float before, float width, float after, float fraction) {
+            const float slope = (right - left) / width;
+            const auto tangent = [](float a, float b) {
+                return a * b > 0.f ? 2.f * a * b / (a + b) : 0.f;
+            };
+            const float start = before > 0 ? tangent((left - previous) / before, slope) : slope;
+            const float end = after > 0 ? tangent(slope, (following - right) / after) : slope;
+            const float t2 = fraction * fraction, t3 = t2 * fraction;
+            return std::clamp(left * (2 * t3 - 3 * t2 + 1) + right * (3 * t2 - 2 * t3) +
+                                  width * (start * (t3 - 2 * t2 + fraction) + end * (t3 - t2)),
+                              std::min(left, right), std::max(left, right));
+        };
+        const size_t lastRow = std::size(studioRows) - 1;
+        const size_t previous = row > 0 ? row - 1 : row;
+        const size_t following = std::min(row + 2, lastRow);
+        const float width = studioRows[row + 1] - studioRows[row];
+        const float ty = (v - studioRows[row]) / width;
         const auto sample = [&](unsigned setup, unsigned shift) {
             const auto& stops = studioStops[setup];
-            const auto at = [&](size_t line, int col) { return float((stops[line][col] >> shift) & 255); };
-            const float upper = at(row, column) * (1 - tx) + at(row, column + 1) * tx;
-            const float lower = at(row + 1, column) * (1 - tx) + at(row + 1, column + 1) * tx;
-            return upper + (lower - upper) * ty;
+            const auto line = [&](size_t yIndex) {
+                const auto at = [&](int col) { return float((stops[yIndex][col] >> shift) & 255); };
+                return interpolate(at(std::max(0, column - 1)), at(column), at(column + 1),
+                                   at(std::min(column + 2, 8)), column > 0 ? 1.f : 0.f, 1.f,
+                                   column < 7 ? 1.f : 0.f, u - column);
+            };
+            const float color = interpolate(line(previous), line(row), line(row + 1), line(following),
+                                            studioRows[row] - studioRows[previous], width,
+                                            studioRows[following] - studioRows[row + 1], ty);
+            // The wall drops off before the distinct pool of light on the curved floor.
+            const float wallShoulder = gaussian((x - .5f) / .68f, (v - .464f) / .066f);
+            if (setup == 2) {
+                const float ridge = .586f - (x - .5f) * .115f;
+                return color - 9.f * wallShoulder +
+                       48.f * gaussian((x - .19f) / .27f, (v - ridge) / .036f);
+            }
+            if (setup == 3) {
+                return color + 27.f * gaussian((x - .21f) / .36f, (v - .54f) / .083f);
+            }
+            return color - (setup == 1 ? 6.f : 5.f) * wallShoulder;
         };
         std::array<float, 3> rgb{};
         for (unsigned i = 0; i < 3; ++i) {
@@ -179,6 +212,8 @@ namespace gt4::studioLighting
             const float from = sample(light.from, shift);
             rgb[i] = light.from == light.to ? from : from + (sample(light.to, shift) - from) * light.mix;
         }
-        return rgb;
+        const float value = std::clamp(.2126f * rgb[0] + .7152f * rgb[1] + .0722f * rgb[2], 0.f, 255.f);
+        const float cool = std::min(2.5f, value * .027f);
+        return {value - cool, value, std::min(255.f, value + cool * .6f)};
     }
 }

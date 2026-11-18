@@ -34,6 +34,7 @@
 #include "ViewerStudio.hpp"
 #include "ViewerPhotoCapture.hpp"
 #include "StudioLighting.hpp"
+#include "StudioGradient.hpp"
 #include "NativeStudio/EnvironmentMap.hpp"
 
 namespace gt4
@@ -69,6 +70,7 @@ namespace gt4
         size_t visitedAtomics = 0, hiddenAtomics = 0;
         float capturedDirt = -1;
         uint8_t paintMask = 0;
+        float bodyTop = -1e9f;
         std::vector<Batch> batches;
         V3 low = {1e9f, 1e9f, 1e9f}, high = {-1e9f, -1e9f, -1e9f};
         CinematicCapabilities cinematic;
@@ -149,6 +151,9 @@ namespace gt4
                     high.x = std::max(high.x, v.p.x);
                     high.y = std::max(high.y, v.p.y);
                     high.z = std::max(high.z, v.p.z);
+                    if (b.paint >= 0 && b.paint < 4) {
+                        bodyTop = std::max(bodyTop, v.p.z);
+                    }
                     if (b.component >= 0 && b.component < int(cinematicComponentCount)) {
                         const size_t c = size_t(b.component);
                         seen[c] = true;
@@ -219,6 +224,18 @@ namespace gt4
             return batches.empty();
         }
     };
+
+    // roof accessories on these rancher variants should not shrink their body in the fitted view.
+    inline V3 previewFramingHigh(const Entry& entry, const Mesh& mesh)
+    {
+        V3 high = mesh.high;
+        const bool rancherVariant = entry.id == 599 ||
+            entry.modelKey == modelNameKey("copcarru") || entry.modelKey == modelNameKey("copcardsa");
+        if (rancherVariant && mesh.bodyTop > mesh.low.z + .5f) {
+            high.z = std::min(high.z, mesh.bodyTop);
+        }
+        return high;
+    }
 
     // this pose belongs to one private display mesh; never tilt or steer the shared game model
     inline std::unique_ptr<Mesh> bikeDisplayMesh(const Mesh& source)
@@ -294,6 +311,9 @@ namespace gt4
         float lastShadowPhase = 0, lastShadowAngle = 0, lastShadowSize = 1;
         studioLighting::LightFrame studioLight{};
         bool useStudioShadow = false, staticMainShadow = false;
+        StudioGradient studioGradient;
+        int entryPreviewModel = -1;
+        double entrySelectionStamp = -1., entrySessionStamp = -1., entryRenderableAt = -1.;
         uint32_t viewerLightTint = 0xFFFFFF;
         std::vector<uint32_t> prizePixels;
         UINT prizeWidth = 0, prizeHeight = 0;
@@ -1062,6 +1082,9 @@ namespace gt4
             bikeDisplaySource = 0;
             antialiasing.rejectedQuality = -1;
             occlusion.reset();
+            studioGradient.reset();
+            entryPreviewModel = -1;
+            entrySelectionStamp = entrySessionStamp = entryRenderableAt = -1.;
             unicodeText.reset();
             releaseStudioEnvironment();
             logos.reset();
@@ -1561,7 +1584,7 @@ namespace gt4
         }
 
         void studio(IDirect3DDevice9* d, const Camera& cam, double seconds,
-                    std::array<float, 3> backdrop = {1, 0, 0}, bool wallTexture = true)
+                    std::array<float, 3> backdrop = {1, 0, 0}, bool wallTexture = true, float opacity = 1.f)
         {
             studioLight = studioLighting::frame(seconds + 16.);
             useStudioShadow = true;
@@ -1569,6 +1592,12 @@ namespace gt4
             float x = 0, floorY = 0, z = 0, rhw = 0;
             const bool floorVisible = cam.project({0, 0, 0}, x, floorY, z, rhw);
             const float floorShift = floorVisible ? std::clamp(floorY / cam.h - .56f, -.12f, .12f) : 0.f;
+            if (wallTexture && backdrop[0] >= .9999f &&
+                studioGradient.drawLookup(d, cam.w, cam.h, floorShift, studioLight, opacity)) {
+                triangles += 2;
+                ++drawCalls;
+                return;
+            }
             constexpr int columns = 64;
             constexpr int rows = 48;
             constexpr int stride = columns + 1;
@@ -1592,7 +1621,8 @@ namespace gt4
                 return result;
             }();
 
-            std::array<ScreenVertex, stride * (rows + 1)> vertices{};
+            struct GradientVertex { float x, y, z, rhw, r, g, b; };
+            std::array<GradientVertex, stride * (rows + 1)> vertices{};
             for (int row = 0; row <= rows; ++row) {
                 const float v = float(row) / rows;
                 for (int column = 0; column <= columns; ++column) {
@@ -1608,12 +1638,9 @@ namespace gt4
                             rgb[channel] += shade[channel] * backdrop[size_t(style)];
                         }
                     }
-                    const auto channel = [&](size_t index) {
-                        return DWORD(std::clamp(rgb[index], 0.f, 255.f));
-                    };
-                    const DWORD ink = 0xFF000000 | (channel(0) << 16) | (channel(1) << 8) | channel(2);
+                    const auto channel = [&](size_t index) { return std::clamp(rgb[index], 0.f, 255.f) / 255.f; };
                     vertices[row * stride + column] = {
-                        u * cam.w - .5f, v * cam.h - .5f, 1.f, 1.f, ink, 0.f, 0.f};
+                        u * cam.w - .5f, v * cam.h - .5f, 1.f, 1.f, channel(0), channel(1), channel(2)};
                 }
             }
 
@@ -1621,17 +1648,34 @@ namespace gt4
             d->SetTexture(0, nullptr);
             d->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG2);
             d->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG2);
-            d->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+            d->SetRenderState(D3DRS_ALPHABLENDENABLE, opacity < 1.f);
+            d->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+            d->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
             d->SetRenderState(D3DRS_ZENABLE, FALSE);
             d->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
-            d->DrawIndexedPrimitiveUP(D3DPT_TRIANGLELIST,
-                                      0,
-                                      UINT(vertices.size()),
-                                      UINT(indices.size() / 3),
-                                      indices.data(),
-                                      D3DFMT_INDEX16,
-                                      vertices.data(),
-                                      sizeof(ScreenVertex));
+            HRESULT result = E_FAIL;
+            if (wallTexture && backdrop[0] > 0 && studioGradient.bind(d, false, 0.f, opacity)) {
+                if (SUCCEEDED(d->SetFVF(D3DFVF_XYZRHW | D3DFVF_TEX1 | D3DFVF_TEXCOORDSIZE3(0)))) {
+                    result = d->DrawIndexedPrimitiveUP(D3DPT_TRIANGLELIST, 0, UINT(vertices.size()),
+                        UINT(indices.size() / 3), indices.data(), D3DFMT_INDEX16, vertices.data(), sizeof(GradientVertex));
+                }
+                d->SetPixelShader(nullptr);
+                d->SetFVF(format);
+            }
+            if (FAILED(result)) {
+                std::array<ScreenVertex, stride * (rows + 1)> fallback{};
+                for (size_t i = 0; i < vertices.size(); ++i) {
+                    const auto& vtx = vertices[i];
+                    const auto byte = [backdrop](float component) {
+                        const float scaled = component * 255.f;
+                        return DWORD(backdrop[0] > 0 ? std::lround(scaled) : int(scaled + .0001f));
+                    };
+                    const DWORD ink = (DWORD(std::lround(opacity * 255.f)) << 24) | (byte(vtx.r) << 16) | (byte(vtx.g) << 8) | byte(vtx.b);
+                    fallback[i] = {vtx.x, vtx.y, vtx.z, vtx.rhw, ink, 0.f, 0.f};
+                }
+                d->DrawIndexedPrimitiveUP(D3DPT_TRIANGLELIST, 0, UINT(fallback.size()), UINT(indices.size() / 3),
+                    indices.data(), D3DFMT_INDEX16, fallback.data(), sizeof(ScreenVertex));
+            }
             triangles += indices.size() / 3;
             ++drawCalls;
         }
@@ -1663,8 +1707,7 @@ namespace gt4
                 return;
             }
             const V3 center = absolute ? V3{} : V3{(m.low.x + m.high.x) * .5f, (m.low.y + m.high.y) * .5f, m.low.z};
-            const float casterAngle = shadow && staticMainShadow && !thumbnail ? pi + .16f : angle;
-            const float co = std::cos(casterAngle), si = std::sin(casterAngle);
+            const float co = std::cos(angle), si = std::sin(angle);
             D3DMATRIX world = identity();
             world._11 = co * size;
             world._12 = si * size;
@@ -1800,7 +1843,7 @@ namespace gt4
                 // the soft footprint stays independent of the moving cast shadow
                 struct ContactVertex { V3 position; DWORD diffuse; };
                 ContactVertex contact[50]{};
-                const float contactAngle = staticMainShadow && !viewerSubject && !thumbnail ? pi + .16f : angle;
+                const float contactAngle = angle;
                 const float contactCo = std::cos(contactAngle), contactSi = std::sin(contactAngle);
                 const float radiusX = (m.high.x - m.low.x) * size * .46f;
                 const float radiusY = (m.high.y - m.low.y) * size * .46f;
@@ -2961,6 +3004,73 @@ namespace gt4
                 if (main) {
                     Camera mainCam = cam;
                     float angle = s.heading() + pi;
+                    const bool normalAutomobile = (e.kind == 0 || e.kind == 1) && !s.enthusia &&
+                                                  !s.viewer.active && !s.photo.active;
+                    const float browseMix = normalAutomobile ? s.backgroundBlend[0] * (1.f - s.ui.cinematic.mix) : 0.f;
+                    const bool stagedEntry = normalAutomobile && !s.ui.cinematic.active && s.ui.cinematic.mix <= .001f;
+                    if (entryPreviewModel != e.id || entrySelectionStamp != s.changed ||
+                        entrySessionStamp != s.opened || entryRenderableAt > s.clock) {
+                        entryPreviewModel = e.id;
+                        entrySelectionStamp = s.changed;
+                        entrySessionStamp = s.opened;
+                        entryRenderableAt = -1.;
+                    }
+                    if (stagedEntry && entryRenderableAt < 0. && upload(d, *main)) {
+                        entryRenderableAt = s.clock;
+                    }
+                    const double revealAge = stagedEntry
+                        ? (entryRenderableAt < 0. ? 0. : std::max(0., s.clock - entryRenderableAt))
+                        : s.clock - s.changed;
+                    const float entryScale = s.scale(revealAge);
+                    const float targetSpan = adaptivePreviewSpan(span, compactThumbnail(e) || span < 2.8f);
+                    float previewSize = stagedEntry ? targetSpan / span : s.scale() * targetSpan / span;
+                    if (stagedEntry) {
+                        angle = s.heading(revealAge) + pi;
+                    }
+                    Camera backdropCamera = mainCam;
+                    if (browseMix > 0.f) {
+                        const float length = std::max(main->high.y - main->low.y, 1.f);
+                        const float height = previewFramingHigh(e, *main).z - main->low.z;
+                        const float tall = ease((height / length - .31f) / .22f);
+                        const float pitch = .15f + (.08f - .15f) * browseMix;
+                        mainCam.focal *= 1.f + (.11f - .31f * tall) * browseMix;
+                        mainCam.cy += H * .006f * browseMix;
+                        mainCam.eye = mainFocus + V3{0, -distance * std::cos(pitch), distance * std::sin(pitch)};
+                        mainCam.forward = unit(mainFocus - mainCam.eye);
+                        mainCam.right = unit(cross(mainCam.forward, {0, 0, 1}));
+                        mainCam.up = cross(mainCam.right, mainCam.forward);
+
+                        // Use a rotation-independent footprint so the framing cannot bob with the turntable.
+                        const float width = main->high.x - main->low.x;
+                        const float unscaledRadius = .5f * std::hypot(width, length);
+                        const float safeSize = distance * .68f / unscaledRadius;
+                        previewSize -= std::max(0.f, previewSize - safeSize) * browseMix;
+                        const float radius = unscaledRadius * previewSize;
+                        const auto tile = Carousel(W, H, s, entries.size()).box(int(s.selected));
+                        const float upperLimit = H * .12f, lowerLimit = tile.y - H * .040f;
+                        float top = mainCam.cy, bottom = mainCam.cy;
+                        for (V3 corner : {V3{0, -radius, 0}, V3{0, radius, 0},
+                                          V3{0, -radius, height * previewSize}, V3{0, radius, height * previewSize}}) {
+                            float x = 0, y = 0, depth = 0, rhw = 0;
+                            if (mainCam.project(corner, x, y, depth, rhw)) {
+                                top = std::min(top, y);
+                                bottom = std::max(bottom, y);
+                            }
+                        }
+                        const float fit = std::min(1.f, (lowerLimit - upperLimit) / std::max(1.f, bottom - top));
+                        const float zoomFactor = 1.f - (1.f - fit) * browseMix;
+                        mainCam.focal *= zoomFactor;
+                        top = mainCam.cy + (top - mainCam.cy) * zoomFactor;
+                        bottom = mainCam.cy + (bottom - mainCam.cy) * zoomFactor;
+                        mainCam.cy += (std::max(0.f, upperLimit - top) -
+                                       std::max(0.f, bottom - lowerLimit)) * browseMix;
+                    }
+                    // fit the settled pose first; feeding the dolly into camera fitting makes it pump during entry.
+                    if (stagedEntry) {
+                        previewSize *= entryScale;
+                    }
+                    const float opacity = s.carAlpha(revealAge);
+                    const float materialOpacity = stagedEntry && opacity > 0.f ? 1.f : opacity;
                     if (s.enthusia) {
                         const auto pose = enthusiaPose(s.clock - s.motionBegan);
                         angle = pose.yaw;
@@ -2990,7 +3100,7 @@ namespace gt4
                                 (1 - mix) +
                             cv.pitch * mix;
                         mainCam.eye = focus + V3{0, -std::cos(pitch) * distance, std::sin(pitch) * distance};
-                        mainCam.cy = H * (.48f + .015f * mix);
+                        mainCam.cy += H * .015f * mix;
                         mainCam.forward = unit(focus - mainCam.eye);
                         mainCam.right = unit(cross(mainCam.forward, {0, 0, 1}));
                         mainCam.up = cross(mainCam.right, mainCam.forward);
@@ -3031,11 +3141,20 @@ namespace gt4
                                 }
                             }
                         }
-                        studio(d, mainCam, studioTime, s.backgroundBlend);
+                        backdropCamera = mainCam;
+                        if (browseMix > 0.f) {
+                            // Reframing the car should not move the floor during ordinary browsing.
+                            float x = 0, originalFloor = 0, reframedFloor = 0, z = 0, rhw = 0;
+                            if (cam.project({}, x, originalFloor, z, rhw) &&
+                                mainCam.project({}, x, reframedFloor, z, rhw)) {
+                                backdropCamera.cy += (originalFloor - reframedFloor) * (1.f - s.ui.cinematic.mix);
+                            }
+                        }
+                        studio(d, backdropCamera, studioTime, s.backgroundBlend);
                     }
                     lastCarCamera = mainCam;
                     lastCarAngle = angle;
-                    lastCarSize = s.scale() * adaptivePreviewSpan(span, compactThumbnail(e) || span < 2.8f) / span;
+                    lastCarSize = previewSize;
                     if (bikePose && !s.viewer.active) {
                         lastCarSize *= 1.f + .08f * (1.f - std::clamp(s.ui.cinematic.mix, 0.f, 1.f));
                     }
@@ -3082,7 +3201,7 @@ namespace gt4
                                    s.shop.washed);
                     }
                     if (!s.viewer.active && s.ui.floorReflections > 0) {
-                        shopMirror(d, *main, mainCam, angle, paint, s.carAlpha(), lastCarSize, rideHeight,
+                        shopMirror(d, *main, mainCam, angle, paint, materialOpacity, lastCarSize, rideHeight,
                                    s.shop.washed, s.ui.floorReflections, vehicle);
                     }
                     if (s.viewer.active ? s.viewer.settings.shadows : s.ui.shadows) {
@@ -3091,7 +3210,7 @@ namespace gt4
                              mainCam,
                              angle,
                              paint,
-                             s.carAlpha(),
+                             materialOpacity,
                              lastCarSize,
                              true,
                              false,
@@ -3105,7 +3224,7 @@ namespace gt4
                          mainCam,
                          angle,
                          paint,
-                         s.carAlpha(),
+                         materialOpacity,
                          lastCarSize,
                          false,
                          false,
@@ -3115,8 +3234,12 @@ namespace gt4
                          rideHeight,
                          customStudio,
                          s.shop.washed);
+                    if (stagedEntry && opacity > 0.f && opacity < 1.f) {
+                        // composite the subject once so interior faces cannot stack through the body during the fade.
+                        studio(d, backdropCamera, studioTime, s.backgroundBlend, true, 1.f - opacity);
+                    }
                 } else {
-                    studio(d, cam, studioTime);
+                    studio(d, cam, studioTime, s.backgroundBlend);
                 }
                 d->SetRenderState(D3DRS_ZENABLE, FALSE);
                 d->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
@@ -3152,7 +3275,7 @@ namespace gt4
                                     Camera small = fittedThumbnail(float(fullW),
                                                                    float(fullH),
                                                                    thumb->low,
-                                                                   thumb->high,
+                                                                   previewFramingHigh(entries[i], *thumb),
                                                                    thumbAngle,
                                                                    thumbnailOccupancy(entries[i]));
                                     small.offsetX += float(fullX - clipX) + (float(fullW) - float(thumbVP.Width)) * .5f;
