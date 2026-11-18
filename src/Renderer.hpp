@@ -1663,7 +1663,8 @@ namespace gt4
                 return;
             }
             const V3 center = absolute ? V3{} : V3{(m.low.x + m.high.x) * .5f, (m.low.y + m.high.y) * .5f, m.low.z};
-            const float co = std::cos(angle), si = std::sin(angle);
+            const float casterAngle = shadow && staticMainShadow && !thumbnail ? pi + .16f : angle;
+            const float co = std::cos(casterAngle), si = std::sin(casterAngle);
             D3DMATRIX world = identity();
             world._11 = co * size;
             world._12 = si * size;
@@ -1685,8 +1686,7 @@ namespace gt4
             if (shadow && thumbnail) {
                 light = {0, 0, 1};
             } else if (shadow && staticMainShadow && !viewerSubject) {
-                const auto fixed = studioLighting::frame(16.);
-                light = {-fixed.shadowX, -fixed.shadowY, 1.f};
+                light = {0, 0, 1};
             }
             if (shadow) {
                 D3DMATRIX flat = world;
@@ -1800,13 +1800,15 @@ namespace gt4
                 // the soft footprint stays independent of the moving cast shadow
                 struct ContactVertex { V3 position; DWORD diffuse; };
                 ContactVertex contact[50]{};
+                const float contactAngle = staticMainShadow && !viewerSubject && !thumbnail ? pi + .16f : angle;
+                const float contactCo = std::cos(contactAngle), contactSi = std::sin(contactAngle);
                 const float radiusX = (m.high.x - m.low.x) * size * .46f;
                 const float radiusY = (m.high.y - m.low.y) * size * .46f;
                 contact[0] = {{0, 0, .006f}, color(0, opacity * .22f)};
                 for (unsigned i = 0; i <= 48; ++i) {
                     const float theta = float(i) * 2 * pi / 48;
                     const float x = std::cos(theta) * radiusX, y = std::sin(theta) * radiusY;
-                    contact[i + 1] = {{x * co - y * si, x * si + y * co, .006f}, 0};
+                    contact[i + 1] = {{x * contactCo - y * contactSi, x * contactSi + y * contactCo, .006f}, 0};
                 }
                 transforms(d, cam, identity());
                 d->SetFVF(D3DFVF_XYZ | D3DFVF_DIFFUSE);
@@ -2827,7 +2829,7 @@ namespace gt4
             lightPhase = float(s.clock) * .42f;
             lastShadowPhase = lightPhase;
             useStudioShadow = false;
-            staticMainShadow = s.ui.backgroundSelection != 0 && !s.viewer.active && !s.shop.open();
+            staticMainShadow = s.ui.backgroundStyle() != 0 && !s.viewer.active && !s.shop.open();
             if (!d || !s.open || (!entries.empty() && s.selected >= entries.size())) {
                 return false;
             }
@@ -3152,7 +3154,7 @@ namespace gt4
                                                                    thumb->low,
                                                                    thumb->high,
                                                                    thumbAngle,
-                                                                   compactThumbnail(entries[i]) ? .82f : .96f);
+                                                                   thumbnailOccupancy(entries[i]));
                                     small.offsetX += float(fullX - clipX) + (float(fullW) - float(thumbVP.Width)) * .5f;
                                     small.cy += float(fullY - clipY);
                                     small.w = float(thumbVP.Width);

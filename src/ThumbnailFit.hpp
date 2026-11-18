@@ -23,6 +23,13 @@ namespace gt4
         return false;
     }
 
+    inline float thumbnailOccupancy(const Entry& e)
+    {
+        const int category = classIndex(e.classId);
+        const bool bike = e.kind == 9 || e.kind == 10 || category == 7 || category == 8 || category == 11;
+        return (compactThumbnail(e) ? .82f : .96f) * (bike ? 1.18f : 1.f);
+    }
+
     inline Camera fittedThumbnail(float w, float h, V3 low, V3 high, float angle, float occupancy)
     {
         const float span = std::max({high.x - low.x, high.y - low.y, high.z - low.z, 1.f});
