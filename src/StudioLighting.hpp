@@ -1,5 +1,6 @@
 #pragma once
 
+#include "StudioSweep.hpp"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -24,6 +25,8 @@ namespace gt4::studioLighting
         float shadowX;
         float shadowY;
         float shadowOpacity;
+        unsigned from = 0, to = 0;
+        float mix = 0;
     };
 
     inline float smooth(float value)
@@ -38,6 +41,7 @@ namespace gt4::studioLighting
         {
             double seconds;
             LightFrame light;
+            unsigned setup;
         };
         static constexpr LightFrame dark{
             .13f, .15f, .082f, .50f, .30f, .083f, .50f, .680f, .00f, .085f, .08f, .15f, .57f};
@@ -48,16 +52,16 @@ namespace gt4::studioLighting
         static constexpr LightFrame wash{
             .416f, .422f, .246f, .12f, .30f, .470f, .21f, .523f, -.047f, .123f, -.28f, .27f, .42f};
         static constexpr std::array<Key, 10> keys{{
-            {0., dark},
-            {2., dark},
-            {6.0, floorLit},
-            {9.75, floorLit},
-            {11.05, sweep},
-            {15.45, sweep},
-            {17.45, wash},
-            {20.0, wash},
-            {23.0, dark},
-            {cycleSeconds, dark},
+            {0., dark, 0},
+            {2.1, dark, 0},
+            {5.9, floorLit, 1},
+            {10.0, floorLit, 1},
+            {11.4, sweep, 2},
+            {15.6, sweep, 2},
+            {17.6, wash, 3},
+            {20.25, wash, 3},
+            {23.05, dark, 0},
+            {cycleSeconds, dark, 0},
         }};
 
         double elapsed = std::isfinite(seconds) ? std::fmod(seconds, cycleSeconds) : 0.;
@@ -72,7 +76,11 @@ namespace gt4::studioLighting
         });
         const auto& start = *(next - 1);
         const auto& end = *next;
-        const float t = smooth(float((elapsed - start.seconds) / (end.seconds - start.seconds)));
+        const float position = float((elapsed - start.seconds) / (end.seconds - start.seconds));
+        // Fit the wash-to-dark envelope independently of the moving shadow and peak wall brightness.
+        const float t = (start.setup == 3 && end.setup == 0)
+                            ? 1.f - std::pow(1.f - smooth(position), 1.22f)
+                            : smooth(position);
         const auto blend = [&](float LightFrame::*field) {
             const float from = start.light.*field;
             return from + (end.light.*field - from) * t;
@@ -91,6 +99,7 @@ namespace gt4::studioLighting
             blend(&LightFrame::shadowX),
             blend(&LightFrame::shadowY),
             blend(&LightFrame::shadowOpacity),
+            start.setup, end.setup, t,
         };
     }
 
@@ -151,28 +160,25 @@ namespace gt4::studioLighting
                                 (28.f + 48.f * pool) * floor;
             return {value, value, value};
         }
-        const float floor = smooth((y - .47f) / .26f);
-        const float wall = gaussian((x - .49532f) / .23000f, (y - .33000f) / .12866f);
-        const float pool = gaussian((x - .48728f) / .25164f, (y - .58699f) / .08112f);
-        const std::array<float, 3> darkest{
-            8.7333f + 20.2841f * floor + 45.6214f * wall + 91.3926f * pool,
-            9.4693f + 21.7413f * floor + 47.7169f * wall + 92.8008f * pool,
-            10.1736f + 22.5691f * floor + 49.0526f * wall + 95.2844f * pool};
-        // only the darkest phase is replaced; the existing bright sweep keeps its own lighting
-        const float phase = smooth(std::max((light.wall - .13f) / .022f, (light.floor - .15f) / .27f));
-        if (phase <= 0) {
-            return darkest;
+        const float u = std::clamp(x, 0.f, 1.f) * 8.f;
+        const float v = std::clamp(y, 0.f, 1.f);
+        const int column = std::min(7, int(u));
+        const auto next = std::upper_bound(std::begin(studioRows) + 1, std::end(studioRows) - 1, v);
+        const size_t row = size_t(next - studioRows - 1);
+        const float tx = u - column, ty = (v - studioRows[row]) / (studioRows[row + 1] - studioRows[row]);
+        const auto sample = [&](unsigned setup, unsigned shift) {
+            const auto& stops = studioStops[setup];
+            const auto at = [&](size_t line, int col) { return float((stops[line][col] >> shift) & 255); };
+            const float upper = at(row, column) * (1 - tx) + at(row, column + 1) * tx;
+            const float lower = at(row + 1, column) * (1 - tx) + at(row + 1, column + 1) * tx;
+            return upper + (lower - upper) * ty;
+        };
+        std::array<float, 3> rgb{};
+        for (unsigned i = 0; i < 3; ++i) {
+            const unsigned shift = 16 - i * 8;
+            const float from = sample(light.from, shift);
+            rgb[i] = light.from == light.to ? from : from + (sample(light.to, shift) - from) * light.mix;
         }
-        const float brightness = luminance(light, x, y);
-        const float oval = std::exp(-std::pow((x - .5f) / .52f, 2) - std::pow((y - .69f) / .12f, 2));
-        const float dark = std::clamp((.23f - brightness) / .14f, 0.f, 1.f);
-        const float strength = std::min(1.f, brightness + oval * .10f * dark);
-        std::array<float, 3> original{247.f * strength, 252.f * strength, 255.f * strength};
-        if (phase < 1) {
-            for (size_t channel = 0; channel < original.size(); ++channel) {
-                original[channel] = darkest[channel] + (original[channel] - darkest[channel]) * phase;
-            }
-        }
-        return original;
+        return rgb;
     }
 }

@@ -108,6 +108,7 @@ namespace gt4
     {
         int index = -1, txd = -1;
         std::shared_ptr<void> texture;
+        float focusU = .5f, focusV = .5f;
     };
     enum class Page
     {
@@ -1117,13 +1118,15 @@ namespace gt4
     inline Rect paintBox(float w, float h, size_t i, size_t count)
     {
         const float scale = h / 720.f;
-        return {w * .5f - float(count) * 10 * scale + i * 20 * scale, h * .753f, 14 * scale, 48 * scale};
+        const float pitch = std::min(40.f * scale, w * .93f / float(std::max(size_t(1), count)));
+        const float width = std::min(24.f * scale, pitch * .80f);
+        return {w * .5f + (float(i) - (float(count) - 1) * .5f) * pitch - width * .5f,
+                h * .724f, width, 64.f * scale};
     }
 
     inline Rect liveryBox(float w, float h, size_t i, size_t count)
     {
-        const float s = h / 720.f, cw = 52 * s;
-        return {w * .5f - float(count) * cw * .5f + i * cw, h * .753f, 46 * s, 48 * s};
+        return paintBox(w, h, i, count);
     }
 
     inline void pointerClick(Model& model, const std::vector<Entry>& cars, float w, float h)

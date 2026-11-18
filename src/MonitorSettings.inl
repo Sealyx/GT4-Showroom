@@ -202,8 +202,8 @@ inline std::string ContextMenu::monitorValue(int level, int index) const
             return names[std::clamp(branch == MenuBranch::Antialiasing ? antialiasing : ambientOcclusion, 0, 3)];
         }
         if (branch == MenuBranch::Background) {
-            return bikeCategory ? backgroundChoice == 0 ? "Dark Gray" : backgroundChoice == 2 ? "Red" : "Default"
-                                : backgroundChoice == 0 ? "Red" : "Default";
+            constexpr const char* names[]{"Default", "Red", "Dark Gray"};
+            return names[std::clamp(backgroundChoice, 0, 2)];
         }
         if (branch == MenuBranch::UnitFormat) {
             static constexpr const char* names[] = {"Auto", "Metric", "Imperial"};
@@ -368,7 +368,7 @@ inline std::string ContextMenu::help() const
         return "Smooth rendered edges with capability-tested multisampling and bounded render-target memory";
     }
     if (branch == MenuBranch::Background || item.action == StudioAction::Background) {
-        return "Choose a background for this vehicle category without changing other categories";
+        return "Default follows country and category; Red and Dark Gray override it for every vehicle";
     }
     if (branch == MenuBranch::UnitFormat || item.action == StudioAction::UnitFormat) {
         return "Choose Windows measurement units, metric units or imperial units";

@@ -114,11 +114,7 @@ void requestStudioAction(StudioAction action)
         return;
     }
     if (action == StudioAction::Background) {
-        if (state.ui.bikeCategory()) {
-            state.ui.bikeBackground = std::clamp(state.ui.menu.choice, 0, state.ui.japaneseCategory() ? 2 : 1);
-        } else {
-            state.ui.japanBackground = std::clamp(state.ui.menu.choice, 0, 1);
-        }
+        state.ui.backgroundSelection = std::clamp(state.ui.menu.choice, 0, 2);
         state.ui.menu.open = true;
         state.ui.menu.selectedAction();
         state.cue = Cue::Accept;
@@ -404,7 +400,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
     state.ui.menu.language = state.ui.language;
     state.ui.menu.unitFormat = state.ui.unitFormat;
     state.ui.menu.setCategories(state.ui.japaneseCategory(), state.ui.bikeCategory());
-    state.ui.menu.backgroundChoice = state.ui.bikeCategory() ? state.ui.bikeBackground : state.ui.japanBackground;
+    state.ui.menu.backgroundChoice = state.ui.backgroundSelection;
     state.ui.menu.hotspots = state.hotspotsEnabled();
     state.ui.menu.viewerSettings = state.viewer.settings;
     state.ui.menu.viewerPaused = state.viewer.paused;

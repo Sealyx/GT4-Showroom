@@ -293,7 +293,7 @@ namespace gt4
         int shopTaglineLanguage = -1;
         float lastShadowPhase = 0, lastShadowAngle = 0, lastShadowSize = 1;
         studioLighting::LightFrame studioLight{};
-        bool useStudioShadow = false;
+        bool useStudioShadow = false, staticMainShadow = false;
         uint32_t viewerLightTint = 0xFFFFFF;
         std::vector<uint32_t> prizePixels;
         UINT prizeWidth = 0, prizeHeight = 0;
@@ -1519,6 +1519,47 @@ namespace gt4
             stroke(cursorInset[0], cursorInset[3], .85f, viewerBlend(0xA57308, 0x808080, cursorFeedback));
         }
 
+        void drawSelectionChip(IDirect3DDevice9* d, Rect b, float scale, float opacity, bool selected,
+                               const Paint* paint, unsigned slots, const Livery* livery)
+        {
+            rect(d, b.x + 3 * scale, b.y + 5 * scale, b.w, b.h, color(0, .58f * opacity));
+            if (selected) {
+                rect(d, b.x - scale, b.y - scale, b.w + 2 * scale, b.h + 2 * scale, color(0xE6DD9F, opacity));
+            }
+            if (paint) {
+                for (unsigned slot = 0; slot < slots; ++slot) {
+                    const float height = b.h / slots;
+                    rect(d, b.x, b.y + height * slot, b.w, height, color(paint->rgb[slot], opacity));
+                }
+            } else {
+                rect(d, b.x, b.y, b.w, b.h, color(0x353C3E, opacity));
+                auto* texture = static_cast<IDirect3DTexture9*>(livery->texture.get());
+                D3DSURFACE_DESC desc{};
+                if (texture && SUCCEEDED(texture->GetLevelDesc(0, &desc)) && desc.Width && desc.Height) {
+                    const float fit = 1.65f * std::max(b.w / desc.Width, b.h / desc.Height);
+                    const float du = b.w / (fit * desc.Width), dv = b.h / (fit * desc.Height);
+                    const float u = std::clamp(livery->focusU - du * .5f, 0.f, 1.f - du);
+                    const float v = std::clamp(livery->focusV - dv * .5f, 0.f, 1.f - dv);
+                    rect(d, b.x, b.y, b.w, b.h, color(0xFFFFFF, opacity), texture, u, v, u + du, v + dv);
+                } else {
+                    label(d, livery->index < 0 ? "NONE" : "...", b.x + b.w * .5f, b.y + b.h * .45f,
+                          std::min(8.f * scale, b.w / 3.7f), opacity, true);
+                }
+            }
+            screen(d);
+            d->SetTexture(0, nullptr);
+            d->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG2);
+            d->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG2);
+            const float left = b.x - .5f, right = left + b.w, top = b.y - .5f;
+            const auto band = [&](float y0, float y1, float y2, float y3, DWORD upper, DWORD lower) {
+                ScreenVertex strip[] = {{left,top+b.h*y0,0,1,upper,0,0},{right,top+b.h*y1,0,1,upper,0,0},
+                                        {left,top+b.h*y2,0,1,lower,0,0},{right,top+b.h*y3,0,1,lower,0,0}};
+                d->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, strip, sizeof(ScreenVertex));
+            };
+            band(0, 0, .33f, .25f, color(0xFFFFFF, .035f * opacity), color(0xFFFFFF, .16f * opacity));
+            band(.78f, .78f, 1, 1, color(0, 0), color(0, .085f * opacity));
+        }
+
         void studio(IDirect3DDevice9* d, const Camera& cam, double seconds,
                     std::array<float, 3> backdrop = {1, 0, 0}, bool wallTexture = true)
         {
@@ -1641,6 +1682,12 @@ namespace gt4
             if (shadow && useStudioShadow) {
                 light = {-studioLight.shadowX, -studioLight.shadowY, 1.f};
             }
+            if (shadow && thumbnail) {
+                light = {0, 0, 1};
+            } else if (shadow && staticMainShadow && !viewerSubject) {
+                const auto fixed = studioLighting::frame(16.);
+                light = {-fixed.shadowX, -fixed.shadowY, 1.f};
+            }
             if (shadow) {
                 D3DMATRIX flat = world;
                 for (int row = 0; row < 4; ++row) {
@@ -1722,7 +1769,7 @@ namespace gt4
             }
             if (shadow) {
                 d->SetTexture(0, nullptr);
-                const float shadowOpacity = thumbnail ? .9f : useStudioShadow ? studioLight.shadowOpacity : .55f;
+                const float shadowOpacity = thumbnail ? .9f : staticMainShadow && !viewerSubject ? studioLighting::frame(16.).shadowOpacity : useStudioShadow ? studioLight.shadowOpacity : .55f;
                 d->SetRenderState(D3DRS_TEXTUREFACTOR, color(0, opacity * shadowOpacity));
                 d->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
                 d->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
@@ -2780,6 +2827,7 @@ namespace gt4
             lightPhase = float(s.clock) * .42f;
             lastShadowPhase = lightPhase;
             useStudioShadow = false;
+            staticMainShadow = s.ui.backgroundSelection != 0 && !s.viewer.active && !s.shop.open();
             if (!d || !s.open || (!entries.empty() && s.selected >= entries.size())) {
                 return false;
             }
@@ -3155,29 +3203,8 @@ namespace gt4
                                 const auto p = e.paints.empty() ? Paint{} : e.paints[i];
                                 auto box = paintBox(W, H, i, n);
                                 box.y += colorsOffset;
-                                roundedRectangle(d,
-                                     box.x,
-                                     box.y,
-                                     box.w,
-                                     box.h,
-                                     2 * scale,
-                                     color(i == s.paint ? 0xE6DD9F : 0x151919, paintStrip));
-                                const unsigned slots = main ? paintSlotCount(main->paintMask) : 2;
-                                for (unsigned slot = 0; slot < slots; ++slot) {
-                                    const float hh = 44 * scale / slots;
-                                    rect(d,
-                                         box.x + 2 * scale,
-                                         box.y + 2 * scale + slot * hh,
-                                         10 * scale,
-                                         hh,
-                                         color(p.rgb[slot], paintStrip));
-                                }
-                                rect(d,
-                                     box.x + 2 * scale,
-                                     box.y + 2 * scale,
-                                     3 * scale,
-                                     42 * scale,
-                                     color(0xFFFFFF, paintStrip * .3f));
+                                drawSelectionChip(d, box, scale, paintStrip, i == s.paint, &p,
+                                                  main ? paintSlotCount(main->paintMask) : 2, nullptr);
                             }
                             std::string paintLabel =
                                 paint.name.empty() ? "Paint " + std::to_string(s.paint + 1) + " / " + std::to_string(n)
@@ -3197,36 +3224,8 @@ namespace gt4
                         if (paintStrip > .01f && s.page == Page::Livery) {
                             for (size_t i = 0; i < s.liveries.size(); ++i) {
                                 const auto b = liveryBox(W, H, i, s.liveries.size());
-                                roundedRectangle(d, b.x, b.y, b.w, b.h, 4 * scale,
-                                                 color(i == s.livery ? 0xE6DD9F : 0x151919, paintStrip));
-                                rect(d,
-                                     b.x + 2 * scale,
-                                     b.y + 2 * scale,
-                                     b.w - 4 * scale,
-                                     b.h - 4 * scale,
-                                     color(0x353C3E, paintStrip));
-                                if (i && s.liveries[i].texture) {
-                                    auto* t = static_cast<IDirect3DTexture9*>(s.liveries[i].texture.get());
-                                    D3DSURFACE_DESC desc{};
-                                    if (SUCCEEDED(t->GetLevelDesc(0, &desc)) && desc.Width && desc.Height) {
-                                        const float width = b.w - 4 * scale, height = b.h - 4 * scale;
-                                        const float fit = std::max(width / desc.Width, height / desc.Height);
-                                        const float uSpan = width / (desc.Width * fit);
-                                        const float vSpan = height / (desc.Height * fit);
-                                        const float u = (1 - uSpan) * .5f;
-                                        const float v = (1 - vSpan) * .78f;
-                                        rect(d, b.x + 2 * scale, b.y + 2 * scale, width, height,
-                                             color(0xFFFFFF, paintStrip), t, u, v, u + uSpan, v + vSpan);
-                                    }
-                                } else {
-                                    label(d,
-                                          i ? "..." : "NONE",
-                                          b.x + b.w * .5f,
-                                          b.y + 16 * scale,
-                                          8 * scale,
-                                          paintStrip,
-                                          true);
-                                }
+                                drawSelectionChip(d, b, scale, paintStrip, i == s.livery, nullptr,
+                                                  0, &s.liveries[i]);
                             }
                             const std::string name = s.livery == 0 ? "No Livery" : "Livery " + std::to_string(s.livery);
                             label(d, name, W * .5f, H * .830f, 19 * scale, paintStrip, true);

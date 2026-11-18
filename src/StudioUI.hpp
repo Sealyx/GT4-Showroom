@@ -507,7 +507,7 @@ namespace gt4
             if (!extras[0].empty() || !extras[1].empty() || !extras[2].empty()) {
                 rows.push_back({"Extras", StudioAction::None, -1, MenuBranch::Extras});
             }
-            if (japaneseCategory || bikeCategory) {
+            {
                 rows.insert(rows.begin(), {"Background", StudioAction::None, -1, MenuBranch::Background});
             }
             rows.push_back({"Cinematic", StudioAction::Cinematic});
@@ -560,19 +560,10 @@ namespace gt4
                     }
                     return rows;
                 }
-                case MenuBranch::Background: {
-                    if (bikeCategory) {
-                        std::vector<MenuItem> rows{
-                            {"Dark Gray", StudioAction::Background, 0, MenuBranch::None, backgroundChoice == 0},
-                            {"Default", StudioAction::Background, 1, MenuBranch::None, backgroundChoice == 1}};
-                        if (japaneseCategory) {
-                            rows.push_back({"Red", StudioAction::Background, 2, MenuBranch::None, backgroundChoice == 2});
-                        }
-                        return rows;
-                    }
-                    return {{"Red", StudioAction::Background, 0, MenuBranch::None, backgroundChoice == 0},
-                            {"Default", StudioAction::Background, 1, MenuBranch::None, backgroundChoice == 1}};
-                }
+                case MenuBranch::Background:
+                    return {{"Default", StudioAction::Background, 0, MenuBranch::None, backgroundChoice == 0},
+                            {"Red", StudioAction::Background, 1, MenuBranch::None, backgroundChoice == 1},
+                            {"Dark Gray", StudioAction::Background, 2, MenuBranch::None, backgroundChoice == 2}};
                 case MenuBranch::Volume:
                     return {{"Music", StudioAction::Volume, 0}, {"SFX", StudioAction::Volume, 1}};
                 case MenuBranch::UnitFormat:
@@ -1098,6 +1089,7 @@ namespace gt4
         bool favoritesOnly = false, controllerUsed = false, footerHidden = false;
         int sortMode = 5, countryFilter = -1, classFilter = -1;
         uint32_t countryMask = 0, classMask = 0;
+        int backgroundSelection = 0;
         int unitFormat = 0, japanBackground = 0, bikeBackground = 0, antialiasing = 2, ambientOcclusion = 2;
         int floorReflections = 0, vehicleReflections = 3;
         int language = 0;
@@ -1116,10 +1108,8 @@ namespace gt4
 
         int backgroundStyle() const
         {
-            if (bikeCategory()) {
-                return bikeBackground == 0 ? 2 : bikeBackground == 2 && japaneseCategory() ? 1 : 0;
-            }
-            return japaneseCategory() && japanBackground == 0 ? 1 : 0;
+            if (backgroundSelection != 0) { return backgroundSelection; }
+            return bikeCategory() ? 2 : japaneseCategory() ? 1 : 0;
         }
 
         bool accepts(Country country, int category) const
@@ -1161,6 +1151,7 @@ namespace gt4
             result.vehicleReflections = vehicleReflections;
             result.language = language;
             result.unitFormat = unitFormat;
+            result.backgroundSelection = backgroundSelection;
             result.japanBackground = japanBackground;
             result.bikeBackground = bikeBackground;
             result.shadows = shadows;
@@ -1190,6 +1181,7 @@ namespace gt4
             vehicleReflections = preferences.vehicleReflections;
             language = preferences.language;
             unitFormat = preferences.unitFormat;
+            backgroundSelection = preferences.backgroundSelection;
             japanBackground = preferences.japanBackground;
             bikeBackground = preferences.bikeBackground;
             shadows = preferences.shadows;

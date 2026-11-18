@@ -1,5 +1,6 @@
 #pragma once
 #include "NativePrize.hpp"
+#include "LiveryFocus.hpp"
 
 namespace gt4::liveryNative
 {
@@ -98,6 +99,11 @@ namespace gt4::liveryNative
             if (option.txd >= 0 && !option.texture) {
                 queue(option.txd);
                 option.texture = thumbnail(option.txd);
+                if (option.texture) {
+                    const auto focus = liveryFocus(static_cast<IDirect3DTexture9*>(option.texture.get()));
+                    option.focusU = focus.first;
+                    option.focusV = focus.second;
+                }
             }
         }
         if (s.page != Page::Livery || s.livery == 0 || s.livery >= s.liveries.size()) {

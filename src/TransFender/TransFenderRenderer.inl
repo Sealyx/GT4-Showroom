@@ -593,12 +593,22 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
     d3dShopOverlay(device);
     device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, band, sizeof(ScreenVertex));
     constexpr std::array<float, 5> markerStops{0, .30f, .5f, .70f, 1};
-    constexpr std::array<uint32_t, 5> markerColors{0x020202, 0x101010, 0x353535, 0x101010, 0x020202};
+    constexpr std::array<unsigned, 5> glint{2, 16, 53, 16, 2};
+    // Preserve the black chip's original stops and retain highlight headroom on white.
+    const auto markerColor = [&](unsigned stop) {
+        uint32_t rgb = 0;
+        for (unsigned shift : {0u, 8u, 16u}) {
+            const float base = float((paint.rgb[0] >> shift) & 255);
+            const float ink = base * (.90f + .10f * stop / 53.f) + stop * (1.f - base / 255.f);
+            rgb |= uint32_t(std::lround(ink)) << shift;
+        }
+        return color(rgb);
+    };
     std::array<ScreenVertex, 10> marker{};
     for (size_t i = 0; i < markerStops.size(); ++i) {
         const float y = top + barHeight * markerStops[i];
-        marker[2 * i] = {markerX, y, 0, 1, color(markerColors[i]), 0, 0};
-        marker[2 * i + 1] = {markerX + 12 * scale, y, 0, 1, color(markerColors[i]), 0, 0};
+        marker[2 * i] = {markerX, y, 0, 1, markerColor(glint[i]), 0, 0};
+        marker[2 * i + 1] = {markerX + 12 * scale, y, 0, 1, markerColor(glint[i]), 0, 0};
     }
     device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 8, marker.data(), sizeof(ScreenVertex));
     text(device, entry.name, nameX + scale, top + 4 * scale, nameSize, color(0, .9f), false, 0, true);
