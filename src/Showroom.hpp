@@ -981,28 +981,43 @@ namespace gt4
             }
         }
 
-        float carAlpha() const
+        float carAlpha(double age) const
         {
             if (enthusia) {
-                return ease(float((clock - changed) / .3));
+                return ease(float(age / .3));
             }
-            return smoothFade(float((clock - changed - .12) / 1.30));
+            return smoothFade(float((age - .12) / 1.30));
         }
 
-        float scale() const
+        float carAlpha() const
+        {
+            return carAlpha(clock - changed);
+        }
+
+        float scale(double age) const
         {
             if (enthusia) {
                 return 1.f;
             }
             // the retreat starts with the reveal but settles later, like a camera dolly easing to a stop.
-            const float progress = std::clamp(float((clock - changed - .12) / 1.55), 0.f, 1.f);
+            const float progress = std::clamp(float((age - .12) / 1.55), 0.f, 1.f);
             const float remaining = 1.f - progress;
             return 1.f + .95f * remaining * remaining * remaining;
         }
 
+        float scale() const
+        {
+            return scale(clock - changed);
+        }
+
+        float heading(double age) const
+        {
+            return float(age) * 2 * pi / 20.f + .16f;
+        }
+
         float heading() const
         {
-            return float(clock - changed) * 2 * pi / 20.f + .16f;
+            return heading(clock - changed);
         }
 
         float titleMix() const
