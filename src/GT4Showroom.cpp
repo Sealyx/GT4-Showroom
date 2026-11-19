@@ -293,6 +293,17 @@ namespace gt4
             finishSettings();
         }
         state.clearWhitePaint(entries);
+        if (state.page == Page::Prize) {
+            const int previousModel = state.beforePrizeModel;
+            state.leavePrize();
+            for (size_t i = 0; i < entries.size(); ++i) {
+                if (entries[i].id == previousModel) {
+                    state.selected = i;
+                    state.scroll = state.scrollTarget();
+                    break;
+                }
+            }
+        }
         renderer.releaseStudioEnvironment();
         nativeExtras::clear();
         customizationNative::clear();
@@ -1284,140 +1295,164 @@ namespace gt4
                     if (state.open && state.fade.ready(state.clock) && state.fade.action == CloseAction::Spawn) {
                         state.spawn = false;
                         std::string error;
-                        const Mesh* m = lookup(entries[state.selected].id);
-                        float clearance = m ? sideSpawnDistance(m->low.x, m->high.x) : 2.6f;
-                        void* mi = gta::modelInfo(entries[state.selected].id);
-                        void* col = mi ? game::field<void*>(mi, 0x14) : nullptr;
-                        if (col) {
-                            const V3 low = game::field<V3>(col, 0), high = game::field<V3>(col, 0xC);
-                            clearance = sideSpawnDistance(low.x, high.x);
-                        }
-                        const bool assetsReady =
-                            state.page == Page::Prize ? prizeNative::stream(state.prize) : liveryNative::ready(state);
-                        const auto livery = selectedLivery();
-                        const bool customized =
-                            state.postSelectionCinematic && customizationNative::state.hasSelection();
-                        const bool customizationReady =
-                            !customized ||
-                            (state.appearanceReady &&
-                             customizationNative::current(entries[state.selected], state.paint, livery.first,
-                                                          livery.second, state.shop.washed) &&
-                             customizationNative::ready(livery.first, livery.second));
-                        if (!assetsReady || !customizationReady) {
-                            if (pause.owned) {
-                                game::pumpStreaming();
-                            }
-                            if (state.clock - state.fade.began > 10) {
-                                state.recovered();
-                                blockActions();
-                                state.status =
-                                    state.page == Page::Prize
-                                        ? "Prize tuning assets could not be loaded Try REALBIG again"
-                                    : state.postSelectionCinematic
-                                        ? "Customization could not be loaded Choose Stock or try again"
-                                        : "Livery texture could not be loaded Choose No Livery or try again";
-                                state.cue = Cue::Error;
-                            }
+                        const bool claimingPrize = state.page == Page::Prize;
+                        const auto reward = claimingPrize
+                            ? std::find_if(entries.begin(), entries.end(), [&](const Entry& entry) {
+                                return entry.id == state.prize.id;
+                            })
+                            : entries.end();
+                        if (claimingPrize && reward == entries.end()) {
+                            state.recovered();
+                            blockActions();
+                            state.status = "The reward vehicle is no longer available";
+                            state.cue = Cue::Error;
                         } else {
-                            void* spawned = nullptr;
-                            const int due = state.shop.pendingCost();
-                            const int* wallet = due > 0 ? shopWallet() : nullptr;
-                            if (due > 0 && (!wallet || *wallet < due)) {
-                                error = "Insufficient funds for selected TransFender work";
+                            const Entry& spawnEntryModel = claimingPrize ? *reward : entries[state.selected];
+                            const Mesh* m = lookup(spawnEntryModel.id);
+                            float clearance = m ? sideSpawnDistance(m->low.x, m->high.x) : 2.6f;
+                            void* mi = gta::modelInfo(spawnEntryModel.id);
+                            void* col = mi ? game::field<void*>(mi, 0x14) : nullptr;
+                            if (col) {
+                                const V3 low = game::field<V3>(col, 0), high = game::field<V3>(col, 0xC);
+                                clearance = sideSpawnDistance(low.x, high.x);
                             }
-                            if (error.empty() && !excluded.count(entries[state.selected].id) &&
-                                (spawned = game::spawn(entries[state.selected], state.paint, error, clearance))) {
-                                bool installedParts = !customized;
-                                const bool prepared = game::finalizeVehicleAppearance(
-                                    spawned, entries[state.selected], state.paint,
-                                    [](void* vehicle, int id) {
-                                        const bool plugin =
-                                            GetModuleHandleW(L"VehFuncs.asi") || GetModuleHandleW(L"ImVehFt.asi") ||
-                                            GetModuleHandleW(L"IVF.asi") || GetModuleHandleW(L"ModelExtras.asi");
-                                        return !plugin || nativePreview::initialize(vehicle, id, state.shop.washed);
-                                    },
-                                    [&](void* vehicle) {
-                                        if (state.page != Page::Prize) {
-                                            liveryNative::apply(vehicle, state);
-                                            if (customized) {
-                                                installedParts =
-                                                    customizationNative::apply(vehicle, livery.first, livery.second);
-                                                if (!installedParts) {
-                                                    log("Customization application did not verify every selected "
-                                                        "upgrade");
+                            const bool assetsReady =
+                                state.page == Page::Prize ? prizeNative::stream(state.prize) : liveryNative::ready(state);
+                            const auto livery = selectedLivery();
+                            const bool customized =
+                                !claimingPrize && state.postSelectionCinematic && customizationNative::state.hasSelection();
+                            const bool customizationReady =
+                                !customized ||
+                                (state.appearanceReady &&
+                                 customizationNative::current(spawnEntryModel, state.paint, livery.first,
+                                                              livery.second, state.shop.washed) &&
+                                 customizationNative::ready(livery.first, livery.second));
+                            if (!assetsReady || !customizationReady) {
+                                if (pause.owned) {
+                                    game::pumpStreaming();
+                                }
+                                if (state.clock - state.fade.began > 10) {
+                                    state.recovered();
+                                    blockActions();
+                                    state.status =
+                                        state.page == Page::Prize
+                                            ? "Prize tuning assets could not be loaded Try REALBIG again"
+                                        : state.postSelectionCinematic
+                                            ? "Customization could not be loaded Choose Stock or try again"
+                                            : "Livery texture could not be loaded Choose No Livery or try again";
+                                    state.cue = Cue::Error;
+                                }
+                            } else {
+                                void* spawned = nullptr;
+                                const int due = claimingPrize ? 0 : state.shop.pendingCost();
+                                const int* wallet = due > 0 ? shopWallet() : nullptr;
+                                if (due > 0 && (!wallet || *wallet < due)) {
+                                    error = "Insufficient funds for selected TransFender work";
+                                }
+                                if (error.empty() && !excluded.count(spawnEntryModel.id) &&
+                                    (spawned = game::spawn(spawnEntryModel, state.paint, error, clearance, claimingPrize))) {
+                                    bool installedParts = !customized;
+                                    const bool prepared = game::finalizeVehicleAppearance(
+                                        spawned, spawnEntryModel, state.paint,
+                                        [](void* vehicle, int id) {
+                                            const bool plugin =
+                                                GetModuleHandleW(L"VehFuncs.asi") || GetModuleHandleW(L"ImVehFt.asi") ||
+                                                GetModuleHandleW(L"IVF.asi") || GetModuleHandleW(L"ModelExtras.asi");
+                                            return !plugin || nativePreview::initialize(vehicle, id, state.shop.washed);
+                                        },
+                                        [&](void* vehicle) {
+                                            if (state.page != Page::Prize) {
+                                                liveryNative::apply(vehicle, state);
+                                                if (customized) {
+                                                    installedParts =
+                                                        customizationNative::apply(vehicle, livery.first, livery.second);
+                                                    if (!installedParts) {
+                                                        log("Customization application did not verify every selected "
+                                                            "upgrade");
+                                                    }
                                                 }
                                             }
-                                        }
-                                        if (state.page == Page::Prize) {
-                                            const bool tuned = prizeNative::tune(vehicle, state.prize);
-                                            char detail[260];
-                                            std::snprintf(detail, sizeof(detail),
-                                                          "Prize claim tuning: model=%d visual upgrades=%d/%d "
-                                                          "preparation=%d; ability is independent of kit/paintjob.",
-                                                          state.prize.id, prizeNative::installedVisuals,
-                                                          prizeNative::expectedVisuals, tuned);
-                                            log(detail);
-                                            const bool applied = prizeNative::ability(vehicle, state.prize);
-                                            std::snprintf(
-                                                detail, sizeof(detail),
-                                                "Prize ability: %s tracked=%d reference=%d flags=0x%08X mass=%.1f "
-                                                "turnMass=%.1f handling=%p active=%zu",
-                                                *abilityName(state.prize.ability) ? abilityName(state.prize.ability)
-                                                                                  : "NONE",
-                                                applied, prizeNative::abilityBackend.reference(uintptr_t(vehicle)),
-                                                game::field<uint32_t>(vehicle, 0x40), game::field<float>(vehicle, 0x8C),
-                                                game::field<float>(vehicle, 0x90), game::field<void*>(vehicle, 0x384),
-                                                prizeNative::abilities.size());
-                                            log(detail);
-                                        }
-                                    });
-                                finishShopPurchase(spawned, installedParts);
-                                if (!game::applySpawnPlate(spawned, state.plate)) {
-                                    log("Custom plate could not be created; original vehicle plate retained");
-                                }
-                                if (!prepared) {
-                                    log("Spawn native preparation did not reach the render boundary; explicit paint "
-                                        "was "
-                                        "applied but a later plugin override remains possible");
-                                }
-                                if (diagnostics.enabled.load(std::memory_order_relaxed)) {
-                                    char paint[192];
-                                    std::snprintf(
-                                        paint, sizeof(paint),
-                                        "Spawn appearance: model=%d choice=%zu prepared=%d colors=%u,%u,%u,%u "
-                                        "palette=0x%08lX",
-                                        entries[state.selected].id, state.paint, prepared,
-                                        unsigned(game::field<uint8_t>(spawned, 0x434)),
-                                        unsigned(game::field<uint8_t>(spawned, 0x435)),
-                                        unsigned(game::field<uint8_t>(spawned, 0x436)),
-                                        unsigned(game::field<uint8_t>(spawned, 0x437)),
-                                        static_cast<unsigned long>(gta::vehiclePalette()));
-                                    log(paint);
-                                }
-                                if (studioConfig.spawn != SpawnMode::InFront) {
-                                    V3 low = m ? m->low : V3{-1, -2.3f, -.5f}, high = m ? m->high : V3{1, 2.3f, 1.1f};
-                                    if (col) {
-                                        low = game::field<V3>(col, 0);
-                                        high = game::field<V3>(col, 0xC);
+                                            if (state.page == Page::Prize) {
+                                                const bool tuned = prizeNative::tune(vehicle, state.prize);
+                                                char detail[260];
+                                                std::snprintf(detail, sizeof(detail),
+                                                              "Prize claim tuning: model=%d visual upgrades=%d/%d "
+                                                              "preparation=%d; ability is independent of kit/paintjob.",
+                                                              state.prize.id, prizeNative::installedVisuals,
+                                                              prizeNative::expectedVisuals, tuned);
+                                                log(detail);
+                                                const bool applied = prizeNative::ability(vehicle, state.prize);
+                                                std::snprintf(
+                                                    detail, sizeof(detail),
+                                                    "Prize ability: %s tracked=%d reference=%d flags=0x%08X mass=%.1f "
+                                                    "turnMass=%.1f handling=%p active=%zu",
+                                                    *abilityName(state.prize.ability) ? abilityName(state.prize.ability)
+                                                                                      : "NONE",
+                                                    applied, prizeNative::abilityBackend.reference(uintptr_t(vehicle)),
+                                                    game::field<uint32_t>(vehicle, 0x40), game::field<float>(vehicle, 0x8C),
+                                                    game::field<float>(vehicle, 0x90), game::field<void*>(vehicle, 0x384),
+                                                    prizeNative::abilities.size());
+                                                log(detail);
+                                            }
+                                        });
+                                    if (!claimingPrize) {
+                                        finishShopPurchase(spawned, installedParts);
                                     }
-                                    pendingEntry = spawned;
-                                    pendingEntryLow = low;
-                                    pendingEntryHigh = high;
-                                }
-                                log("Vehicle spawned; leaving studio");
-                                if (!error.empty()) {
+                                    if (!game::applySpawnPlate(spawned, state.plate)) {
+                                        log("Custom plate could not be created; original vehicle plate retained");
+                                    }
+                                    if (!prepared) {
+                                        log("Spawn native preparation did not reach the render boundary; explicit paint "
+                                            "was "
+                                            "applied but a later plugin override remains possible");
+                                    }
+                                    if (diagnostics.enabled.load(std::memory_order_relaxed)) {
+                                        char paint[192];
+                                        std::snprintf(
+                                            paint, sizeof(paint),
+                                            "Spawn appearance: model=%d choice=%zu prepared=%d colors=%u,%u,%u,%u "
+                                            "palette=0x%08lX",
+                                            spawnEntryModel.id, state.paint, prepared,
+                                            unsigned(game::field<uint8_t>(spawned, 0x434)),
+                                            unsigned(game::field<uint8_t>(spawned, 0x435)),
+                                            unsigned(game::field<uint8_t>(spawned, 0x436)),
+                                            unsigned(game::field<uint8_t>(spawned, 0x437)),
+                                            static_cast<unsigned long>(gta::vehiclePalette()));
+                                        log(paint);
+                                    }
+                                    if (studioConfig.spawn != SpawnMode::InFront) {
+                                        V3 low = m ? m->low : V3{-1, -2.3f, -.5f}, high = m ? m->high : V3{1, 2.3f, 1.1f};
+                                        if (col) {
+                                            low = game::field<V3>(col, 0);
+                                            high = game::field<V3>(col, 0xC);
+                                        }
+                                        pendingEntry = spawned;
+                                        pendingEntryLow = low;
+                                        pendingEntryHigh = high;
+                                    }
+                                    log("Vehicle spawned; leaving studio");
+                                    if (!error.empty()) {
+                                        log(error.c_str());
+                                    }
+                                    state.open = false;
+                                } else {
+                                    if (error.empty()) {
+                                        error = "Spawn unavailable for this model";
+                                    }
+                                    state.recovered();
+                                    blockActions();
+                                    state.status = error;
                                     log(error.c_str());
+                                    if (claimingPrize && game::player()) {
+                                        char gateDetails[128]{};
+                                        std::snprintf(gateDetails, sizeof(gateDetails),
+                                                      "Prize spawn rejected: mission=%d worldArea=%d pedArea=%u",
+                                                      game::mission(), game::at<int>(0xB72914),
+                                                      unsigned(game::field<uint8_t>(game::player(), 0x2F)));
+                                        log(gateDetails);
+                                    }
+                                    state.cue = Cue::Error;
                                 }
-                                state.open = false;
-                            } else {
-                                if (error.empty()) {
-                                    error = "Spawn unavailable for this model";
-                                }
-                                state.recovered();
-                                blockActions();
-                                state.status = error;
-                                log(error.c_str());
-                                state.cue = Cue::Error;
                             }
                         }
                     }

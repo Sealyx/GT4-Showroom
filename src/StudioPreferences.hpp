@@ -8,11 +8,12 @@ namespace gt4
     {
         int sortMode = 5, countryFilter = -1, classFilter = -1;
         uint32_t countryMask = 0, classMask = 0;
-        int backgroundSelection = 0;
+        int backgroundSelection = 0, showroomStyle = 0;
         int unitFormat = 0, japanBackground = 0, bikeBackground = 0;
         bool shadows = true;
         int antialiasing = 2, ambientOcclusion = 2;
         int floorReflections = 0, vehicleReflections = 3;
+        int floorReflectionQuality = 3;
         int language = 0;
         bool carLogo = false, brandLogo = false, displayModelId = true, displayModelName = true;
         // bytes keep existing settings readable. playback uses gta's sliders
@@ -20,11 +21,11 @@ namespace gt4
 
         bool valid() const
         {
-            return backgroundSelection >= 0 && backgroundSelection <= 2 && sortMode >= 0 && sortMode <= 5 && countryFilter >= -1 && countryFilter < int(countryCount) &&
+            return showroomStyle >= 0 && showroomStyle <= 1 && backgroundSelection >= 0 && backgroundSelection <= 2 && sortMode >= 0 && sortMode <= 5 && countryFilter >= -1 && countryFilter < int(countryCount) &&
                    classFilter >= -1 && classFilter <= 12 && unitFormat >= 0 && unitFormat <= 2 &&
                    japanBackground >= 0 && japanBackground <= 1 && bikeBackground >= 0 && bikeBackground <= 2 &&
                    antialiasing >= 0 && antialiasing <= 3 && ambientOcclusion >= 0 && ambientOcclusion <= 3 &&
-                   floorReflections >= 0 && floorReflections <= 4 && vehicleReflections >= 0 && vehicleReflections <= 4 &&
+                   floorReflectionQuality >= 1 && floorReflectionQuality <= 4 && floorReflections >= 0 && floorReflections <= 4 && vehicleReflections >= 0 && vehicleReflections <= 4 &&
                    language >= 0 && language < 7 &&
                    (countryMask >> countryCount) == 0 && (classMask >> 13) == 0 &&
                    std::all_of(
@@ -37,13 +38,13 @@ namespace gt4
 
         bool operator==(const StudioPreferences& other) const
         {
-            return backgroundSelection == other.backgroundSelection && sortMode == other.sortMode && countryFilter == other.countryFilter &&
+            return showroomStyle == other.showroomStyle && backgroundSelection == other.backgroundSelection && sortMode == other.sortMode && countryFilter == other.countryFilter &&
                    classFilter == other.classFilter && carLogo == other.carLogo && brandLogo == other.brandLogo &&
                    displayModelId == other.displayModelId && displayModelName == other.displayModelName &&
                    audio == other.audio && countryMask == other.countryMask && classMask == other.classMask &&
                    unitFormat == other.unitFormat && shadows == other.shadows &&
                    japanBackground == other.japanBackground && bikeBackground == other.bikeBackground &&
-                   antialiasing == other.antialiasing && ambientOcclusion == other.ambientOcclusion && floorReflections == other.floorReflections &&
+                   antialiasing == other.antialiasing && ambientOcclusion == other.ambientOcclusion && floorReflections == other.floorReflections && floorReflectionQuality == other.floorReflectionQuality &&
                    vehicleReflections == other.vehicleReflections && language == other.language;
         }
 
@@ -64,9 +65,9 @@ namespace gt4
         }
         const std::array<uint8_t, 4> magic{{'G', 'T', '4', 'P'}};
         const bool legacy = size == 20 && bytes[4] == 1;
-        if (!std::equal(magic.begin(), magic.end(), bytes.begin()) || (!legacy && (size != 32 || (bytes[4] != 2 && bytes[4] != 3))) ||
+        if (!std::equal(magic.begin(), magic.end(), bytes.begin()) || (!legacy && (size != 32 || (bytes[4] != 2 && bytes[4] != 3 && bytes[4] != 4 && bytes[4] != 5))) ||
             (bytes[8] & 0xF0) != 0 ||
-            std::any_of(bytes.begin() + (legacy ? 12 : bytes[4] == 3 ? 28 : 27), bytes.begin() + size - 1, [](uint8_t value) {
+            std::any_of(bytes.begin() + (legacy ? 12 : 25 + bytes[4]), bytes.begin() + size - 1, [](uint8_t value) {
                 return value != 0;
             })) {
             return false;
@@ -106,7 +107,9 @@ namespace gt4
             loaded.floorReflections = bytes[24];
             loaded.vehicleReflections = bytes[25];
             loaded.language = bytes[26];
-            loaded.backgroundSelection = bytes[4] == 3 ? bytes[27] : 0;
+            loaded.backgroundSelection = bytes[4] >= 3 ? bytes[27] : 0;
+            loaded.showroomStyle = bytes[4] >= 4 ? bytes[28] : 0;
+            loaded.floorReflectionQuality = bytes[4] >= 5 ? bytes[29] : (loaded.floorReflections > 0 ? loaded.floorReflections : 3);
         }
         if (!loaded.valid()) {
             return false;
@@ -120,7 +123,7 @@ namespace gt4
         if (!preferences.valid()) {
             return false;
         }
-        std::array<uint8_t, 32> bytes{{'G', 'T', '4', 'P', 3}};
+        std::array<uint8_t, 32> bytes{{'G', 'T', '4', 'P', 5}};
         bytes[5] = uint8_t(preferences.sortMode);
         bytes[6] = uint8_t(preferences.countryFilter + 1);
         bytes[7] = uint8_t(preferences.classFilter + 1);
@@ -144,6 +147,8 @@ namespace gt4
         bytes[25] = uint8_t(preferences.vehicleReflections);
         bytes[26] = uint8_t(preferences.language);
         bytes[27] = uint8_t(preferences.backgroundSelection);
+        bytes[28] = uint8_t(preferences.showroomStyle);
+        bytes[29] = uint8_t(preferences.floorReflectionQuality);
         bytes.back() = 0xA7;
         for (size_t i = 0; i < bytes.size() - 1; ++i) {
             bytes.back() ^= bytes[i];

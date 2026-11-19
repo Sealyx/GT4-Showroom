@@ -98,6 +98,7 @@ void requestStudioAction(StudioAction action)
     if (action == StudioAction::FloorReflections || action == StudioAction::VehicleReflections) {
         auto& quality = action == StudioAction::FloorReflections ? state.ui.floorReflections : state.ui.vehicleReflections;
         quality = std::clamp(state.ui.menu.choice, 0, 4);
+        if (action == StudioAction::FloorReflections && quality > 0) { state.ui.floorReflectionQuality = quality; }
         state.ui.menu.open = true;
         state.ui.menu.selectedAction();
         state.cue = Cue::Accept;
@@ -113,8 +114,21 @@ void requestStudioAction(StudioAction action)
         blockActions();
         return;
     }
+    if (action == StudioAction::ShowroomStyle) {
+        state.ui.syncFloorReflections();
+        state.ui.showroomStyle = std::clamp(state.ui.menu.choice, 0, 1);
+        state.ui.syncFloorReflections();
+        state.ui.menu.open = true;
+        state.ui.menu.selectedAction();
+        state.cue = Cue::Accept;
+        blockActions();
+        return;
+    }
+    if (action == StudioAction::Background && state.ui.showroomStyle != 0) { return; }
     if (action == StudioAction::Background) {
+        state.ui.syncFloorReflections();
         state.ui.backgroundSelection = std::clamp(state.ui.menu.choice, 0, 2);
+        state.ui.syncFloorReflections();
         state.ui.menu.open = true;
         state.ui.menu.selectedAction();
         state.cue = Cue::Accept;
@@ -194,6 +208,7 @@ void requestStudioAction(StudioAction action)
     if (action == StudioAction::EnterTransFender) {
         state.ui.menu.finish(1);
         finishSettings();
+        state.shopExitArmed = state.shopReturnNavigation = false;
         state.shop.fromViewer = state.viewer.active;
         state.shop.request(ShopPage::Menu, state.clock);
         state.cue = Cue::Accept;
@@ -401,6 +416,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
     state.ui.menu.unitFormat = state.ui.unitFormat;
     state.ui.menu.setCategories(state.ui.japaneseCategory(), state.ui.bikeCategory());
     state.ui.menu.backgroundChoice = state.ui.backgroundSelection;
+    state.ui.menu.styleChoice = state.ui.showroomStyle;
     state.ui.menu.hotspots = state.hotspotsEnabled();
     state.ui.menu.viewerSettings = state.viewer.settings;
     state.ui.menu.viewerPaused = state.viewer.paused;
@@ -749,16 +765,22 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         blockActions();
         return;
     }
-    if (search) {
-        if (state.ui.menu.open) {
-            state.ui.menu.finish(-1);
-            finishSettings();
+    if (state.page == Page::Prize) {
+        if (goBack) {
+            state.back();
+        } else if (accept) {
+            state.accept(entries);
+        } else if (click) {
+            pointerClick(state, entries, W, H);
         }
+        dockPointer(state, entries, W, H, dt);
+        return;
+    }
+    if (search && (state.searching || state.canBeginSearch())) {
         if (state.searching) {
             state.closeSearch();
             state.ui.keyboard.open = false;
-        } else {
-            state.beginSearch();
+        } else if (state.beginSearch()) {
             state.ui.keyboard.open = pad.search;
             state.searchKeyboard = pad.search;
             state.ui.keyboard.selected = 0;

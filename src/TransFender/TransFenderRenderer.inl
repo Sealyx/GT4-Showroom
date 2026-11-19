@@ -645,7 +645,9 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
     const std::string controls = model.ui.controllerUsed ? "CIRCLE Return    TRIANGLE Reset"
                                                         : "BACKSPACE Return    R Reset";
     const bool washing = shop.washStart >= 0.;
-    const bool describe = washing || !shop.status.empty() || int(std::max(0., model.clock - shop.pageStart)) % 8 < 5;
+    const bool focusedDescription = shopFooter.describe(
+        {int(page), page == ShopPage::Menu ? shop.section : shop.option, int(shop.partReview)}, model.clock);
+    const bool describe = washing || !shop.status.empty() || focusedDescription;
     std::string message = controls;
     if (washing) {
         message = "Washing vehicle...";

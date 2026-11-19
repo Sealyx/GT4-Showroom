@@ -64,6 +64,7 @@ namespace gt4
         CinematicRotation,
         Volume,
         Background,
+        ShowroomStyle,
         Antialiasing,
         AmbientOcclusion,
         FloorReflections,
@@ -189,6 +190,7 @@ namespace gt4
         CinematicRotation,
         Volume,
         Background,
+        ShowroomStyle,
         Antialiasing,
         AmbientOcclusion,
         FloorReflections,
@@ -291,7 +293,7 @@ namespace gt4
              displayModelId = true, displayModelName = true;
         int order = 0, countryFilter = -1, classFilter = -1;
         uint32_t countryMask = 0, classMask = 0;
-        int unitFormat = 0, backgroundChoice = 0;
+        int unitFormat = 0, backgroundChoice = 0, styleChoice = 0;
         bool japaneseCategory = false, bikeCategory = false;
         int antialiasing = 2, ambientOcclusion = 2;
         int floorReflections = 0, vehicleReflections = 3;
@@ -508,7 +510,8 @@ namespace gt4
                 rows.push_back({"Extras", StudioAction::None, -1, MenuBranch::Extras});
             }
             {
-                rows.insert(rows.begin(), {"Background", StudioAction::None, -1, MenuBranch::Background});
+                if (styleChoice == 0) { rows.insert(rows.begin(), {"Background", StudioAction::None, -1, MenuBranch::Background}); }
+                rows.insert(rows.begin(), {"Style", StudioAction::None, -1, MenuBranch::ShowroomStyle});
             }
             rows.push_back({"Cinematic", StudioAction::Cinematic});
             rows.push_back({"Vehicle Viewer", StudioAction::ViewerEnter});
@@ -560,7 +563,11 @@ namespace gt4
                     }
                     return rows;
                 }
+                case MenuBranch::ShowroomStyle:
+                    return {{"Default", StudioAction::ShowroomStyle, 0, MenuBranch::None, styleChoice == 0},
+                            {"Prologue", StudioAction::ShowroomStyle, 1, MenuBranch::None, styleChoice == 1}};
                 case MenuBranch::Background:
+                    if (styleChoice != 0) { return {}; }
                     return {{"Default", StudioAction::Background, 0, MenuBranch::None, backgroundChoice == 0},
                             {"Red", StudioAction::Background, 1, MenuBranch::None, backgroundChoice == 1},
                             {"Dark Gray", StudioAction::Background, 2, MenuBranch::None, backgroundChoice == 2}};
@@ -1089,9 +1096,23 @@ namespace gt4
         bool favoritesOnly = false, controllerUsed = false, footerHidden = false;
         int sortMode = 5, countryFilter = -1, classFilter = -1;
         uint32_t countryMask = 0, classMask = 0;
-        int backgroundSelection = 0;
+        int backgroundSelection = 0, showroomStyle = 0;
         int unitFormat = 0, japanBackground = 0, bikeBackground = 0, antialiasing = 2, ambientOcclusion = 2;
         int floorReflections = 0, vehicleReflections = 3;
+        int floorReflectionQuality = 3, reflectionPresentation = -1;
+
+        int activeReflectionPresentation() const { return showroomStyle == 1 ? 3 : backgroundStyle(); }
+
+        void syncFloorReflections()
+        {
+            if (floorReflections > 0) { floorReflectionQuality = floorReflections; }
+            const int presentation = activeReflectionPresentation();
+            if (reflectionPresentation >= 0 && presentation != reflectionPresentation) {
+                floorReflections = (presentation == 3 || presentation == 1) ? floorReflectionQuality : 0;
+            }
+            reflectionPresentation = presentation;
+        }
+
         int language = 0;
 
         bool japaneseCategory() const
@@ -1148,10 +1169,12 @@ namespace gt4
             result.antialiasing = antialiasing;
             result.ambientOcclusion = ambientOcclusion;
             result.floorReflections = floorReflections;
+            result.floorReflectionQuality = floorReflections > 0 ? floorReflections : floorReflectionQuality;
             result.vehicleReflections = vehicleReflections;
             result.language = language;
             result.unitFormat = unitFormat;
             result.backgroundSelection = backgroundSelection;
+            result.showroomStyle = showroomStyle;
             result.japanBackground = japanBackground;
             result.bikeBackground = bikeBackground;
             result.shadows = shadows;
@@ -1178,10 +1201,12 @@ namespace gt4
             antialiasing = preferences.antialiasing;
             ambientOcclusion = preferences.ambientOcclusion;
             floorReflections = preferences.floorReflections;
+            floorReflectionQuality = preferences.floorReflectionQuality;
             vehicleReflections = preferences.vehicleReflections;
             language = preferences.language;
             unitFormat = preferences.unitFormat;
             backgroundSelection = preferences.backgroundSelection;
+            showroomStyle = preferences.showroomStyle;
             japanBackground = preferences.japanBackground;
             bikeBackground = preferences.bikeBackground;
             shadows = preferences.shadows;
@@ -1193,6 +1218,7 @@ namespace gt4
             displayModelId = preferences.displayModelId;
             displayModelName = preferences.displayModelName;
             audioLevels = preferences.audio;
+            reflectionPresentation = activeReflectionPresentation();
         }
 
         bool countryNotice(Country country, bool searching, bool searchResult) const

@@ -723,15 +723,15 @@ void spawnReviewDialog(IDirect3DDevice9* d, float width, float height, const Mod
     }
     if (state.spawnReview == SpawnReview::ShopExit) {
         const char* back = state.shop.fromViewer ? "Return to Viewer" : "Return to Cinematic";
-        const std::array<const char*, 3> buttons{back, "Exit", "Spawn Now"};
+        const std::array<const char*, 3> buttons{back, "Cancel", "Spawn Now"};
         drawReviewPanel(d,
                         width,
                         height,
                         state.reviewReveal(),
                         state.reviewOffset(height),
-                        "Vehicle Viewer",
+                        "Customization",
                         "Are you sure you would like to spawn the vehicle now?",
-                        "Return to your previous view or exit to the vehicle selection.",
+                        "Return to your previous view or cancel to continue customizing.",
                         buttons.data(),
                         int(buttons.size()),
                         state.reviewChoice);
@@ -739,13 +739,14 @@ void spawnReviewDialog(IDirect3DDevice9* d, float width, float height, const Mod
     }
     const bool canSpawn = state.reviewButtons() == 3;
     const std::string first = canSpawn ? "Are you sure you would like to spawn the vehicle now?"
-                                       : "Return to Cinematic or exit to the vehicle selection?";
+                                       : "Return to Cinematic or cancel to continue viewing?";
     const std::string second = state.spawnReview == SpawnReview::Initial
                                    ? "You can enter Cinematic to inspect and customize your vehicle."
                                    : "Use Back to return to the previous view.";
     const char* primary = state.spawnReview == SpawnReview::Initial ? "Enter Cinematic" : "Back to Cinematic";
-    const std::array<const char*, 3> buttons{primary, "Exit", "Spawn Now"};
+    const std::array<const char*, 3> buttons{primary, "Cancel", "Spawn Now"};
     const int count = state.reviewButtons();
-    drawReviewPanel(d, width, height, state.reviewReveal(), state.reviewOffset(height), "Vehicle Viewer",
+    const char* title = state.spawnReview == SpawnReview::Cinematic ? "Cinematic" : "Vehicle Viewer";
+    drawReviewPanel(d, width, height, state.reviewReveal(), state.reviewOffset(height), title,
                     first, second, buttons.data(), count, state.reviewChoice);
 }

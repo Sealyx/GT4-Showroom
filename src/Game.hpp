@@ -781,16 +781,27 @@ namespace gt4::game
         }
     };
 
-    inline void* spawn(const Entry& e, size_t choice, std::string& error, float clearance = 2.6f)
+    inline void* spawn(const Entry& e, size_t choice, std::string& error, float clearance = 2.6f,
+                       bool claimingReward = false)
     {
         void* p = player();
         if (!vehicleInfo(gta::modelInfo(e.id))) {
             error = "Vehicle is no longer registered";
             return nullptr;
         }
-        if (!p || mission() || field<uint8_t>(p, 0x2F) || field<float>(p, 0x540) <= 0 ||
-            (field<uint32_t>(p, 0x46C) & 0x100) || flag(0xB5F851) || flag(0xB5F852)) {
-            error = "Return outdoors and leave missions before spawning";
+        if (!p || field<float>(p, 0x540) <= 0 || (field<uint32_t>(p, 0x46C) & 0x100) ||
+            flag(0xB5F851) || flag(0xB5F852)) {
+            error = "Return to normal gameplay on foot before spawning";
+            return nullptr;
+        }
+        // a reward placement uses the active world area, which can differ from the ped's area tag.
+        const bool indoors = claimingReward ? at<int>(0xB72914) != 0 : field<uint8_t>(p, 0x2F) != 0;
+        if (indoors) {
+            error = "Go outdoors before spawning";
+            return nullptr;
+        }
+        if (mission()) {
+            error = "Leave the active mission before spawning";
             return nullptr;
         }
         if (e.kind == 6) {

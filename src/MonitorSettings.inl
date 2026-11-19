@@ -201,6 +201,9 @@ inline std::string ContextMenu::monitorValue(int level, int index) const
             constexpr const char* names[]{"Off", "Standard", "High", "Ultra"};
             return names[std::clamp(branch == MenuBranch::Antialiasing ? antialiasing : ambientOcclusion, 0, 3)];
         }
+        if (branch == MenuBranch::ShowroomStyle) {
+            return styleChoice == 1 ? "Prologue" : "Default";
+        }
         if (branch == MenuBranch::Background) {
             constexpr const char* names[]{"Default", "Red", "Dark Gray"};
             return names[std::clamp(backgroundChoice, 0, 2)];

@@ -201,6 +201,7 @@ namespace gt4
         bool informationOpen = false;
         int informationChoice = 3;
         ReviewMotion informationMotion;
+        bool shopExitArmed = false, shopReturnNavigation = false;
         bool viewerSnapshot = false, postSelectionCinematic = false, appearanceReady = true;
         double viewerBegan = 0;
         SpawnReview spawnReview = SpawnReview::None;
@@ -278,7 +279,7 @@ namespace gt4
 
         float scrollTarget() const
         {
-            return float(std::clamp(int(selected) - 5, 0, std::max(0, int(count) - 11)));
+            return float(std::clamp(int(selected) - 4, 0, std::max(0, int(count) - 8)));
         }
 
         SecretUnlocksConfig secretUnlocks;
@@ -288,6 +289,7 @@ namespace gt4
         PrizePlan prize;
         double prizeBegan = 0;
         size_t beforePrize = 0;
+        int beforePrizeModel = -1;
         bool prizeReady = false;
         std::mt19937 random{5489u};
 
@@ -418,6 +420,7 @@ namespace gt4
         void returnToCarSelection()
         {
             shop = {};
+            shopExitArmed = shopReturnNavigation = false;
             photo = {};
             shopResetGroup = -1;
             viewer.reset(clock);
@@ -435,6 +438,13 @@ namespace gt4
             dragging = false;
             status.clear();
             stripChanged = clock;
+        }
+
+        void returnFromCustomization()
+        {
+            shop.request(ShopPage::Closed, clock);
+            shopExitArmed = false;
+            shopReturnNavigation = true;
         }
 
         int reviewButtons() const
@@ -469,6 +479,7 @@ namespace gt4
             const auto review = spawnReview;
             spawnReview = SpawnReview::None;
             if (choice == ReviewChoice::Dismiss) {
+                shopExitArmed = review == SpawnReview::ShopExit;
                 return;
             }
             if (review == SpawnReview::ShopReset) {
@@ -486,12 +497,12 @@ namespace gt4
                 return;
             }
             if (review == SpawnReview::ShopExit && choice == ReviewChoice::Cinematic) {
-                shop.request(ShopPage::Closed, clock);
+                returnFromCustomization();
                 cue = Cue::Back;
                 return;
             }
             if (choice == ReviewChoice::Exit) {
-                returnToCarSelection();
+                shopExitArmed = review == SpawnReview::ShopExit;
                 cue = Cue::Back;
                 return;
             }
@@ -519,6 +530,7 @@ namespace gt4
         double colorsReturned = -10;
         bool cursorPressed = false;
         float cursorPressMix = 0;
+        float prologueMix = 0;
         std::array<float, 3> backgroundBlend{{1, 0, 0}};
         float scroll = 0, paintMix = 0;
         size_t count = 0;
@@ -578,18 +590,19 @@ namespace gt4
             cue = Cue::Back;
         }
 
-        void beginSearch()
+        bool canBeginSearch() const
         {
-            if (busy() || plateOpen) {
-                return;
+            return open && page == Page::Cars && !busy() && !ui.modal() &&
+                   !ui.cinematic.active && ui.cinematic.mix <= .001f && !viewer.active &&
+                   !viewer.targetActive && !shop.open() && !photo.active && !informationOpen &&
+                   !plateOpen && spawnReview == SpawnReview::None && !searching;
+        }
+
+        bool beginSearch()
+        {
+            if (!canBeginSearch()) {
+                return false;
             }
-            ui.menu.open = false;
-            ui.cinematic.leave();
-            viewer.reset(clock);
-            viewerSnapshot = postSelectionCinematic = false;
-            spawnReview = SpawnReview::None;
-            appearanceReady = true;
-            leavePrize();
             searching = true;
             searchBegan = clock;
             searchClosed = -1;
@@ -605,10 +618,7 @@ namespace gt4
             searchFailed = false;
             dragging = false;
             spawn = false;
-            if (page == Page::Paint || page == Page::Livery) {
-                page = Page::Cars;
-                stripChanged = clock;
-            }
+            return true;
         }
 
         void submitSearch(const std::vector<Entry>& cars)
@@ -635,6 +645,7 @@ namespace gt4
                 }
                 if (page != Page::Prize) {
                     beforePrize = selected;
+                    beforePrizeModel = cars[selected].id;
                 }
                 prize = next;
                 for (size_t i = 0; i < cars.size(); ++i) {
@@ -695,6 +706,7 @@ namespace gt4
             }
             count = total;
             shop = {};
+            shopExitArmed = shopReturnNavigation = false;
             photo = {};
             shopResetGroup = -1;
             beforeFavoritesModel = -1;
@@ -773,6 +785,12 @@ namespace gt4
             }
             ui.cinematic.step(seconds);
             cursorPressMix += (float(cursorPressed) - cursorPressMix) * float(1 - std::exp(-seconds * 35));
+            prologueMix += (float(ui.showroomStyle == 1) - prologueMix) *
+                           float(1 - std::exp(-seconds * 6));
+            if (std::abs(prologueMix - float(ui.showroomStyle == 1)) < .001f) {
+                prologueMix = float(ui.showroomStyle == 1);
+            }
+            ui.syncFloorReflections();
             const int style = ui.backgroundStyle();
             for (int i = 0; i < 3; ++i) {
                 backgroundBlend[size_t(i)] += (float(i == style) - backgroundBlend[size_t(i)]) *
@@ -809,6 +827,7 @@ namespace gt4
             count = cars.size();
             selected = index;
             shop = {};
+            shopExitArmed = shopReturnNavigation = false;
             photo = {};
             shopResetGroup = -1;
             viewer.reset(clock);
@@ -923,19 +942,19 @@ namespace gt4
                 return;
             }
             if (spawnReview != SpawnReview::None) {
-                if (spawnReview == SpawnReview::Viewer || spawnReview == SpawnReview::ShopExit) {
-                    chooseSpawnReview(ReviewChoice::Cinematic);
-                } else if (spawnReview == SpawnReview::Cinematic) {
-                    chooseSpawnReview(ReviewChoice::Exit);
-                } else if (pendingReviewChoice < 0) {
-                    pendingReviewChoice = int(ReviewChoice::Dismiss);
-                    review.dismiss(clock);
+                if (pendingReviewChoice < 0) {
+                    chooseSpawnReview(ReviewChoice::Dismiss);
                 }
                 cue = Cue::Back;
                 return;
             }
             if (ui.menu.open) {
                 ui.menu.open = false;
+                return;
+            }
+            if (shopReturnNavigation && !shop.open()) {
+                returnToCarSelection();
+                cue = Cue::Back;
                 return;
             }
             if (ui.cinematic.active) {
@@ -1069,9 +1088,9 @@ namespace gt4
             : width(w),
               height(h),
               scale(h / 720.f),
-              cell(std::max(w / 18.5f, std::min(100 * scale, (w - 140 * scale) / 11.5f))),
-              left((w - 11.38f * cell) * .5f),
-              y(h * .749f + 30 * scale * s.paintMix),
+              cell(1.30f * std::max(w / 18.5f, std::min(100 * scale, (w - 140 * scale) / 11.5f))),
+              left((w - 8.38f * cell) * .5f),
+              y(h * .725f + 30 * scale * s.paintMix),
               first(std::max(0, int(std::floor(s.scroll - left / cell)) - 2)),
               last(std::min(int(n), int(std::ceil(s.scroll + (w - left) / cell)) + 2)),
               model(s)
@@ -1088,9 +1107,9 @@ namespace gt4
         {
             const bool selected = size_t(i) == model.selected;
             return {left + (i - model.scroll) * cell + (size_t(i) > model.selected ? .38f * cell : 0),
-                    y - (selected ? 15 : 0) * scale,
+                    y - (selected ? 15 : 0) * scale * 1.30f,
                     (selected ? 132 : 94) * cell / 100,
-                    (selected ? 61 : 43) * scale};
+                    (selected ? 61 : 43) * scale * 1.30f};
         }
 
         int hit(float x, float py) const
@@ -1114,7 +1133,7 @@ namespace gt4
             const float scale = h / 720.f;
             track = {66 * scale, h * .897f, std::max(0.f, w - 132 * scale), 4 * scale};
             thumb.w = std::min(track.w,
-                               std::max(40 * scale, track.w * std::min(1.f, 11.f / float(std::max(size_t(1), count)))));
+                               std::max(40 * scale, track.w * std::min(1.f, 8.f / float(std::max(size_t(1), count)))));
             thumb.h = 3 * scale;
             travel = track.w - thumb.w;
             thumb.x = track.x + travel * (count > 1 ? float(s.selected) / float(count - 1) : 0);
@@ -1130,13 +1149,15 @@ namespace gt4
         }
     };
 
-    inline Rect paintBox(float w, float h, size_t i, size_t count)
+    inline Rect paintBox(float w, float h, size_t i, size_t count, float styleMix = 0)
     {
         const float scale = h / 720.f;
-        const float pitch = std::min(40.f * scale, w * .93f / float(std::max(size_t(1), count)));
-        const float width = std::min(24.f * scale, pitch * .80f);
+        const float pitch = std::min((40.f + 54.f * styleMix) * scale,
+                                     w * .93f / float(std::max(size_t(1), count)));
+        const float width = std::min((24.f + 58.f * styleMix) * scale, pitch * (.80f + .10f * styleMix));
+        const float height = 64.f * scale + (width - 64.f * scale) * styleMix;
         return {w * .5f + (float(i) - (float(count) - 1) * .5f) * pitch - width * .5f,
-                h * .724f, width, 64.f * scale};
+                h * .724f + (64.f * scale - height) * .5f - 3.f * scale * styleMix, width, height};
     }
 
     inline Rect liveryBox(float w, float h, size_t i, size_t count)
@@ -1183,7 +1204,7 @@ namespace gt4
         } else {
             const size_t n = std::max(size_t(1), cars[model.selected].paints.size());
             for (size_t i = 0; i < n; ++i) {
-                if (paintBox(w, h, i, n).contains(x, y)) {
+                if (paintBox(w, h, i, n, model.prologueMix).contains(x, y)) {
                     if (model.paint == i) {
                         model.accept(cars);
                     } else {
@@ -1322,7 +1343,7 @@ namespace gt4
                 x = (b.x + b.w * .68f) / w;
                 y = (b.y + b.h * .68f) / h;
             } else if (s.page == Page::Paint) {
-                const auto b = paintBox(w, h, s.paint, std::max(size_t(1), cars[s.selected].paints.size()));
+                const auto b = paintBox(w, h, s.paint, std::max(size_t(1), cars[s.selected].paints.size()), s.prologueMix);
                 x = (b.x + b.w * .65f) / w;
                 y = (b.y + b.h * .62f) / h;
             } else if (s.page == Page::Livery) {

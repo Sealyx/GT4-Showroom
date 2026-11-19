@@ -16,6 +16,21 @@ namespace gt4
         }
     };
 
+    struct FocusDescriptionClock
+    {
+        std::array<int, 3> item{-1, -1, -1};
+        double began = -1;
+
+        bool describe(std::array<int, 3> selected, double now)
+        {
+            if (selected != item || began < 0 || now < began) {
+                item = selected;
+                began = now;
+            }
+            return std::fmod(now - began, 9.5) < 6.;
+        }
+    };
+
     struct FooterHelpClock
     {
         std::string message;

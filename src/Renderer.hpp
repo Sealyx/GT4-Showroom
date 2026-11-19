@@ -35,6 +35,7 @@
 #include "ViewerPhotoCapture.hpp"
 #include "StudioLighting.hpp"
 #include "StudioGradient.hpp"
+#include "PrologueSky.hpp"
 #include "NativeStudio/EnvironmentMap.hpp"
 
 namespace gt4
@@ -71,6 +72,15 @@ namespace gt4
         float capturedDirt = -1;
         uint8_t paintMask = 0;
         float bodyTop = -1e9f;
+        float mainBodyTop = -1e9f;
+        float upperBodyLength = 0.f;
+        float middleBodyLength = 0.f;
+        float roofBodyLength = 0.f;
+        V3 framingBodyLow{}, framingBodyHigh{};
+        struct FramingSlice { float radius = 0, low = 1e9f, high = -1e9f; };
+        std::array<FramingSlice, 64> framingSlices{};
+
+        float framingTop = -1e9f;
         std::vector<Batch> batches;
         V3 low = {1e9f, 1e9f, 1e9f}, high = {-1e9f, -1e9f, -1e9f};
         CinematicCapabilities cinematic;
@@ -184,6 +194,150 @@ namespace gt4
                     p.anchor.x = i % 2 ? z.x : a.x;
                 }
             }
+            // Horizontal sections distinguish a broad cab/body from narrow rooftop attachments.
+            // These measurements are private preview metadata and never alter the model.
+            constexpr size_t sections = 64;
+            std::array<V3, sections> sectionLow, sectionHigh;
+            sectionLow.fill({1e9f, 1e9f, 1e9f});
+            sectionHigh.fill({-1e9f, -1e9f, -1e9f});
+            const float fullHeight = high.z - low.z;
+            const V3 center{(low.x + high.x) * .5f, (low.y + high.y) * .5f, low.z};
+            // Even a very small model needs a full-geometry clearance envelope.
+            for (const auto& batch : batches) {
+                for (const auto& vertex : batch.vertices) {
+                    const auto& p = vertex.p;
+                    const int bin=std::clamp(int((p.z-low.z)/std::max(.001f,fullHeight)*sections),
+                        0,int(sections-1));
+                    auto& slice=framingSlices[size_t(bin)];
+                    slice.radius=std::max(slice.radius,std::hypot(p.x-center.x,p.y-center.y));
+                    slice.low=std::min(slice.low,p.z-low.z);
+                    slice.high=std::max(slice.high,p.z-low.z);
+                }
+            }
+            if (fullHeight > .5f) {
+                for (const auto& batch : batches) {
+                    for (size_t i = 0; i + 2 < batch.vertices.size(); i += 3) {
+                        const V3 points[]{batch.vertices[i].p, batch.vertices[i+1].p, batch.vertices[i+2].p};
+                        const float bottom = std::min({points[0].z, points[1].z, points[2].z});
+                        const float top = std::max({points[0].z, points[1].z, points[2].z});
+                        const int begin = std::max(0, int((bottom-low.z)/fullHeight*sections));
+                        const int end = std::min(int(sections)-1, int((top-low.z)/fullHeight*sections));
+                        for (int bin = begin; bin <= end; ++bin) {
+                            const float level = low.z + (bin + .5f) * fullHeight / sections;
+                            for (unsigned edge = 0; edge < 3; ++edge) {
+                                const V3 a = points[edge], b = points[(edge+1)%3];
+                                if ((a.z <= level && b.z >= level) || (b.z <= level && a.z >= level)) {
+                                    if (std::abs(b.z-a.z) < 1e-6f) { continue; }
+                                    const V3 point = a + (b-a) * ((level-a.z)/(b.z-a.z));
+                                    auto& lo = sectionLow[size_t(bin)];
+                                    auto& hi = sectionHigh[size_t(bin)];
+                                    lo.x = std::min(lo.x,point.x);
+                                    lo.y = std::min(lo.y,point.y);
+                                    hi.x = std::max(hi.x,point.x);
+                                    hi.y = std::max(hi.y,point.y);
+                                }
+                            }
+                        }
+                    }
+                }
+                const float width = high.x - low.x, length = high.y - low.y;
+                for (size_t i = 0; i < sections; ++i) {
+                    const V3 span = sectionHigh[i] - sectionLow[i];
+                    if (span.x >= width * .65f && span.y >= std::min(length * .18f, .9f)) {
+                        mainBodyTop = low.z + float(i+1) * fullHeight / sections;
+                    }
+                }
+            }
+            if (fullHeight > .5f && mainBodyTop > low.z) {
+                const size_t bin = size_t(std::clamp(int((mainBodyTop-low.z)*.6f/fullHeight*sections),0,int(sections-1)));
+                upperBodyLength = std::max(0.f,sectionHigh[bin].y-sectionLow[bin].y);
+            }
+            // Surface-area quantiles are insensitive to tessellation density and reject thin
+            // protrusions on every axis. Full geometry remains available for visibility guarding.
+            framingBodyLow = low; framingBodyHigh = high;
+            constexpr size_t bodyBins = 256;
+            std::array<std::array<double,bodyBins>,3> bodySurface{};
+            double bodyArea = 0;
+            const float lows[3] = {low.x,low.y,low.z}, highs[3] = {high.x,high.y,high.z};
+            for (const auto& batch:batches) {
+                for (size_t i=0;i+2<batch.vertices.size();i+=3) {
+                    const V3 a=batch.vertices[i].p,b=batch.vertices[i+1].p,c=batch.vertices[i+2].p;
+                    const V3 n=cross(b-a,c-a);
+                    const double area=std::sqrt(double(dot(n,n)))/6.;
+                    bodyArea+=area*3.;
+                    for (V3 point:{a,b,c}) {
+                        const float coords[3]={point.x,point.y,point.z};
+                        for (unsigned axis=0;axis<3;++axis) {
+                            const int bin=std::clamp(int((coords[axis]-lows[axis])/std::max(.001f,highs[axis]-lows[axis])*bodyBins),0,int(bodyBins-1));
+                            bodySurface[axis][size_t(bin)]+=area;
+                        }
+                    }
+                }
+            }
+            float bodyL[3],bodyH[3];
+            for (unsigned axis=0;axis<3;++axis) {
+                bodyL[axis]=lows[axis];bodyH[axis]=highs[axis];double sum=0;
+                bool haveLow=false;
+                for (size_t bin=0;bin<bodyBins && bodyArea>0;++bin) {
+                    sum+=bodySurface[axis][bin];
+                    if (!haveLow && sum>=bodyArea*.01) {
+                        bodyL[axis]=lows[axis]+float(bin)/bodyBins*(highs[axis]-lows[axis]);haveLow=true;
+                    }
+                    if (sum>=bodyArea*.99) {
+                        bodyH[axis]=lows[axis]+float(bin+1)/bodyBins*(highs[axis]-lows[axis]);break;
+                    }
+                }
+            }
+            framingBodyLow={bodyL[0],bodyL[1],bodyL[2]};
+            framingBodyHigh={bodyH[0],bodyH[1],bodyH[2]};
+            if (mainBodyTop>low.z+.7f) { framingBodyHigh.z=std::min(framingBodyHigh.z,mainBodyTop); }
+            if (fullHeight>.5f && framingBodyHigh.z>low.z) {
+                const float roofHeight=(framingBodyHigh.z-low.z)*.85f;
+                const size_t bin=size_t(std::clamp(int(roofHeight/fullHeight*sections),0,int(sections-1)));
+                roofBodyLength=std::max(0.f,sectionHigh[bin].y-sectionLow[bin].y);
+            }
+
+            if (fullHeight > .5f) {
+                std::array<float,5> bodyLengths{};
+                for (size_t i=0;i<bodyLengths.size();++i) {
+                    const size_t bin=size_t((.25f+float(i)*.10f)*sections);
+                    bodyLengths[i]=std::max(0.f,sectionHigh[bin].y-sectionLow[bin].y);
+                }
+                std::sort(bodyLengths.begin(),bodyLengths.end());
+                middleBodyLength=bodyLengths[bodyLengths.size()/2];
+            }
+            // area weighting keeps densely subdivided antennas from dominating the body envelope.
+            framingTop = -1e9f;
+            constexpr size_t bins = 128;
+            std::array<double, bins> surface{};
+            double totalArea = 0;
+            const float height = high.z - low.z;
+            if (height > .5f) {
+                for (const auto& batch : batches) {
+                    for (size_t i = 0; i + 2 < batch.vertices.size(); i += 3) {
+                        const auto& a = batch.vertices[i].p;
+                        const auto& b = batch.vertices[i + 1].p;
+                        const auto& c = batch.vertices[i + 2].p;
+                        const V3 normal = cross(b - a, c - a);
+                        const double area = .5 * std::sqrt(double(dot(normal, normal)));
+                        const float top = std::max({a.z, b.z, c.z});
+                        const size_t bin = size_t(std::clamp(int((top - low.z) / height * bins), 0, int(bins - 1)));
+                        surface[bin] += area;
+                        totalArea += area;
+                    }
+                }
+                double accumulated = 0;
+                for (size_t i = 0; i < bins && totalArea > 0; ++i) {
+                    accumulated += surface[i];
+                    if (accumulated >= totalArea * .995) {
+                        const float candidate = low.z + height * float(i + 1) / bins;
+                        if (high.z - candidate > std::max(.4f, height * .15f)) {
+                            framingTop = candidate;
+                        }
+                        break;
+                    }
+                }
+            }
             std::array<float, cinematicComponentCount> best;
             best.fill(1.e30f);
             std::array<CinematicPoint, cinematicComponentCount> anchors{};
@@ -225,7 +379,7 @@ namespace gt4
         }
     };
 
-    // roof accessories on these rancher variants should not shrink their body in the fitted view.
+    // keep the approved rancher fit and exclude isolated, low-area upper accessories on other models.
     inline V3 previewFramingHigh(const Entry& entry, const Mesh& mesh)
     {
         V3 high = mesh.high;
@@ -233,6 +387,9 @@ namespace gt4
             entry.modelKey == modelNameKey("copcarru") || entry.modelKey == modelNameKey("copcardsa");
         if (rancherVariant && mesh.bodyTop > mesh.low.z + .5f) {
             high.z = std::min(high.z, mesh.bodyTop);
+        }
+        if (mesh.framingTop > mesh.low.z + .5f) {
+            high.z = std::min(high.z, mesh.framingTop);
         }
         return high;
     }
@@ -311,7 +468,9 @@ namespace gt4
         float lastShadowPhase = 0, lastShadowAngle = 0, lastShadowSize = 1;
         studioLighting::LightFrame studioLight{};
         bool useStudioShadow = false, staticMainShadow = false;
+        float prologueStyle = 0;
         StudioGradient studioGradient;
+        PrologueSky prologueSky;
         int entryPreviewModel = -1;
         double entrySelectionStamp = -1., entrySessionStamp = -1., entryRenderableAt = -1.;
         uint32_t viewerLightTint = 0xFFFFFF;
@@ -332,6 +491,7 @@ namespace gt4
         std::string footerText;
         double footerBegan = -1.;
         FooterHelpClock footerHelp;
+        FocusDescriptionClock shopFooter;
         IDirect3DTexture9* shopSerifFont = nullptr;
         std::array<float, 96> shopSerifWidths{};
         IDirect3DTexture9* prizeNameFont = nullptr;
@@ -1083,6 +1243,7 @@ namespace gt4
             antialiasing.rejectedQuality = -1;
             occlusion.reset();
             studioGradient.reset();
+            prologueSky.reset();
             entryPreviewModel = -1;
             entrySelectionStamp = entrySessionStamp = entryRenderableAt = -1.;
             unicodeText.reset();
@@ -1106,6 +1267,7 @@ namespace gt4
             footerText.clear();
             footerBegan = -1.;
             footerHelp = {};
+            shopFooter = {};
             if (infoFont) {
                 infoFont->Release();
                 infoFont = nullptr;
@@ -1564,8 +1726,8 @@ namespace gt4
                     const float u = std::clamp(livery->focusU - du * .5f, 0.f, 1.f - du);
                     const float v = std::clamp(livery->focusV - dv * .5f, 0.f, 1.f - dv);
                     rect(d, b.x, b.y, b.w, b.h, color(0xFFFFFF, opacity), texture, u, v, u + du, v + dv);
-                } else {
-                    label(d, livery->index < 0 ? "NONE" : "...", b.x + b.w * .5f, b.y + b.h * .45f,
+                } else if (livery->index >= 0) {
+                    label(d, "...", b.x + b.w * .5f, b.y + b.h * .45f,
                           std::min(8.f * scale, b.w / 3.7f), opacity, true);
                 }
             }
@@ -1583,6 +1745,122 @@ namespace gt4
             band(.78f, .78f, 1, 1, color(0, 0), color(0, .085f * opacity));
         }
 
+        static float cloudNoise(float x, float y)
+        {
+            const auto hash = [](int x, int y) {
+                uint32_t value = uint32_t(x & 255) * 0x8DA6B343u ^ uint32_t(y) * 0xD8163841u;
+                value ^= value >> 15;
+                value *= 0x85EBCA6Bu;
+                return float((value ^ (value >> 13)) & 65535u) / 65535.f;
+            };
+            const int ix = int(std::floor(x)), iy = int(std::floor(y));
+            const float u = ease(x - ix), v = ease(y - iy);
+            const float top = hash(ix, iy) * (1 - u) + hash(ix + 1, iy) * u;
+            const float bottom = hash(ix, iy + 1) * (1 - u) + hash(ix + 1, iy + 1) * u;
+            return top * (1 - v) + bottom * v;
+        }
+
+        static std::array<float, 3> prologueBackdrop(float u, float v, float drift)
+        {
+            const float x = u * 7.2f + drift, y = v * 9.4f;
+            const float warp = cloudNoise(x * .61f, y * .75f);
+            const float warpedY = y + warp * 1.3f;
+            const float density = .50f * cloudNoise(x + warpedY * .22f, warpedY - x * .17f) +
+                .27f * cloudNoise(x * 1.7f - warpedY * .90f, warpedY * 1.7f + x * .90f) +
+                .16f * cloudNoise(x * 2.9f + warpedY * 2.4f, warpedY * 2.9f - x * 2.4f) +
+                .07f * cloudNoise(x * 6.f - warpedY * 3.3f, warpedY * 6.f + x * 3.3f);
+            const float cloud = ease((density - .27f) / .47f);
+            const float cap = 1.f - ease((v - .22f) / .34f);
+            const float horizon = .56f + .015f * (u - .5f) * (u - .5f);
+            const float floor = ease((v - horizon) / .12f);
+            const float deck = floor * (1.f - ease((v - .69f) / .29f));
+            const float side = (u - .5f) * 2.f;
+            const float floorLight = deck * (18.f + 48.f * std::exp(-side * side * 2.2f));
+            const float wall = (1.f - floor) * (18.f + cap * (25.f + 163.f * cloud));
+            return {6.f + wall * .87f + floorLight * .88f,
+                    7.f + wall * .97f + floorLight * .96f,
+                    9.f + wall * 1.08f + floorLight * 1.04f};
+        }
+
+        void prologuePaintChip(IDirect3DDevice9* d, Rect slot, const Paint& paint, bool selected,
+                               float alpha, double clock, uint8_t paintMask)
+        {
+            const float phase = float(std::fmod(clock, .75) / .75);
+            const float pulse = selected ? ease(phase < .5f ? phase * 2.f : (1.f - phase) * 2.f) : 0.f;
+            const float radius = slot.w * (selected ? .525f : .43f);
+            const float x = slot.x + slot.w * .5f, y = slot.y + slot.h * .5f;
+            screen(d);
+            d->SetTexture(0, nullptr);
+            d->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG2);
+            d->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG2);
+            d->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+            d->SetRenderState(D3DRS_ZENABLE, FALSE);
+            auto disc = [&](float cx, float cy, float rx, float ry, DWORD center, DWORD edge) {
+                std::array<ScreenVertex, 42> vertices{};
+                vertices[0] = {cx, cy, 0, 1, center, 0, 0};
+                for (size_t i = 0; i <= 40; ++i) {
+                    const float angle = float(i) * 2.f * pi / 40.f;
+                    vertices[i + 1] = {cx + rx * std::cos(angle), cy + ry * std::sin(angle), 0, 1, edge, 0, 0};
+                }
+                d->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 40, vertices.data(), sizeof(ScreenVertex));
+            };
+
+            if (selected) {
+                const DWORD glow = color(0xFF941F, alpha * .90f * pulse);
+                const DWORD ring = color(0xFFB340, alpha * pulse);
+                const auto haloBand = [&](float inner, float outer, DWORD innerInk, DWORD outerInk) {
+                    std::array<ScreenVertex, 82> halo{};
+                    for (size_t i = 0; i <= 40; ++i) {
+                        const float angle = float(i) * 2.f * pi / 40.f;
+                        const float co = std::cos(angle), si = std::sin(angle);
+                        halo[i * 2] = {x + outer * co, y + outer * si, 0, 1, outerInk, 0, 0};
+                        halo[i * 2 + 1] = {x + inner * co, y + inner * si, 0, 1, innerInk, 0, 0};
+                    }
+                    d->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 80, halo.data(), sizeof(ScreenVertex));
+                };
+                haloBand(radius - 1.f, radius + 2.25f, color(0xFF941F, 0), glow);
+                haloBand(radius + 2.25f, radius + 12.f, glow, color(0xFF941F, 0));
+                std::array<ScreenVertex, 82> stroke{};
+                for (size_t i = 0; i <= 40; ++i) {
+                    const float angle = float(i) * 2.f * pi / 40.f;
+                    const float co = std::cos(angle), si = std::sin(angle);
+                    stroke[i * 2] = {x + (radius + 3.f) * co, y + (radius + 3.f) * si,
+                                     0, 1, ring, 0, 0};
+                    stroke[i * 2 + 1] = {x + (radius + 1.5f) * co, y + (radius + 1.5f) * si,
+                                         0, 1, ring, 0, 0};
+                }
+                d->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 80, stroke.data(), sizeof(ScreenVertex));
+            }
+
+            std::array<unsigned, 4> slots{};
+            unsigned count = 0;
+            for (unsigned slot = 0; slot < slots.size(); ++slot) {
+                if (paintMask & (1u << slot)) { slots[count++] = slot; }
+            }
+            if (!count) { slots[count++] = 0; }
+            if (count == 1) {
+                disc(x, y, radius * .84f, radius * .84f, color(paint.rgb[slots[0]], alpha),
+                     color(paint.rgb[slots[0]], alpha, .38f));
+            } else {
+                for (unsigned segment = 0; segment < count; ++segment) {
+                    constexpr unsigned steps = 24;
+                    const uint32_t rgb = paint.rgb[slots[segment]];
+                    std::array<ScreenVertex, steps + 2> wedge{};
+                    wedge[0] = {x, y, 0, 1, color(rgb, alpha), 0, 0};
+                    for (unsigned i = 0; i <= steps; ++i) {
+                        const float angle = -pi * .5f +
+                            (float(segment) + float(i) / steps) * 2.f * pi / count;
+                        wedge[i + 1] = {x + radius * .84f * std::cos(angle),
+                                        y + radius * .84f * std::sin(angle), 0, 1,
+                                        color(rgb, alpha, .38f), 0, 0};
+                    }
+                    d->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, steps, wedge.data(), sizeof(ScreenVertex));
+                }
+            }
+            disc(x - radius * .24f, y - radius * .30f, radius * .47f, radius * .24f,
+                 color(0xFFFFFF, alpha * .68f), color(0xFFFFFF, 0));
+        }
+
         void studio(IDirect3DDevice9* d, const Camera& cam, double seconds,
                     std::array<float, 3> backdrop = {1, 0, 0}, bool wallTexture = true, float opacity = 1.f)
         {
@@ -1592,10 +1870,29 @@ namespace gt4
             float x = 0, floorY = 0, z = 0, rhw = 0;
             const bool floorVisible = cam.project({0, 0, 0}, x, floorY, z, rhw);
             const float floorShift = floorVisible ? std::clamp(floorY / cam.h - .56f, -.12f, .12f) : 0.f;
-            if (wallTexture && backdrop[0] >= .9999f &&
-                studioGradient.drawLookup(d, cam.w, cam.h, floorShift, studioLight, opacity)) {
+            const float nearDrift = float(std::fmod(seconds * .1582, 1.));
+            const float farDrift = float(std::fmod(seconds * .1148, 1.));
+            bool cloudLayer = prologueStyle > 0.f && prologueSky.available(d, nearDrift, farDrift);
+            const float cloudOpacity = opacity * prologueStyle;
+            const auto drawPrologue = [&] {
+                if (!prologueSky.draw(d, cam.w, cam.h, floorShift, cloudOpacity)) {
+                    return false;
+                }
                 triangles += 2;
                 ++drawCalls;
+                return true;
+            };
+            if (cloudLayer && prologueStyle == 1.f) {
+                if (drawPrologue()) { return; }
+                cloudLayer = false;
+            }
+            // Account for the next layer's blend so the entry fade keeps the same total opacity.
+            const float baseOpacity = cloudLayer ? (opacity - cloudOpacity) / (1.f - cloudOpacity) : opacity;
+            if (wallTexture && (prologueStyle == 0.f || cloudLayer) && backdrop[0] >= .9999f &&
+                studioGradient.drawLookup(d, cam.w, cam.h, floorShift, studioLight, baseOpacity)) {
+                triangles += 2;
+                ++drawCalls;
+                if (cloudLayer) { drawPrologue(); }
                 return;
             }
             constexpr int columns = 64;
@@ -1638,6 +1935,12 @@ namespace gt4
                             rgb[channel] += shade[channel] * backdrop[size_t(style)];
                         }
                     }
+                    if (prologueStyle > 0.f && !cloudLayer) {
+                        const auto sky = prologueBackdrop(u, v, float(std::fmod(seconds * .63, 256.)));
+                        for (size_t i = 0; i < rgb.size(); ++i) {
+                            rgb[i] += (sky[i] - rgb[i]) * prologueStyle;
+                        }
+                    }
                     const auto channel = [&](size_t index) { return std::clamp(rgb[index], 0.f, 255.f) / 255.f; };
                     vertices[row * stride + column] = {
                         u * cam.w - .5f, v * cam.h - .5f, 1.f, 1.f, channel(0), channel(1), channel(2)};
@@ -1648,13 +1951,13 @@ namespace gt4
             d->SetTexture(0, nullptr);
             d->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG2);
             d->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG2);
-            d->SetRenderState(D3DRS_ALPHABLENDENABLE, opacity < 1.f);
+            d->SetRenderState(D3DRS_ALPHABLENDENABLE, baseOpacity < 1.f);
             d->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
             d->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
             d->SetRenderState(D3DRS_ZENABLE, FALSE);
             d->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
             HRESULT result = E_FAIL;
-            if (wallTexture && backdrop[0] > 0 && studioGradient.bind(d, false, 0.f, opacity)) {
+            if (wallTexture && backdrop[0] > 0 && studioGradient.bind(d, false, 0.f, baseOpacity)) {
                 if (SUCCEEDED(d->SetFVF(D3DFVF_XYZRHW | D3DFVF_TEX1 | D3DFVF_TEXCOORDSIZE3(0)))) {
                     result = d->DrawIndexedPrimitiveUP(D3DPT_TRIANGLELIST, 0, UINT(vertices.size()),
                         UINT(indices.size() / 3), indices.data(), D3DFMT_INDEX16, vertices.data(), sizeof(GradientVertex));
@@ -1670,7 +1973,7 @@ namespace gt4
                         const float scaled = component * 255.f;
                         return DWORD(backdrop[0] > 0 ? std::lround(scaled) : int(scaled + .0001f));
                     };
-                    const DWORD ink = (DWORD(std::lround(opacity * 255.f)) << 24) | (byte(vtx.r) << 16) | (byte(vtx.g) << 8) | byte(vtx.b);
+                    const DWORD ink = (DWORD(std::lround(baseOpacity * 255.f)) << 24) | (byte(vtx.r) << 16) | (byte(vtx.g) << 8) | byte(vtx.b);
                     fallback[i] = {vtx.x, vtx.y, vtx.z, vtx.rhw, ink, 0.f, 0.f};
                 }
                 d->DrawIndexedPrimitiveUP(D3DPT_TRIANGLELIST, 0, UINT(fallback.size()), UINT(indices.size() / 3),
@@ -1678,6 +1981,7 @@ namespace gt4
             }
             triangles += indices.size() / 3;
             ++drawCalls;
+            if (cloudLayer) { drawPrologue(); }
         }
 
 #include "VehicleViewerRenderer.inl"
@@ -1730,6 +2034,9 @@ namespace gt4
                 light = {0, 0, 1};
             } else if (shadow && staticMainShadow && !viewerSubject) {
                 light = {0, 0, 1};
+            } else if (shadow && prologueStyle > 0.f && !viewerSubject && !absolute) {
+                light.x *= 1.f - prologueStyle;
+                light.y *= 1.f - prologueStyle;
             }
             if (shadow) {
                 D3DMATRIX flat = world;
@@ -1812,7 +2119,10 @@ namespace gt4
             }
             if (shadow) {
                 d->SetTexture(0, nullptr);
-                const float shadowOpacity = thumbnail ? .9f : staticMainShadow && !viewerSubject ? studioLighting::frame(16.).shadowOpacity : useStudioShadow ? studioLight.shadowOpacity : .55f;
+                float shadowOpacity = thumbnail ? .9f : staticMainShadow && !viewerSubject ? studioLighting::frame(16.).shadowOpacity : useStudioShadow ? studioLight.shadowOpacity : .55f;
+                if (prologueStyle > 0.f && !thumbnail && !viewerSubject && !absolute && !staticMainShadow) {
+                    shadowOpacity += (studioLighting::frame(16.).shadowOpacity - shadowOpacity) * prologueStyle;
+                }
                 d->SetRenderState(D3DRS_TEXTUREFACTOR, color(0, opacity * shadowOpacity));
                 d->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
                 d->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
@@ -2164,7 +2474,7 @@ namespace gt4
             rect(d, bx + bh * .11f, by + bh * .09f, bw - bh * .22f, H * .0012f, color(0xFFF0B0, readyAlpha * .65f));
             text(d, "OK", W * .5f, by - H * .0035f, H * .018f, color(0x151515, readyAlpha), true);
             rect(d, 0, H * .944f, W, H * .056f, 0xFF000000);
-            const std::string message = bonusLabel(s.prize.ability);
+            const std::string message = s.status.empty() ? bonusLabel(s.prize.ability) : s.status;
             label(d, message, W * .5f, H * .951f, fitted(message, H * .014f, W * .9f), nameAlpha, true);
             if (age >= prizeReadyTime && s.pointerVisible) {
                 cursor(d, s.pointerX * W, s.pointerY * H, H / 720.f * .85f, readyAlpha);
@@ -2865,6 +3175,9 @@ namespace gt4
             QueryPerformanceCounter(&begin);
             QueryPerformanceFrequency(&frequency);
             lastDraw = false;
+            if (!s.shop.open()) {
+                shopFooter = {};
+            }
             const bool customStudio = s.viewer.settings.scene == ViewerScene::Custom;
             viewerLightTint = s.viewer.active && !customStudio ? s.viewer.settings.lighting().color : 0xFFFFFF;
             triangles = drawCalls = uploads = 0;
@@ -2872,6 +3185,8 @@ namespace gt4
             lightPhase = float(s.clock) * .42f;
             lastShadowPhase = lightPhase;
             useStudioShadow = false;
+            prologueStyle = !s.shop.open() && !s.viewer.active && !s.photo.active && s.page != Page::Prize
+                ? s.prologueMix : 0.f;
             staticMainShadow = s.ui.backgroundStyle() != 0 && !s.viewer.active && !s.shop.open();
             if (!d || !s.open || (!entries.empty() && s.selected >= entries.size())) {
                 return false;
@@ -2978,7 +3293,9 @@ namespace gt4
                 bikeDisplay.reset();
                 bikeDisplaySource = 0;
             }
-            const float span = main ? main->span() : 5.f;
+            const V3 framingHigh = main ? previewFramingHigh(e, *main) : V3{};
+            const float span = main ? std::max({framingHigh.x - main->low.x,
+                framingHigh.y - main->low.y, framingHigh.z - main->low.z, 2.f}) : 5.f;
             if (s.shop.open() && s.shop.page != ShopPage::Closed) {
                 drawTransFender(d, W, H, s, e, main, parts);
                 spawnReviewDialog(d, W, H, s);
@@ -3006,7 +3323,7 @@ namespace gt4
                     float angle = s.heading() + pi;
                     const bool normalAutomobile = (e.kind == 0 || e.kind == 1) && !s.enthusia &&
                                                   !s.viewer.active && !s.photo.active;
-                    const float browseMix = normalAutomobile ? s.backgroundBlend[0] * (1.f - s.ui.cinematic.mix) : 0.f;
+                    const float browseMix = normalAutomobile ? (1.f - s.ui.cinematic.mix) : 0.f;
                     const bool stagedEntry = normalAutomobile && !s.ui.cinematic.active && s.ui.cinematic.mix <= .001f;
                     if (entryPreviewModel != e.id || entrySelectionStamp != s.changed ||
                         entrySessionStamp != s.opened || entryRenderableAt > s.clock) {
@@ -3047,7 +3364,7 @@ namespace gt4
                         previewSize -= std::max(0.f, previewSize - safeSize) * browseMix;
                         const float radius = unscaledRadius * previewSize;
                         const auto tile = Carousel(W, H, s, entries.size()).box(int(s.selected));
-                        const float upperLimit = H * .12f, lowerLimit = tile.y - H * .040f;
+                        const float upperLimit = H * .12f, lowerLimit = tile.y - 30.f * scale * s.paintMix - H * .040f;
                         float top = mainCam.cy, bottom = mainCam.cy;
                         for (V3 corner : {V3{0, -radius, 0}, V3{0, radius, 0},
                                           V3{0, -radius, height * previewSize}, V3{0, radius, height * previewSize}}) {
@@ -3064,6 +3381,112 @@ namespace gt4
                         bottom = mainCam.cy + (bottom - mainCam.cy) * zoomFactor;
                         mainCam.cy += (std::max(0.f, upperLimit - top) -
                                        std::max(0.f, bottom - lowerLimit)) * browseMix;
+                    }
+                    const int framingClass=classIndex(e.classId);
+                    const bool protectedBike=e.kind==9 || e.kind==10 || framingClass==7 || framingClass==8 || framingClass==11;
+                    if (browseMix>0.f && !protectedBike) {
+                        const float measuredLength=std::max(.5f,main->framingBodyHigh.y-main->framingBodyLow.y);
+                        // A long rooftop overhang can survive the area trim. Confirm that a
+                        // substantial lower body exists before sizing it from the middle sections.
+                        const float middleLength=main->middleBodyLength;
+                        const float bodyWidth=std::max(.5f,main->framingBodyHigh.x-main->framingBodyLow.x);
+                        const float narrowOverhang=1.f-ease((bodyWidth/measuredLength-.39f)/.07f);
+                        const float lengthMix=.60f*ease((middleLength-6.7f)/.65f) * narrowOverhang *
+                            ease((measuredLength/std::max(.5f,middleLength)-1.14f)/.18f);
+                        const float bodyLength=measuredLength+(std::min(measuredLength,middleLength)-measuredLength)*lengthMix;
+                        const float bodyHeight=std::max(.5f,main->framingBodyHigh.z-main->low.z);
+                        const float radius=.5f*std::hypot(bodyWidth,bodyLength)*previewSize;
+                        float left=1e9f,right=-1e9f,top=1e9f,bottom=-1e9f;
+                        // A fixed full-turn envelope keeps the size steady throughout rotation.
+                        for (unsigned turn=0;turn<48;++turn) {
+                            const float yaw=float(turn)*2.f*pi/48.f;
+                            for (float z:{0.f,bodyHeight*previewSize}) {
+                                float x=0,y=0,depth=0,rhw=0;
+                                if (mainCam.project({radius*std::cos(yaw),radius*std::sin(yaw),z},x,y,depth,rhw)) {
+                                    left=std::min(left,x);right=std::max(right,x);
+                                    top=std::min(top,y);bottom=std::max(bottom,y);
+                                }
+                            }
+                        }
+                        const float upright=std::max(ease((bodyHeight/bodyLength-.40f)/.16f),
+                            std::max(ease((bodyHeight/bodyWidth-1.05f)/.25f),ease((bodyHeight-2.f)/.8f)));
+                        const float bodyScreenWidth=std::max(1.f,right-left);
+                        const float bodyScreenHeight=std::max(1.f,bottom-top);
+                        const float standardFit=std::min(W*(.615f+.085f*upright)/bodyScreenWidth,
+                            H*(.44f+.18f*upright)/bodyScreenHeight);
+
+                        // Class labels describe the catalogue, while the body dimensions identify
+                        // crossover shapes such as an off-road wagon or an armored cargo van.
+                        const float mediumBody=ease((bodyLength-3.65f)/.55f) *
+                            (1.f-ease((bodyLength-6.6f)/1.1f));
+                        const float tallCar=ease((bodyHeight-1.55f)/.30f) *
+                            ease((bodyHeight/bodyLength-.29f)/.075f);
+                        const float utilityBody=mediumBody*tallCar*(1.f-ease((bodyHeight-2.95f)/.55f));
+                        const float compactLength=1.f-ease((bodyLength-3.45f)/.45f);
+                        const float bodyOverhang=main->high.y-main->low.y-bodyLength;
+                        const float shortBody=std::max({1.f-ease((bodyHeight-1.23f)/.14f),
+                            ease((bodyHeight/bodyLength-.48f)/.1f),ease((bodyOverhang-.3f)/.4f)});
+                        const float utilityHeight=ease((bodyHeight-.72f)/.22f)*(1.f-ease((bodyHeight/bodyLength-.74f)/.15f));
+                        const float wideFootprint=ease((bodyLength-2.5f)/.45f)*ease((bodyWidth/bodyLength-.55f)/.09f);
+                        const float compactUtility=compactLength*shortBody*utilityHeight*(1.f-wideFootprint);
+                        const float uprightFit=std::min(W*.71f/bodyScreenWidth,
+                            H*(.56f+.08f*upright)/bodyScreenHeight);
+                        const float compactFit=std::min(W*.45f/bodyScreenWidth,H*.42f/bodyScreenHeight);
+                        float boost=standardFit+(std::max(standardFit,uprightFit)-standardFit)*utilityBody;
+                        boost+=(std::min(boost,compactFit)-boost)*compactUtility;
+                        // Thin protrusions may use more of the top margin once the main body
+                        // has been sized. The complete mesh still bounds the turning envelope.
+                        const float headroom=utilityBody*ease((main->high.z-main->framingBodyHigh.z-.30f)/.7f);
+                        const float upper=H*(.055f-.032f*headroom);
+                        const auto tile = Carousel(W,H,s,entries.size()).box(int(s.selected));
+                        const float lower = tile.y - 30.f*scale*s.paintMix - H*.020f;
+                        for (const auto& slice : main->framingSlices) {
+                            if (slice.high < slice.low) { continue; }
+                            for (float height : {slice.low,slice.high}) {
+                                for (float direction : {-1.f,1.f}) {
+                                    float x=0,y=0,depth=0,rhw=0;
+                                    if (mainCam.project({0,direction*slice.radius*previewSize,height*previewSize},x,y,depth,rhw)) {
+                                        if (y < mainCam.cy) { boost=std::min(boost,(mainCam.cy-upper)/std::max(1.f,mainCam.cy-y)); }
+                                        if (y > mainCam.cy) { boost=std::min(boost,(lower-mainCam.cy)/std::max(1.f,y-mainCam.cy)); }
+                                    }
+                                    const float radius=slice.radius*previewSize;
+                                    const float centerDepth=dot(V3{0,0,height*previewSize}-mainCam.eye,mainCam.forward);
+                                    // For an overhang, use the tangent of the turning circle.
+                                    // A projected square corner combines two mutually exclusive extrema.
+                                    const float tangentY=-radius*radius*mainCam.forward.y/std::max(.1f,centerDepth);
+                                    const float tangentX=std::sqrt(std::max(0.f,radius*radius-tangentY*tangentY));
+                                    const float centerX=W*.5f+mainCam.offsetX;
+                                    const float room=direction<0.f?centerX-W*.045f:W*.955f-centerX;
+                                    if (mainCam.project({direction*radius,-radius,height*previewSize},x,y,depth,rhw)) {
+                                        const float originalLimit=room/std::max(1.f,std::abs(x-centerX));
+                                        float rotationLimit=originalLimit;
+                                        if (lengthMix>0.f &&
+                                            mainCam.project({direction*tangentX,tangentY,height*previewSize},x,y,depth,rhw)) {
+                                            const float overhangLimit=std::min(room,W*.365f)/std::max(1.f,std::abs(x-centerX));
+                                            rotationLimit+=(std::max(originalLimit,overhangLimit)-originalLimit)*
+                                                (lengthMix/.60f);
+                                        }
+                                        boost=std::min(boost,rotationLimit);
+                                    }
+                                }
+                            }
+                        }
+                        // The shorter upper cabin distinguishes an SUV from a full-length van roof.
+                        const float roofCoverage=main->roofBodyLength/bodyLength;
+                        const float shortRoof=ease((roofCoverage-.42f)/.10f)*
+                            (1.f-ease((roofCoverage-.66f)/.065f));
+                        const bool approvedPolice=e.modelKey==modelNameKey("copcarru") ||
+                            e.modelKey==modelNameKey("copcardsa") || e.modelKey==modelNameKey("copcardsb");
+                        const bool cargoCategory=framingClass==4 || framingClass==5;
+                        const float suvHeight=ease((bodyHeight-1.7f)/.1f)*
+                            (1.f-ease((bodyHeight-2.2f)/.25f));
+                        const float suvMix=cargoCategory?0.f:utilityBody*shortRoof*suvHeight;
+                        const float suvAdjustment=approvedPolice?1.f:1.f-.06f*suvMix;
+                        boost*=suvAdjustment;
+                        mainCam.focal *= 1.f+(std::max(.2f,boost)-1.f)*browseMix;
+                    }
+                    if (protectedBike && !s.viewer.active && !s.photo.active && !s.enthusia) {
+                        mainCam.focal*=1.f+.06f*(1.f-s.ui.cinematic.mix);
                     }
                     // fit the settled pose first; feeding the dolly into camera fitting makes it pump during entry.
                     if (stagedEntry) {
@@ -3125,7 +3548,7 @@ namespace gt4
                         if (mainReflectionQuality > 0 && !mainEnvironmentUnavailable) {
                             const double interval = 1. / (mainReflectionQuality == 1 ? 4 :
                                 mainReflectionQuality == 2 ? 8 : mainReflectionQuality == 3 ? 15 : 30);
-                            const uint64_t style = uint64_t(s.ui.backgroundStyle() + 1);
+                            const uint64_t style = uint64_t(s.ui.backgroundStyle() + 1) + 4 * uint64_t(s.ui.showroomStyle);
                             for (unsigned candidate = mainEnvironmentResolution; candidate >= 64; candidate >>= 1) {
                                 mainEnvironment.resolution(candidate);
                                 if (mainEnvironment.update(d, style, studioTime, {0, 0, .8f}, [&](const Camera& view) {
@@ -3254,7 +3677,36 @@ namespace gt4
                         const Carousel layout(W, H, s, entries.size());
                         for (int i = layout.first; i < layout.last; ++i) {
                             const auto box = layout.box(i);
-                            roundedRectangle(d, box.x, box.y, box.w, box.h, 4 * scale, color(0x242829, carStrip * .55f));
+                            if (prologueStyle < 1.f) {
+                                roundedRectangle(d, box.x, box.y, box.w, box.h, 4 * scale,
+                                                 color(0x242829, carStrip * (1.f - prologueStyle) * .55f));
+                            }
+                            if (prologueStyle > 0.f) {
+                                const bool selected = i == int(s.selected);
+                                const float alpha = carStrip * prologueStyle;
+                                const float radius = 6.8f * scale;
+                                const float border = (selected ? 3.5f : 3.f) * scale;
+                                for (int ring = 3; ring >= 1; --ring) {
+                                    const float grow = float(ring) * 1.05f * scale;
+                                    roundedRectangle(d, box.x - grow, box.y + 3.1f * scale - grow,
+                                                     box.w + grow * 2.f, box.h + grow * 2.f, radius + grow,
+                                                     color(0x050508, alpha * (.38f - .073f * ring)));
+                                }
+                                if (selected) {
+                                    const float pulse = .5f + .5f * std::sin(float(s.clock) * 3.8f);
+                                    for (int ring = 4; ring >= 1; --ring) {
+                                        const float grow = float(ring) * 1.35f * scale;
+                                        roundedRectangle(d, box.x - grow, box.y - grow,
+                                                         box.w + grow * 2.f, box.h + grow * 2.f, radius + grow,
+                                                         color(0xFFA42E, alpha * (.31f - .063f * ring) *
+                                                               (.72f + .28f * pulse)));
+                                    }
+                                }
+                                roundedRectangle(d, box.x, box.y, box.w, box.h, radius,
+                                                 color(selected ? 0xF5AD4C : 0x585F68, alpha));
+                                roundedRectangle(d, box.x + border, box.y + border, box.w - border * 2.f,
+                                                 box.h - border * 2.f, radius - border, color(0x252A32, alpha));
+                            }
                             if (const Mesh* thumb = lookup(entries[i].id)) {
                                 constexpr float thumbAngle = pi - .78f;
                                 const int fullX = int(std::floor(box.x + 2 * scale)),
@@ -3306,8 +3758,8 @@ namespace gt4
                             if (s.page == Page::Cars && !entries.empty() && s.selected < entries.size()) {
                                 marker(d,
                                        selected.x + selected.w * .5f,
-                                       selected.y - 10 * scale,
-                                       scale,
+                                       selected.y - 13.f * scale,
+                                       1.30f * scale,
                                        carStrip * thumbnailPulse(s.clock - s.changed));
                             }
                             const auto caption = vehicleCaption(e, s.ui);
@@ -3328,8 +3780,16 @@ namespace gt4
                                 const auto p = e.paints.empty() ? Paint{} : e.paints[i];
                                 auto box = paintBox(W, H, i, n);
                                 box.y += colorsOffset;
-                                drawSelectionChip(d, box, scale, paintStrip, i == s.paint, &p,
-                                                  main ? paintSlotCount(main->paintMask) : 2, nullptr);
+                                if (prologueStyle < 1.f) {
+                                    drawSelectionChip(d, box, scale, paintStrip * (1.f - prologueStyle), i == s.paint,
+                                                      &p, main ? paintSlotCount(main->paintMask) : 2, nullptr);
+                                }
+                                if (prologueStyle > 0.f) {
+                                    auto circle = paintBox(W, H, i, n, 1.f);
+                                    circle.y += colorsOffset;
+                                    prologuePaintChip(d, circle, p, i == s.paint, paintStrip * prologueStyle,
+                                                      s.clock, main ? main->paintMask : uint8_t(1));
+                                }
                             }
                             std::string paintLabel =
                                 paint.name.empty() ? "Paint " + std::to_string(s.paint + 1) + " / " + std::to_string(n)

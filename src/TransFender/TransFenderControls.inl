@@ -139,7 +139,9 @@ void processShopInput(
                            state.pointerY >= .77f && state.pointerY < .92f &&
                            (shop.page == ShopPage::CarWash || shop.page == ShopPage::Suspension);
     if (cancel || backArrow) {
-        if (shop.page == ShopPage::Menu) {
+        if (shop.page == ShopPage::Menu && state.shopExitArmed) {
+            state.returnFromCustomization();
+        } else if (shop.page == ShopPage::Menu) {
             state.spawnReview = SpawnReview::ShopExit;
             state.review = {state.clock};
             state.pendingReviewChoice = -1;
