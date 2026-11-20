@@ -701,8 +701,10 @@ namespace gt4
         if (state.appearanceResetPending || state.extrasResetPending) {
             syncStudioExtraPreview();
         }
-        const auto stockPreview = cache.find(selectedEntry.id);
-        liveryNative::update(state, selectedEntry, stockPreview == cache.end() ? nullptr : stockPreview->second.mesh.get());
+        if (state.page != Page::Extras) {
+            const auto stockPreview = cache.find(selectedEntry.id);
+            liveryNative::update(state, selectedEntry, stockPreview == cache.end() ? nullptr : stockPreview->second.mesh.get());
+        }
         if (state.postSelectionCinematic) {
             const auto livery = selectedLivery();
             const int previousCustomizationModel = customizationNative::state.model;
@@ -848,6 +850,11 @@ namespace gt4
                                   nativePreview::captureFailure.c_str());
                 log(b);
             }
+        }
+        // Resolve the livery against the new extra's geometry before exposing its materials to the renderer.
+        if (state.page == Page::Extras) {
+            const auto stockPreview = cache.find(selectedEntry.id);
+            liveryNative::update(state, selectedEntry, stockPreview == cache.end() ? nullptr : stockPreview->second.mesh.get());
         }
         if (state.page == Page::Extras && !extrasFraming) {
             const auto current = cache.find(selectedEntry.id);

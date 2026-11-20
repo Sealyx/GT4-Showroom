@@ -370,7 +370,7 @@ namespace gt4
         Paint previewPaint(const Entry& entry) const
         {
             Paint color = entry.paints.empty() ? Paint{} : entry.paints[std::min(paint, entry.paints.size() - 1)];
-            if (page == Page::Livery && liveryWhite && !postSelectionCinematic) {
+            if (liveryWhite && usesLivery() && !postSelectionCinematic) {
                 for (size_t channel = 0; channel < 2; ++channel) {
                     color.rgb[channel] = liveryWhiteRgb;
                 }

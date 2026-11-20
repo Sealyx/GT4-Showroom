@@ -538,6 +538,7 @@ namespace gt4
         {
             constexpr double duration = .20;
             const Paint target = model.previewPaint(entry);
+            const bool browsingExtras = model.page == Page::Extras;
             if (appearance.model != entry.id || appearance.opened != model.opened ||
                 model.ui.cinematic.active || model.viewer.active || model.page == Page::Prize) {
                 appearance = {};
@@ -553,7 +554,9 @@ namespace gt4
                 }
                 return paint;
             };
-            if (!std::equal(std::begin(target.rgb), std::end(target.rgb), std::begin(appearance.toPaint.rgb))) {
+            if (browsingExtras) {
+                appearance.fromPaint = appearance.toPaint = target;
+            } else if (!std::equal(std::begin(target.rgb), std::end(target.rgb), std::begin(appearance.toPaint.rgb))) {
                 appearance.fromPaint = paintAt();
                 appearance.toPaint = target;
                 appearance.paintStarted = model.clock;
@@ -576,7 +579,11 @@ namespace gt4
                         incoming.materials = option.appearanceMaterials;
                     }
                 }
-                if (model.clock - appearance.liveryStarted >= duration) {
+                if (browsingExtras) {
+                    if (!wantsLivery || incoming.texture || incoming.materials) {
+                        appearance.fromLivery = appearance.toLivery = std::move(incoming);
+                    }
+                } else if (model.clock - appearance.liveryStarted >= duration) {
                     appearance.fromLivery = appearance.toLivery;
                     if ((!wantsLivery || incoming.texture || incoming.materials) &&
                         !(incoming == appearance.toLivery)) {
@@ -584,7 +591,7 @@ namespace gt4
                         appearance.liveryStarted = model.clock;
                     }
                 }
-                liveryBlend = ease(float((model.clock - appearance.liveryStarted) / duration));
+                liveryBlend = browsingExtras ? 1.f : ease(float((model.clock - appearance.liveryStarted) / duration));
             } else {
                 appearance.fromLivery = appearance.toLivery = {};
             }
