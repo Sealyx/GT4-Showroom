@@ -5,8 +5,9 @@
 namespace gt4::liveryNative
 {
     inline std::set<int> held;
-    inline std::unique_ptr<Mesh> preview;
+    inline std::shared_ptr<Mesh> preview;
     inline int capturedModel = -1, capturedLivery = -2, capturedPaint = -1;
+    inline int displayedLivery = -1;
 
     inline void releaseGraphics(Model& s)
     {
@@ -14,7 +15,7 @@ namespace gt4::liveryNative
         for (auto& livery : s.liveries) {
             livery.texture.reset();
         }
-        capturedModel = -1;
+        capturedModel = displayedLivery = -1;
         capturedLivery = -2;
         capturedPaint = -1;
         for (int id : held) {
@@ -92,7 +93,7 @@ namespace gt4::liveryNative
     inline void update(Model& s, const Entry& e)
     {
         scan(s, e.id);
-        if (s.page != Page::Paint && s.page != Page::Livery) {
+        if (s.page != Page::Paint && !s.usesLivery()) {
             return;
         }
         for (auto& option : s.liveries) {
@@ -106,7 +107,7 @@ namespace gt4::liveryNative
                 }
             }
         }
-        if (s.page != Page::Livery || s.livery == 0 || s.livery >= s.liveries.size()) {
+        if (!s.usesLivery() || s.livery == 0 || s.livery >= s.liveries.size()) {
             preview.reset();
             capturedLivery = -2;
             return;
@@ -119,7 +120,8 @@ namespace gt4::liveryNative
         if (capturedModel == e.id && capturedLivery == option.index && capturedPaint == int(s.paint)) {
             return;
         }
-        preview.reset();
+        if (capturedModel != e.id || capturedPaint != int(s.paint) ||
+            displayedLivery != option.index) { preview.reset(); }
         PrizePlan plan;
         plan.id = e.id;
         plan.modkit = false;
@@ -136,14 +138,14 @@ namespace gt4::liveryNative
         if (prizeNative::prepared && mesh) {
             preview = std::move(mesh);
             capturedModel = e.id;
-            capturedLivery = option.index;
+            capturedLivery = displayedLivery = option.index;
             capturedPaint = int(s.paint);
         }
     }
 
     inline bool ready(const Model& s)
     {
-        if (s.page != Page::Livery || s.livery == 0) {
+        if (!s.usesLivery() || s.livery == 0) {
             return true;
         }
         if (s.livery >= s.liveries.size()) {
@@ -158,7 +160,7 @@ namespace gt4::liveryNative
         if (!vehicle) {
             return;
         }
-        const int index = s.page == Page::Livery && s.livery < s.liveries.size() ? s.liveries[s.livery].index : -1;
+        const int index = s.usesLivery() && s.livery < s.liveries.size() ? s.liveries[s.livery].index : -1;
         if (index >= 0) {
             game::preserveRemapColors(vehicle);
         }

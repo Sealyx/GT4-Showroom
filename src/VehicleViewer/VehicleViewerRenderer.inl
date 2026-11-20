@@ -706,6 +706,13 @@ void spawnReviewDialog(IDirect3DDevice9* d, float width, float height, const Mod
                         state.reviewChoice);
         return;
     }
+    if (state.spawnReview == SpawnReview::ExtrasWarning) {
+        constexpr std::array<const char*, 3> buttons{"Apply Extras", "Cancel", "Spawn Now"};
+        drawReviewPanel(d, width, height, state.reviewReveal(), state.reviewOffset(height), "Extras Warning",
+                        "This vehicle has applicable extras.", "Would you like to apply them?",
+                        buttons.data(), int(buttons.size()), state.reviewChoice);
+        return;
+    }
     if (state.spawnReview == SpawnReview::ShopReset) {
         constexpr std::array<const char*, 3> buttons{"Reset Wheels", "Cancel", "Reset Components"};
         drawReviewPanel(d,
@@ -735,6 +742,16 @@ void spawnReviewDialog(IDirect3DDevice9* d, float width, float height, const Mod
                         buttons.data(),
                         int(buttons.size()),
                         state.reviewChoice);
+        return;
+    }
+    if (state.spawnReview == SpawnReview::Cinematic) {
+        const bool canSpawn = state.reviewButtons() == 3;
+        const std::array<const char*, 3> buttons{state.cinematicBackLabel(), "Cancel", "Spawn Now"};
+        drawReviewPanel(d, width, height, state.reviewReveal(), state.reviewOffset(height), "Cinematic",
+                        canSpawn ? "Return to your last selection or continue in Cinematic."
+                                 : "Return to the main showroom or continue in Cinematic.",
+                        canSpawn ? "Spawn Now opens the license plate prompt." : "Choose Cancel to continue in Cinematic.",
+                        buttons.data(), state.reviewButtons(), state.reviewChoice);
         return;
     }
     const bool canSpawn = state.reviewButtons() == 3;

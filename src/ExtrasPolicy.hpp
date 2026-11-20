@@ -127,6 +127,8 @@ namespace gt4
             return true;
         }
 
+        bool needsSelectionProbe() const { return !stopped && variants.size() < 2; }
+
         void finish()
         {
             stopped = samples >= maxSamples || quiet >= quietSamples || variants.size() >= maxVariants;

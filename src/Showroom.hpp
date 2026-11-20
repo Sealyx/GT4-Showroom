@@ -115,18 +115,26 @@ namespace gt4
         Cars,
         Paint,
         Livery,
+        Extras,
         Prize
     };
 
-    inline const char* showroomControlHint(Page page, bool controller, bool liveries)
+    inline const char* showroomControlHint(Page page, bool controller, bool liveries, bool extras = false, bool colors = true)
     {
+        if (page == Page::Extras) {
+            return controller ? "D-PAD Adjust Extras    CROSS Continue    CIRCLE Back"
+                              : "ARROWS Adjust Extras    ENTER Continue    BACKSPACE Back";
+        }
         if (controller) {
             if (page == Page::Cars) {
                 return "CROSS Paint    SQUARE Favorite    TRIANGLE Favorites    SELECT Menu    L3 Search    SQUARE+TRIANGLE Info    L1+R1 Hide UI";
             }
             if (page == Page::Livery) {
+                if (!colors) { return "CROSS Continue    CIRCLE Vehicles    SELECT Menu    L1+R1 Hide UI"; }
+                if (extras) { return "CROSS Extras    CIRCLE Colors    SELECT Menu    L1+R1 Hide UI"; }
                 return "CROSS Spawn    CIRCLE Colors    SELECT Menu    L1+R1 Hide UI";
             }
+            if (!liveries && extras) { return "CROSS Extras    CIRCLE Vehicles    SELECT Menu    L1+R1 Hide UI"; }
             return liveries ? "CROSS Liveries    CIRCLE Vehicles    SELECT Menu    L1+R1 Hide UI"
                             : "CROSS Spawn    CIRCLE Vehicles    SELECT Menu    L1+R1 Hide UI";
         }
@@ -134,8 +142,11 @@ namespace gt4
             return "ENTER Paint    UP Favorite    F Favorites    RMB Menu    ` Search    I Info    H Hide UI";
         }
         if (page == Page::Livery) {
+            if (!colors) { return "ENTER Continue    BACKSPACE Vehicles    RMB Menu    H Hide UI"; }
+            if (extras) { return "ENTER Extras    BACKSPACE Colors    RMB Menu    H Hide UI"; }
             return "ENTER Spawn    BACKSPACE Colors    RMB Menu    H Hide UI";
         }
+        if (!liveries && extras) { return "ENTER Extras    BACKSPACE Vehicles    RMB Menu    H Hide UI"; }
         return liveries ? "ENTER Liveries    BACKSPACE Vehicles    RMB Menu    H Hide UI"
                         : "ENTER Spawn    BACKSPACE Vehicles    RMB Menu    H Hide UI";
     }
@@ -161,6 +172,7 @@ namespace gt4
         Cinematic,
         Viewer,
         LiveryWarning,
+        ExtrasWarning,
         ShopExit,
         ShopReset
     };
@@ -170,7 +182,8 @@ namespace gt4
         Cinematic,
         Exit,
         Spawn,
-        Dismiss
+        Dismiss,
+        BackToShowroom
     };
 
     inline UIRect spawnReviewPanel(float width, float height)
@@ -190,6 +203,20 @@ namespace gt4
         return {left, panel.y + 114 * scale, buttonWidth, 25 * scale};
     }
 
+    enum class Tutorial { None, Cinematic, CinematicWithCustomization, CustomizationIntro, Viewer, Customization };
+
+    inline unsigned tutorialTopics(Tutorial tutorial)
+    {
+        switch (tutorial) {
+        case Tutorial::Cinematic: return 1u << 0;
+        case Tutorial::CinematicWithCustomization: return (1u << 0) | (1u << 1);
+        case Tutorial::CustomizationIntro: return 1u << 1;
+        case Tutorial::Viewer: return 1u << 2;
+        case Tutorial::Customization: return 1u << 3;
+        default: return 0;
+        }
+    }
+
     struct Model
     {
         StudioUI ui;
@@ -199,6 +226,93 @@ namespace gt4
         TransFender shop;
         ViewerPhoto photo;
         bool informationOpen = false;
+        bool tutorialsEnabled = false;
+        unsigned tutorialsSeen = 0;
+        Tutorial tutorial = Tutorial::None;
+        ReviewMotion tutorialMotion;
+        bool tutorialFocus = true, shopTutorialOffered = false;
+        Page extrasFrom = Page::Paint;
+        Page lastCompletedSelection = Page::Cars;
+
+        const char* cinematicBackLabel() const
+        {
+            if (postSelectionCinematic) {
+                switch (lastCompletedSelection) {
+                case Page::Paint: return "Back to Colors";
+                case Page::Livery: return "Back to Liveries";
+                case Page::Extras: return "Back to Extras";
+                default: break;
+                }
+            }
+            return "Back to Showroom";
+        }
+        bool extrasResolved = true, selectionAdvancePending = false, skipSelectionExtras = false;
+        bool selectionHasColors = true;
+
+        bool usesLivery() const { return page == Page::Livery || (page == Page::Extras && extrasFrom == Page::Livery); }
+        bool hasExtras() const
+        {
+            return std::any_of(ui.menu.extras.begin(), ui.menu.extras.end(),
+                               [](const auto& group) { return group.size() > 1; });
+        }
+
+        void openReview(SpawnReview next)
+        {
+            dragging = false;
+            spawnReview = next;
+            review = {clock};
+            pendingReviewChoice = -1;
+            reviewChoice = 0;
+        }
+
+        void reviewSelectedAppearance()
+        {
+            if (!extrasResolved) {
+                selectionAdvancePending = true;
+                return;
+            }
+            selectionAdvancePending = false;
+            openReview(hasExtras() ? SpawnReview::ExtrasWarning : SpawnReview::Initial);
+            cue = Cue::Accept;
+        }
+
+        void setSelectionPage(Page next)
+        {
+            page = next;
+            stripChanged = clock;
+            ui.menu.selectionExtras = next == Page::Extras;
+            ui.menu.sliderDrag = -1;
+            if (ui.menu.selectionExtras) {
+                ui.menu.began = clock;
+                ui.menu.sortRow = 0;
+                ui.menu.focusLevel = 1;
+                ui.menu.monitorKeyboard = true;
+                ui.menu.monitorFooter = -1;
+                ui.menu.monitorHoverLevel = ui.menu.monitorHoverIndex = -1;
+            }
+        }
+
+        bool tutorialOpen() const { return tutorial != Tutorial::None; }
+
+        void showTutorial(Tutorial candidate)
+        {
+            const unsigned unseen = tutorialTopics(candidate) & ~tutorialsSeen;
+            if (tutorialsEnabled && !informationOpen && !tutorialOpen() && unseen != 0) {
+                tutorial = candidate;
+                tutorialMotion = {clock};
+                tutorialFocus = true;
+            }
+        }
+
+        unsigned closeTutorial(bool acknowledge)
+        {
+            if (!tutorialOpen() || tutorialMotion.leaving >= 0.) { return 0; }
+            tutorialMotion.dismiss(clock);
+            const unsigned newlySeen = acknowledge ? tutorialTopics(tutorial) & ~tutorialsSeen : 0;
+            tutorialsSeen |= newlySeen;
+            cue = Cue::Back;
+            return newlySeen;
+        }
         int informationChoice = 3;
         ReviewMotion informationMotion;
         bool shopExitArmed = false, shopReturnNavigation = false;
@@ -239,7 +353,7 @@ namespace gt4
                 clearWhitePaint(cars);
                 return;
             }
-            if (whitePaintModel >= 0 && (page == Page::Cars || cars[selected].id != whitePaintModel)) {
+            if (whitePaintModel >= 0 && cars[selected].id != whitePaintModel) {
                 clearWhitePaint(cars);
             }
             if (!whitePaintRequested) {
@@ -253,7 +367,7 @@ namespace gt4
                 color.rgb[channel] = white;
             }
             color.name = "White";
-            if (whitePaintModel == entry.id) {
+            if (whitePaintModel == entry.id && whitePaintIndex < entry.paints.size()) {
                 entry.paints[whitePaintIndex] = color;
             } else {
                 whitePaintModel = entry.id;
@@ -317,6 +431,7 @@ namespace gt4
         {
             fade.reset();
             spawn = false;
+            skipSelectionExtras = false;
             opened = clock;
         }
 
@@ -354,6 +469,15 @@ namespace gt4
             }
             ui.cinematic.enter(clock, enthusia ? enthusiaPose(clock - motionBegan).yaw : heading() + pi);
             appearanceReady = !postSelectionCinematic;
+            ui.menu.selectionExtras = false;
+            const bool needsCinematic = (tutorialTopics(Tutorial::Cinematic) & ~tutorialsSeen) != 0;
+            const bool needsIntro = postSelectionCinematic &&
+                                    (tutorialTopics(Tutorial::CustomizationIntro) & ~tutorialsSeen) != 0;
+            if (needsIntro) {
+                showTutorial(needsCinematic ? Tutorial::CinematicWithCustomization : Tutorial::CustomizationIntro);
+            } else if (needsCinematic) {
+                showTutorial(Tutorial::Cinematic);
+            }
             viewer.lastActivity = clock;
             return true;
         }
@@ -396,6 +520,11 @@ namespace gt4
             cue = Cue::Open;
         }
 
+        bool plateBackNavigates(bool controller) const
+        {
+            return !plateEditing || controller || (plate.empty() && !ui.keyboard.open);
+        }
+
         void finishPlate(bool confirm)
         {
             if (!plateOpen || plateAction >= 0) {
@@ -403,6 +532,7 @@ namespace gt4
             }
             if (!confirm) {
                 plateOpen = false;
+                skipSelectionExtras = false;
                 spawnReview = plateReturn;
                 review = plateMotion;
                 reviewChoice = 2;
@@ -417,7 +547,7 @@ namespace gt4
             cue = confirm ? Cue::Accept : Cue::Back;
         }
 
-        void returnToCarSelection()
+        void returnToCarSelection(bool keepAppearance = false, Page destination = Page::Cars)
         {
             shop = {};
             shopExitArmed = shopReturnNavigation = false;
@@ -432,8 +562,13 @@ namespace gt4
             ui.vehicle.doors.fill(0);
             ui.vehicle.focus = -1;
             ui.vehicle.centerWheels();
-            page = Page::Cars;
-            paint = livery = 0;
+            setSelectionPage(destination);
+            if (destination == Page::Paint) { colorsReturned = clock; }
+            selectionAdvancePending = skipSelectionExtras = false;
+            tutorial = Tutorial::None;
+            if (!keepAppearance) {
+                paint = livery = 0;
+            }
             paintMix = 0;
             dragging = false;
             status.clear();
@@ -452,7 +587,7 @@ namespace gt4
             if (spawnReview == SpawnReview::LiveryWarning) {
                 return 2;
             }
-            return spawnReview == SpawnReview::Initial || spawnReview == SpawnReview::ShopExit ||
+            return spawnReview == SpawnReview::Initial || spawnReview == SpawnReview::ExtrasWarning || spawnReview == SpawnReview::ShopExit ||
                            spawnReview == SpawnReview::ShopReset || postSelectionCinematic
                        ? 3
                        : 2;
@@ -482,11 +617,32 @@ namespace gt4
                 shopExitArmed = review == SpawnReview::ShopExit;
                 return;
             }
+            if (review == SpawnReview::Cinematic &&
+                (choice == ReviewChoice::Cinematic || choice == ReviewChoice::BackToShowroom)) {
+                const auto destination = choice == ReviewChoice::Cinematic && postSelectionCinematic
+                    ? lastCompletedSelection : Page::Cars;
+                returnToCarSelection(true, destination);
+                cue = Cue::Back;
+                return;
+            }
             if (review == SpawnReview::ShopReset) {
                 if (choice != ReviewChoice::Exit) {
                     shopResetGroup = choice == ReviewChoice::Cinematic ? 0 : 1;
                 }
                 cue = choice == ReviewChoice::Exit ? Cue::Back : Cue::Accept;
+                return;
+            }
+            if (review == SpawnReview::ExtrasWarning) {
+                if (choice == ReviewChoice::Cinematic) {
+                    extrasFrom = page;
+                    setSelectionPage(Page::Extras);
+                    cue = Cue::Accept;
+                } else if (choice == ReviewChoice::Spawn) {
+                    skipSelectionExtras = true;
+                    beginPlate(review);
+                } else {
+                    cue = Cue::Back;
+                }
                 return;
             }
             if (review == SpawnReview::LiveryWarning) {
@@ -594,7 +750,7 @@ namespace gt4
         {
             return open && page == Page::Cars && !busy() && !ui.modal() &&
                    !ui.cinematic.active && ui.cinematic.mix <= .001f && !viewer.active &&
-                   !viewer.targetActive && !shop.open() && !photo.active && !informationOpen &&
+                   !viewer.targetActive && !shop.open() && !photo.active && !informationOpen && !tutorialOpen() &&
                    !plateOpen && spawnReview == SpawnReview::None && !searching;
         }
 
@@ -746,6 +902,10 @@ namespace gt4
             selected = std::min(selected, count - 1);
             opened = changed = clock;
             informationOpen = false;
+            tutorial = Tutorial::None;
+            shopTutorialOffered = false;
+            ui.menu.selectionExtras = false;
+            selectionAdvancePending = skipSelectionExtras = false;
             stripChanged = clock;
             scroll = scrollTarget();
             pointerX = .5f;
@@ -759,6 +919,10 @@ namespace gt4
         {
             seconds = std::isfinite(seconds) ? std::clamp(seconds, 0., 1.) : 0;
             clock += seconds;
+            if (tutorialOpen() && tutorialMotion.finished(clock)) {
+                tutorial = Tutorial::None;
+                viewer.lastActivity = clock;
+            }
             if (informationOpen && informationMotion.finished(clock)) {
                 informationOpen = false;
             }
@@ -771,6 +935,7 @@ namespace gt4
                     }
                     requestSpawn();
                 } else {
+                    skipSelectionExtras = false;
                     spawnReview = plateReturn;
                     review = {clock};
                     reviewChoice = 2;
@@ -783,6 +948,12 @@ namespace gt4
             }
             const bool washing = shop.washStart >= 0.;
             shop.step(clock);
+            if (!shop.open()) {
+                shopTutorialOffered = false;
+            } else if (!shopTutorialOffered && shop.page == ShopPage::Menu && !shop.locked()) {
+                shopTutorialOffered = true;
+                showTutorial(Tutorial::Customization);
+            }
             if (washing && shop.washStart < 0.) {
                 cue = Cue::WashComplete;
             }
@@ -800,10 +971,14 @@ namespace gt4
             }
             ui.vehicle.step(seconds);
             ui.transition.step(clock);
+            const bool viewerWasReady = viewer.active && !viewer.transitioning();
             viewer.step(clock,
-                        open && ui.cinematic.active && !ui.modal() && !shop.open() && !photo.active && !searching &&
+                        open && ui.cinematic.active && !ui.modal() && !shop.open() && !photo.active && !searching && !tutorialOpen() &&
                             spawnReview == SpawnReview::None && !plateOpen && fade.action == CloseAction::None &&
                             !ui.transition.active() && (!postSelectionCinematic || appearanceReady));
+            if (!viewerWasReady && viewer.active && viewer.targetActive && !viewer.transitioning()) {
+                showTutorial(Tutorial::Viewer);
+            }
             if (viewer.active && !ui.cinematic.active) {
                 ui.cinematic.enter(clock, enthusia ? enthusiaPose(clock - motionBegan).yaw : heading() + pi);
             }
@@ -817,7 +992,7 @@ namespace gt4
                 viewerSnapshot = false;
             }
             scroll += (scrollTarget() - scroll) * float(1 - std::exp(-seconds * 14));
-            const float target = (page == Page::Paint || page == Page::Livery) ? 1.f : 0.f;
+            const float target = (page == Page::Paint || page == Page::Livery || page == Page::Extras) ? 1.f : 0.f;
             paintMix += (target - paintMix) * float(1 - std::exp(-seconds * 18));
         }
 
@@ -828,6 +1003,7 @@ namespace gt4
             }
             count = cars.size();
             selected = index;
+            selectionAdvancePending = skipSelectionExtras = false;
             shop = {};
             shopExitArmed = shopReturnNavigation = false;
             photo = {};
@@ -908,9 +1084,17 @@ namespace gt4
                 }
                 return;
             }
+            if (selectionAdvancePending) { return; }
+            lastCompletedSelection = page;
             if (page == Page::Cars) {
-                page = Page::Paint;
-                stripChanged = clock;
+                selectionHasColors = !cars[selected].paints.empty();
+                if (selectionHasColors) {
+                    setSelectionPage(Page::Paint);
+                } else if (liveries.size() > 1) {
+                    setSelectionPage(Page::Livery);
+                } else {
+                    reviewSelectedAppearance();
+                }
                 cue = Cue::Accept;
             } else if (page == Page::Paint && liveries.size() > 1) {
                 const auto& paints = cars[selected].paints;
@@ -924,13 +1108,12 @@ namespace gt4
                     stripChanged = clock;
                 }
                 cue = Cue::Accept;
-            } else {
-                dragging = false;
-                spawnReview = SpawnReview::Initial;
-                review = {clock};
-                pendingReviewChoice = -1;
-                reviewChoice = 0;
+            } else if (page == Page::Extras) {
+                ui.menu.sliderDrag = -1;
+                openReview(SpawnReview::Initial);
                 cue = Cue::Accept;
+            } else {
+                reviewSelectedAppearance();
             }
         }
 
@@ -943,9 +1126,15 @@ namespace gt4
             if (!open || busy()) {
                 return;
             }
+            if (selectionAdvancePending) {
+                selectionAdvancePending = false;
+                cue = Cue::Back;
+                return;
+            }
             if (spawnReview != SpawnReview::None) {
                 if (pendingReviewChoice < 0) {
-                    chooseSpawnReview(ReviewChoice::Dismiss);
+                    chooseSpawnReview(spawnReview == SpawnReview::Cinematic
+                                          ? ReviewChoice::BackToShowroom : ReviewChoice::Dismiss);
                 }
                 cue = Cue::Back;
                 return;
@@ -980,14 +1169,16 @@ namespace gt4
                 cue = Cue::Back;
                 return;
             }
-            if (page == Page::Livery) {
-                page = Page::Paint;
+            if (page == Page::Extras) {
+                setSelectionPage(extrasFrom);
+                if (page == Page::Paint) { colorsReturned = clock; }
+                cue = Cue::Back;
+            } else if (page == Page::Livery) {
+                setSelectionPage(selectionHasColors ? Page::Paint : Page::Cars);
                 colorsReturned = clock;
-                stripChanged = clock;
                 cue = Cue::Back;
             } else if (page == Page::Paint) {
-                page = Page::Cars;
-                stripChanged = clock;
+                setSelectionPage(Page::Cars);
                 cue = Cue::Back;
             } else {
                 exit();

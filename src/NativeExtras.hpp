@@ -358,6 +358,32 @@ namespace gt4::nativeExtras
         return active->variants.size() != before;
     }
 
+    inline bool selectionPending()
+    {
+        return nativeLabels.empty() && secondLabels.empty() && available && active && active->needsSelectionProbe();
+    }
+
+    inline void probeSelection(uint64_t now)
+    {
+        if (!selectionPending()) {
+            return;
+        }
+        if (active->variants.empty()) {
+            if (now < nextProbe) {
+                return;
+            }
+            nextProbe = now + 16;
+            // A cached render may have been taken before this model was selected.
+            nativePreview::inspect(model);
+            if (active && active->variants.empty()) {
+                active->stopped = true;
+            }
+            updateSelection();
+            return;
+        }
+        pump(now);
+    }
+
     inline std::unique_ptr<Mesh> capture(int id)
     {
         if (id == model) {

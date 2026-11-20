@@ -74,6 +74,7 @@ namespace gt4
         uint8_t paintMask = 0;
         float bodyTop = -1e9f;
         float mainBodyTop = -1e9f;
+        bool raisedAccessory = false;
         float upperBodyLength = 0.f;
         float middleBodyLength = 0.f;
         float roofBodyLength = 0.f;
@@ -242,11 +243,22 @@ namespace gt4
                     }
                 }
                 const float width = high.x - low.x, length = high.y - low.y;
+                float cabinTop = low.z;
                 for (size_t i = 0; i < sections; ++i) {
                     const V3 span = sectionHigh[i] - sectionLow[i];
+                    if (span.x >= width * .65f && span.y >= std::min(length * .36f, 1.35f)) {
+                        cabinTop = low.z + float(i+1) * fullHeight / sections;
+                    }
                     if (span.x >= width * .65f && span.y >= std::min(length * .18f, .9f)) {
                         mainBodyTop = low.z + float(i+1) * fullHeight / sections;
                     }
+                }
+                // Roof cargo and decorations may match the width of a cabin while covering
+                // much less of its length. Keep their vertices in the full clearance envelope.
+                if (cabinTop >= low.z + fullHeight * .47f &&
+                    mainBodyTop - cabinTop > std::max(.23f, fullHeight * .23f)) {
+                    mainBodyTop = cabinTop;
+                    raisedAccessory = true;
                 }
             }
             if (fullHeight > .5f && mainBodyTop > low.z) {
@@ -422,7 +434,10 @@ namespace gt4
             CinematicTransform turn;
             if (steering >= 0 && steering < 2 && source.bikeSteering[size_t(steering)].present) {
                 const auto& fork = source.bikeSteering[size_t(steering)];
-                turn = cinematicRotation(fork.pivot, fork.axis, -.24f);
+                // Facing +Y, the vehicle's right is +X. Orient the fork axis upward even
+                // on models whose frame basis was authored with the opposite axis.
+                const auto axis = fork.axis.z < 0.f ? fork.axis * -1.f : fork.axis;
+                turn = cinematicRotation(fork.pivot, axis, -.30f);
             }
             for (auto& vertex : copy.vertices) {
                 const auto position = turn.point({vertex.p.x, vertex.p.y, vertex.p.z});
@@ -457,6 +472,11 @@ namespace gt4
         VehicleLogos logos;
         VehicleLogos::Image shopLogo, shopStroke;
         bool shopStrokeTried = false;
+        std::array<VehicleLogos::Image, 3> tutorialDemos{};
+        std::array<bool, 3> tutorialDemoTried{};
+        double tutorialLayoutBegan = -1.;
+        Tutorial tutorialLayoutMode = Tutorial::None;
+        float tutorialLayoutWidth = 760, tutorialLayoutHeight = 444;
         std::array<VehicleLogos::Image, 6> shopArtwork{};
         std::array<bool, 6> shopArtworkTried{};
         std::array<VehicleLogos::Image, 6> suppliedIcons{};
@@ -563,6 +583,8 @@ namespace gt4
         std::array<float, 9> cavityPose{};
         std::unique_ptr<Mesh> bikeDisplay;
         uint64_t bikeDisplaySource = 0;
+        std::unique_ptr<Mesh> bikeExtrasFrame;
+        uint64_t bikeExtrasFrameSource = 0;
         uint64_t frameSerial = 0;
         std::array<float, 96> widths{};
         std::map<std::pair<int, bool>, IDirect3DTexture9*> monitorButtons;
@@ -1244,6 +1266,8 @@ namespace gt4
             presentationWidth = presentationHeight = 0;
             bikeDisplay.reset();
             bikeDisplaySource = 0;
+            bikeExtrasFrame.reset();
+            bikeExtrasFrameSource = 0;
             antialiasing.rejectedQuality = -1;
             occlusion.reset();
             studioGradient.reset();
@@ -1299,6 +1323,11 @@ namespace gt4
                 }
             }
             suppliedIconsTried.fill(false);
+            for (auto& demo : tutorialDemos) {
+                if (demo.texture) { demo.texture->Release(); }
+                demo = {};
+            }
+            tutorialDemoTried.fill(false);
             shopLogoTried = false;
             for (auto& b : monitorButtons) {
                 b.second->Release();
@@ -2047,7 +2076,8 @@ namespace gt4
                   float rideHeight = 0,
                   bool panoramaReflection = false,
                   bool clean = false,
-                  bool thumbnail = false)
+                  bool thumbnail = false,
+                  const V3* origin = nullptr)
         {
             if (opacity <= 0 || m.empty()) {
                 return;
@@ -2056,7 +2086,7 @@ namespace gt4
             if (!g) {
                 return;
             }
-            const V3 center = absolute ? V3{} : V3{(m.low.x + m.high.x) * .5f, (m.low.y + m.high.y) * .5f, m.low.z};
+            const V3 center = absolute ? V3{} : origin ? *origin : V3{(m.low.x + m.high.x) * .5f, (m.low.y + m.high.y) * .5f, m.low.z};
             const float co = std::cos(angle), si = std::sin(angle);
             D3DMATRIX world = identity();
             world._11 = co * size;
@@ -2950,6 +2980,7 @@ namespace gt4
                     }
                 }
             };
+            if (m.selectionExtras) { window(1, false); return; }
             window(0, false);
             if (m.sub) {
                 if (m.monitorSubWindow()) {
@@ -2967,7 +2998,7 @@ namespace gt4
 
         void studioMenu(IDirect3DDevice9* d, float W, float H, const Model& s)
         {
-            if (s.ui.menu.open) {
+            if (s.ui.menu.open || (s.page == Page::Extras && !s.ui.cinematic.active)) {
                 monitorSettings(d, W, H, s);
             }
         }
@@ -3228,7 +3259,8 @@ namespace gt4
                   const std::vector<Entry>& entries,
                   Lookup lookup,
                   Parts parts,
-                  bool stageOnly = false)
+                  bool stageOnly = false,
+                  const Mesh* extrasFraming = nullptr)
         {
             LARGE_INTEGER begin{}, frequency{};
             QueryPerformanceCounter(&begin);
@@ -3244,7 +3276,8 @@ namespace gt4
             lightPhase = float(s.clock) * .42f;
             lastShadowPhase = lightPhase;
             useStudioShadow = false;
-            prologueStyle = !s.shop.open() && !s.viewer.active && !s.photo.active && s.page != Page::Prize
+            const bool mainStudio = !s.shop.open() && !s.viewer.active && s.page != Page::Prize;
+            prologueStyle = mainStudio
                 ? s.prologueMix : 0.f;
             studioSurfaceWeight = 0.f;
             if (!s.viewer.active && !s.shop.open()) {
@@ -3254,7 +3287,7 @@ namespace gt4
                 studioSurfaceWeight = std::clamp(studioSurfaceWeight, 0.f, 1.f) * (1.f - prologueStyle);
             }
             staticMainShadow = s.ui.backgroundStyle() != 0 && !s.viewer.active && !s.shop.open();
-            darkGrayShadowWeight = !s.viewer.active && !s.shop.open() && !s.photo.active && s.page != Page::Prize
+            darkGrayShadowWeight = mainStudio
                 ? std::clamp(s.backgroundBlend[DarkGrayBackground], 0.f, 1.f) * (1.f - prologueStyle) : 0.f;
             if (!d || !s.open || (!entries.empty() && s.selected >= entries.size())) {
                 return false;
@@ -3361,9 +3394,24 @@ namespace gt4
                 bikeDisplay.reset();
                 bikeDisplaySource = 0;
             }
-            const V3 framingHigh = main ? previewFramingHigh(e, *main) : V3{};
-            const float span = main ? std::max({framingHigh.x - main->low.x,
-                framingHigh.y - main->low.y, framingHigh.z - main->low.z, 2.f}) : 5.f;
+            if (extrasFraming && bikePose) {
+                if (bikeExtrasFrameSource != extrasFraming->serial) {
+                    bikeExtrasFrame.reset();
+                    bikeExtrasFrameSource = extrasFraming->serial;
+                    try { bikeExtrasFrame = bikeDisplayMesh(*extrasFraming); }
+                    catch (const std::bad_alloc&) { }
+                }
+                extrasFraming = bikeExtrasFrame.get();
+            } else {
+                bikeExtrasFrame.reset();
+                bikeExtrasFrameSource = 0;
+            }
+            const bool keepExtrasFraming = extrasFraming && !s.ui.cinematic.active &&
+                !s.viewer.active && s.ui.cinematic.mix <= .001f && s.page != Page::Prize;
+            const Mesh* framing = keepExtrasFraming ? extrasFraming : main;
+            const V3 framingHigh = framing ? previewFramingHigh(e, *framing) : V3{};
+            const float span = framing ? std::max({framingHigh.x - framing->low.x,
+                framingHigh.y - framing->low.y, framingHigh.z - framing->low.z, 2.f}) : 5.f;
             if (s.shop.open() && s.shop.page != ShopPage::Closed) {
                 drawTransFender(d, W, H, s, e, main, parts);
                 spawnReviewDialog(d, W, H, s);
@@ -3386,13 +3434,20 @@ namespace gt4
                 const double studioTime = s.ui.cinematic.active ? s.ui.cinematic.lightTime(s.clock) : s.clock;
                 lastShadowPhase = float(studioTime) * .42f;
                 const Paint paint = e.paints.empty() ? Paint{} : e.paints[std::min(s.paint, e.paints.size() - 1)];
+                const bool browseEntry = !s.enthusia && !s.viewer.active && !s.photo.active &&
+                    !s.ui.cinematic.active && s.ui.cinematic.mix <= .001f;
+                // Keep the floor at its settled position while models load and their entry camera moves.
+                Camera browseBackdrop = cam;
+                const float darkWeight = std::clamp(s.backgroundBlend[DarkGrayBackground], 0.f, 1.f) *
+                                         (1.f - prologueStyle);
+                browseBackdrop.focal *= 1.f + (1.06f * 1.065f - 1.f) * darkWeight;
                 if (main) {
                     Camera mainCam = cam;
                     float angle = s.heading() + pi;
                     const bool normalAutomobile = (e.kind == 0 || e.kind == 1) && !s.enthusia &&
                                                   !s.viewer.active && !s.photo.active;
                     const float browseMix = normalAutomobile ? (1.f - s.ui.cinematic.mix) : 0.f;
-                    const bool stagedEntry = normalAutomobile && !s.ui.cinematic.active && s.ui.cinematic.mix <= .001f;
+                    const bool stagedEntry = (normalAutomobile || bikePose) && browseEntry;
                     if (entryPreviewModel != e.id || entrySelectionStamp != s.changed ||
                         entrySessionStamp != s.opened || entryRenderableAt > s.clock) {
                         entryPreviewModel = e.id;
@@ -3414,8 +3469,9 @@ namespace gt4
                     }
                     Camera backdropCamera = mainCam;
                     if (browseMix > 0.f) {
-                        const float length = std::max(main->high.y - main->low.y, 1.f);
-                        const float height = previewFramingHigh(e, *main).z - main->low.z;
+                        const float length = std::max(framing->high.y - framing->low.y, 1.f);
+                        const float height = (framing->raisedAccessory ? framing->framingBodyHigh.z :
+                            previewFramingHigh(e, *framing).z) - framing->low.z;
                         const float tall = ease((height / length - .31f) / .22f);
                         const float pitch = .15f + (.08f - .15f) * browseMix;
                         mainCam.focal *= 1.f + (.11f - .31f * tall) * browseMix;
@@ -3426,7 +3482,7 @@ namespace gt4
                         mainCam.up = cross(mainCam.right, mainCam.forward);
 
                         // Use a rotation-independent footprint so the framing cannot bob with the turntable.
-                        const float width = main->high.x - main->low.x;
+                        const float width = framing->high.x - framing->low.x;
                         const float unscaledRadius = .5f * std::hypot(width, length);
                         const float safeSize = distance * .68f / unscaledRadius;
                         previewSize -= std::max(0.f, previewSize - safeSize) * browseMix;
@@ -3453,16 +3509,16 @@ namespace gt4
                     const int framingClass=classIndex(e.classId);
                     const bool protectedBike=e.kind==9 || e.kind==10 || framingClass==7 || framingClass==8 || framingClass==11;
                     if (browseMix>0.f && !protectedBike) {
-                        const float measuredLength=std::max(.5f,main->framingBodyHigh.y-main->framingBodyLow.y);
+                        const float measuredLength=std::max(.5f,framing->framingBodyHigh.y-framing->framingBodyLow.y);
                         // A long rooftop overhang can survive the area trim. Confirm that a
                         // substantial lower body exists before sizing it from the middle sections.
-                        const float middleLength=main->middleBodyLength;
-                        const float bodyWidth=std::max(.5f,main->framingBodyHigh.x-main->framingBodyLow.x);
+                        const float middleLength=framing->middleBodyLength;
+                        const float bodyWidth=std::max(.5f,framing->framingBodyHigh.x-framing->framingBodyLow.x);
                         const float narrowOverhang=1.f-ease((bodyWidth/measuredLength-.39f)/.07f);
                         const float lengthMix=.60f*ease((middleLength-6.7f)/.65f) * narrowOverhang *
                             ease((measuredLength/std::max(.5f,middleLength)-1.14f)/.18f);
                         const float bodyLength=measuredLength+(std::min(measuredLength,middleLength)-measuredLength)*lengthMix;
-                        const float bodyHeight=std::max(.5f,main->framingBodyHigh.z-main->low.z);
+                        const float bodyHeight=std::max(.5f,framing->framingBodyHigh.z-framing->low.z);
                         const float radius=.5f*std::hypot(bodyWidth,bodyLength)*previewSize;
                         float left=1e9f,right=-1e9f,top=1e9f,bottom=-1e9f;
                         // A fixed full-turn envelope keeps the size steady throughout rotation.
@@ -3491,7 +3547,7 @@ namespace gt4
                             ease((bodyHeight/bodyLength-.29f)/.075f);
                         const float utilityBody=mediumBody*tallCar*(1.f-ease((bodyHeight-2.95f)/.55f));
                         const float compactLength=1.f-ease((bodyLength-3.45f)/.45f);
-                        const float bodyOverhang=main->high.y-main->low.y-bodyLength;
+                        const float bodyOverhang=framing->high.y-framing->low.y-bodyLength;
                         const float shortBody=std::max({1.f-ease((bodyHeight-1.23f)/.14f),
                             ease((bodyHeight/bodyLength-.48f)/.1f),ease((bodyOverhang-.3f)/.4f)});
                         const float utilityHeight=ease((bodyHeight-.72f)/.22f)*(1.f-ease((bodyHeight/bodyLength-.74f)/.15f));
@@ -3504,11 +3560,11 @@ namespace gt4
                         boost+=(std::min(boost,compactFit)-boost)*compactUtility;
                         // Thin protrusions may use more of the top margin once the main body
                         // has been sized. The complete mesh still bounds the turning envelope.
-                        const float headroom=utilityBody*ease((main->high.z-main->framingBodyHigh.z-.30f)/.7f);
-                        const float upper=H*(.055f-.032f*headroom);
+                        const float headroom=utilityBody*ease((framing->high.z-framing->framingBodyHigh.z-.30f)/.7f);
+                        const float upper = H * (framing->raisedAccessory ? .022f : .055f - .032f * headroom);
                         const auto tile = Carousel(W,H,s,entries.size()).box(int(s.selected));
                         const float lower = tile.y - 30.f*scale*s.paintMix - H*.020f;
-                        for (const auto& slice : main->framingSlices) {
+                        for (const auto& slice : framing->framingSlices) {
                             if (slice.high < slice.low) { continue; }
                             for (float height : {slice.low,slice.high}) {
                                 for (float direction : {-1.f,1.f}) {
@@ -3528,11 +3584,12 @@ namespace gt4
                                     if (mainCam.project({direction*radius,-radius,height*previewSize},x,y,depth,rhw)) {
                                         const float originalLimit=room/std::max(1.f,std::abs(x-centerX));
                                         float rotationLimit=originalLimit;
-                                        if (lengthMix>0.f &&
+                                        if ((framing->raisedAccessory || lengthMix > 0.f) &&
                                             mainCam.project({direction*tangentX,tangentY,height*previewSize},x,y,depth,rhw)) {
-                                            const float overhangLimit=std::min(room,W*.365f)/std::max(1.f,std::abs(x-centerX));
-                                            rotationLimit+=(std::max(originalLimit,overhangLimit)-originalLimit)*
-                                                (lengthMix/.60f);
+                                            const float tangentRoom = framing->raisedAccessory ? room : std::min(room,W*.365f);
+                                            const float overhangLimit = tangentRoom / std::max(1.f,std::abs(x-centerX));
+                                            const float relief = framing->raisedAccessory ? 1.f : lengthMix / .60f;
+                                            rotationLimit += (std::max(originalLimit,overhangLimit) - originalLimit) * relief;
                                         }
                                         boost=std::min(boost,rotationLimit);
                                     }
@@ -3540,7 +3597,7 @@ namespace gt4
                             }
                         }
                         // The shorter upper cabin distinguishes an SUV from a full-length van roof.
-                        const float roofCoverage=main->roofBodyLength/bodyLength;
+                        const float roofCoverage=framing->roofBodyLength/bodyLength;
                         const float shortRoof=ease((roofCoverage-.42f)/.10f)*
                             (1.f-ease((roofCoverage-.66f)/.065f));
                         const bool approvedPolice=e.modelKey==modelNameKey("copcarru") ||
@@ -3558,8 +3615,8 @@ namespace gt4
                         mainCam.focal *= 1.f + .06f * showroomMix;
                         const float poseSize = bikePose ? 1.08f : 1.f;
                         const float settledSize = targetSpan / span * poseSize;
-                        const float radius = .5f * std::hypot(main->high.x - main->low.x, main->high.y - main->low.y);
-                        const float height = main->high.z - main->low.z;
+                        const float radius = .5f * std::hypot(framing->high.x - framing->low.x, framing->high.y - framing->low.y);
+                        const float height = framing->high.z - framing->low.z;
                         const float upper = H * .045f;
                         const float lower = H * (.725f - 15.f * 1.30f / 720.f - .027f);
                         // A full-turn cylinder contains the mirrors and handlebars at every heading.
@@ -3579,16 +3636,44 @@ namespace gt4
                         const float fit = clearance(closerFocal);
                         mainCam.focal = closerFocal;
                         if (showroomMix > 0.f && settledSize > 0.f) {
-                            // Reuse the original cubic retreat, changing only its amplitude when it would clip.
-                            const float allowedRetreat = std::clamp(fit / settledSize - 1.f, 0.f, .95f);
-                            const float fittedScale = 1.f + (entryScale - 1.f) * allowedRetreat / .95f;
-                            const float fittedSize = std::min(settledSize, std::max(.001f, fit)) * fittedScale / poseSize;
-                            previewSize += (fittedSize - previewSize) * showroomMix;
+                            const float fittedSize = std::min(settledSize, std::max(.001f, fit));
+                            if (stagedEntry && bikePose) {
+                                previewSize = fittedSize / poseSize;
+                            } else {
+                                const float allowedRetreat = std::clamp(fit / settledSize - 1.f, 0.f, .95f);
+                                const float fittedScale = 1.f + (entryScale - 1.f) * allowedRetreat / .95f;
+                                previewSize += (fittedSize * fittedScale / poseSize - previewSize) * showroomMix;
+                            }
                         }
                     }
                     // fit the settled pose first; feeding the dolly into camera fitting makes it pump during entry.
-                    if (stagedEntry) {
-                        previewSize *= entryScale;
+                    if (stagedEntry && entryScale > 1.f) {
+                        float sizeScale = entryScale;
+                        if (framing->raisedAccessory || bikePose) {
+                            // Limit the distance travelled by tall geometry, using the same ground-pivot
+                            // scale and cubic entry progression as the other vehicles.
+                            const float groundedSize = previewSize * (bikePose ? 1.08f : 1.f);
+                            const auto clearance = [&](V3 inward) {
+                                float reach = .0001f;
+                                const float outward = std::hypot(inward.x, inward.y);
+                                for (const auto& slice : framing->framingSlices) {
+                                    if (slice.high < slice.low) { continue; }
+                                    const float height = inward.z < 0 ? slice.high : slice.low;
+                                    reach = std::max(reach, outward * slice.radius - inward.z * height);
+                                }
+                                return -dot(mainCam.eye, inward) / (reach * groundedSize);
+                            };
+                            const float side = mainCam.w * .487f / mainCam.focal;
+                            const float top = (mainCam.cy - H * .009f) / mainCam.focal;
+                            const float bottom = (H * (bikePose ? .701f : .688f) - mainCam.cy) / mainCam.focal;
+                            const float available = std::min({clearance(mainCam.forward * side + mainCam.right),
+                                clearance(mainCam.forward * side - mainCam.right),
+                                clearance(mainCam.forward * top - mainCam.up),
+                                clearance(mainCam.forward * bottom + mainCam.up)});
+                            const float retreat = std::clamp((available - 1.f) / .95f, 0.f, 1.f);
+                            sizeScale = 1.f + (entryScale - 1.f) * retreat;
+                        }
+                        previewSize *= sizeScale;
                     }
                     const float opacity = s.carAlpha(revealAge);
                     const float materialOpacity = stagedEntry && opacity > 0.f ? 1.f : opacity;
@@ -3662,8 +3747,8 @@ namespace gt4
                                 }
                             }
                         }
-                        backdropCamera = mainCam;
-                        if (browseMix > 0.f) {
+                        backdropCamera = browseEntry ? browseBackdrop : mainCam;
+                        if (!browseEntry && browseMix > 0.f) {
                             // Reframing the car should not move the floor during ordinary browsing.
                             float x = 0, originalFloor = 0, reframedFloor = 0, z = 0, rhw = 0;
                             if (cam.project({}, x, originalFloor, z, rhw) &&
@@ -3684,7 +3769,8 @@ namespace gt4
                     lastCarSerial = main->serial;
                     float lowX = W, lowY = H, highX = 0, highY = 0;
                     const V3 center{
-                        (main->low.x + main->high.x) * .5f, (main->low.y + main->high.y) * .5f, main->low.z};
+                        (framing->low.x + framing->high.x) * .5f, (framing->low.y + framing->high.y) * .5f, framing->low.z};
+                    const auto* origin = keepExtrasFraming ? &center : nullptr;
                     for (int z = 0; z < 2; ++z) {
                         for (int y = 0; y < 2; ++y) {
                             for (int x = 0; x < 2; ++x) {
@@ -3723,7 +3809,7 @@ namespace gt4
                     }
                     if (!s.viewer.active && s.ui.floorReflections() > 0) {
                         shopMirror(d, *main, mainCam, angle, paint, materialOpacity, lastCarSize, rideHeight,
-                                   s.shop.washed, s.ui.floorReflections(), vehicle, .31f + .22f * studioSurfaceWeight);
+                                   s.shop.washed, s.ui.floorReflections(), vehicle, .31f + .22f * studioSurfaceWeight, origin);
                     }
                     if (s.viewer.active ? s.viewer.settings.shadows : s.ui.shadows()) {
                         mesh(d,
@@ -3738,7 +3824,7 @@ namespace gt4
                              false,
                              vehicle,
                              false,
-                             rideHeight);
+                             rideHeight, false, false, false, origin);
                     }
                     mesh(d,
                          *main,
@@ -3754,13 +3840,13 @@ namespace gt4
                          s.viewer.active,
                          rideHeight,
                          customStudio,
-                         s.shop.washed);
+                         s.shop.washed, false, origin);
                     if (stagedEntry && opacity > 0.f && opacity < 1.f) {
                         // composite the subject once so interior faces cannot stack through the body during the fade.
                         studio(d, backdropCamera, studioTime, s.backgroundBlend, true, 1.f - opacity);
                     }
                 } else {
-                    studio(d, cam, studioTime, s.backgroundBlend);
+                    studio(d, browseEntry ? browseBackdrop : cam, studioTime, s.backgroundBlend);
                 }
                 d->SetRenderState(D3DRS_ZENABLE, FALSE);
                 d->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
@@ -3872,7 +3958,7 @@ namespace gt4
                             rect(d, bar.track.x, bar.track.y, bar.track.w, bar.track.h, color(0x171D1D, carStrip));
                             rect(d, bar.thumb.x, bar.thumb.y, bar.thumb.w, bar.thumb.h, color(0x737978, carStrip));
                         }
-                        if (paintStrip > .01f && s.page != Page::Livery) {
+                        if (paintStrip > .01f && s.page != Page::Livery && s.page != Page::Extras) {
                             const size_t n = std::max(size_t(1), e.paints.size());
                             for (size_t i = 0; i < n; ++i) {
                                 const auto p = e.paints.empty() ? Paint{} : e.paints[i];
@@ -3989,7 +4075,8 @@ namespace gt4
                             }
                         }
                         const std::string controls =
-                            showroomControlHint(s.page, s.ui.controllerUsed, s.liveries.size() > 1);
+                            showroomControlHint(s.page, s.ui.controllerUsed, s.liveries.size() > 1,
+                                                s.hasExtras(), s.selectionHasColors);
                         std::string info = e.information;
                         if (e.handlingValid && !e.customInformation) {
                             wchar_t measure[4]{};
@@ -4014,11 +4101,19 @@ namespace gt4
                         }
                         const auto help = contextualHelp(s, W, H, &e);
                         const bool describe = footerHelp.describe(help, s.ui.menu.focus(), s.clock);
-                        const bool handling = help.empty() && s.status.empty() && !describe &&
+                        const bool handling = s.page != Page::Extras && help.empty() && s.status.empty() && !describe &&
                                               std::fmod(std::max(0., s.clock - s.changed),
                                                   5. + footerControlDuration(textWidth(controls, 18 * scale, false),
                                                                              W * .76f, scale)) < 5.;
                         std::string message = controls;
+                        if (s.page == Page::Extras && s.ui.menu.monitorFooter < 0) {
+                            const int group = s.ui.menu.extraGroup(s.ui.menu.sortRow);
+                            if (group >= 0) {
+                                const auto& options = s.ui.menu.extras[size_t(group)];
+                                const size_t choice = size_t(std::clamp(s.ui.menu.extraChoice[size_t(group)], 0, int(options.size()) - 1));
+                                message = localized(options[choice]) + "    " + controls;
+                            }
+                        }
                         if (describe) {
                             message = help;
                         } else if (help.empty() && !s.status.empty()) {
@@ -4105,14 +4200,14 @@ namespace gt4
                         drawCountryNotice(d, W, H);
                     }
                     if (main && s.ui.cinematic.active && s.hotspotsEnabled() && !s.ui.menu.open && !s.plateOpen &&
-                        s.spawnReview == SpawnReview::None) {
+                        s.spawnReview == SpawnReview::None && !s.tutorialOpen()) {
                         drawHotspots(d, *main, s.ui.vehicle, s.carAlpha());
                     }
                     drawPlate(d, W, H, s);
                     keyboardPanel(d, W, H, s);
                     studioMenu(d, W, H, s);
                     if (s.postSelectionCinematic && s.ui.cinematic.active && !s.appearanceReady && !s.ui.menu.open &&
-                        s.spawnReview == SpawnReview::None) {
+                        s.spawnReview == SpawnReview::None && !s.tutorialOpen()) {
                         const std::string message = s.status.empty() ? "Preparing customization preview..." : s.status;
                         const float boxWidth = std::min(W * .7f, 720 * scale);
                         rect(d, (W - boxWidth) * .5f, H * .86f, boxWidth, 36 * scale, color(0x080B0D, .94f));

@@ -17,12 +17,6 @@ void finishSettings()
         }
         rebuildCatalogueView();
         refreshSelected();
-        for (size_t group = 0; group < ui.menuExtras.size(); ++group) {
-            if (ui.menu.extraChoice[group] != ui.menuExtras[group]) {
-                selectStudioExtra(int(group), ui.menuExtras[group]);
-            }
-        }
-        ui.menu.extraChoice = ui.menuExtras;
         if (ui.menu.volume != ui.menuVolume) {
             setGameVolume(ui.menuVolume);
             ui.menu.volume = ui.menuVolume;
@@ -48,7 +42,6 @@ void openStudioSettings(float x, float y, bool keyboard)
     ui.menuCinematic = ui.cinematic;
     ui.menuVehicle = ui.vehicle;
     ui.menuPreferences = ui.preferences();
-    ui.menuExtras = ui.menu.extraChoice;
     readGameVolume(ui.menu.volume);
     ui.menuVolume = ui.menu.volume;
     ui.menuSnapshot = true;
@@ -58,6 +51,7 @@ void openStudioSettings(float x, float y, bool keyboard)
     } else if (ui.cinematic.active) {
         ui.menu.settingsView = SettingsView::Cinematic;
     }
+    ui.syncMenuPresentation();
     ui.menu.toggle(x, y, state.clock);
     ui.menu.monitorKeyboard = keyboard;
 }
@@ -96,6 +90,7 @@ void requestStudioAction(StudioAction action)
     if (action == StudioAction::FloorReflections || action == StudioAction::VehicleReflections) {
         if (action == StudioAction::FloorReflections) {
             state.ui.chooseFloorReflections(state.ui.menu.choice);
+            state.ui.syncMenuPresentation();
         } else {
             state.ui.vehicleReflections = std::clamp(state.ui.menu.choice, 0, 4);
         }
@@ -116,6 +111,7 @@ void requestStudioAction(StudioAction action)
     }
     if (action == StudioAction::ShowroomStyle) {
         state.ui.showroomStyle = std::clamp(state.ui.menu.choice, 0, studioStyleCount - 1);
+        state.ui.syncMenuPresentation();
         state.ui.menu.open = true;
         state.ui.menu.selectedAction();
         state.cue = Cue::Accept;
@@ -125,6 +121,7 @@ void requestStudioAction(StudioAction action)
     if (action == StudioAction::Background && state.ui.showroomStyle != 0) { return; }
     if (action == StudioAction::Background) {
         state.ui.chooseBackground(state.ui.menu.choice);
+        state.ui.syncMenuPresentation();
         state.ui.menu.open = true;
         state.ui.menu.selectedAction();
         state.cue = Cue::Accept;
@@ -169,6 +166,7 @@ void requestStudioAction(StudioAction action)
             mask ^= 1u << choice;
         }
         legacy = -1;
+        ui.syncMenuPresentation();
         // filters update the catalogue in place; the picker remains open for the next tick
         rebuildCatalogueView();
         refreshSelected();
@@ -255,6 +253,7 @@ void requestStudioAction(StudioAction action)
         const bool value = state.ui.menu.choice != 0;
         if (action == StudioAction::Shadows) {
             state.ui.chooseShadows(value);
+            state.ui.syncMenuPresentation();
         } else if (action == StudioAction::CarLogo) {
             state.ui.carLogo = value;
         } else if (action == StudioAction::BrandLogo) {
@@ -270,15 +269,7 @@ void requestStudioAction(StudioAction action)
         blockActions();
         return;
     }
-    const int extraGroup = extraActionGroup(action);
-    if (extraGroup >= 0) {
-        const bool applied = selectStudioExtra(extraGroup, state.ui.menu.choice);
-        state.ui.menu.open = true;
-        state.ui.menu.selectedAction();
-        state.cue = applied ? Cue::Accept : Cue::Error;
-        blockActions();
-        return;
-    }
+
     if (action == StudioAction::Hotspots) {
         if (!state.ui.menu.allowHotspots) {
             return;
@@ -406,13 +397,11 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
     state.ui.menu.classMask = state.ui.classMask;
     state.ui.menu.antialiasing = state.ui.antialiasing;
     state.ui.menu.ambientOcclusion = state.ui.ambientOcclusion;
-    state.ui.menu.floorReflections = state.ui.floorReflections();
     state.ui.menu.vehicleReflections = state.ui.vehicleReflections;
     state.ui.menu.language = state.ui.language;
     state.ui.menu.unitFormat = state.ui.unitFormat;
     state.ui.menu.setCategories(state.ui.japaneseCategory(), state.ui.bikeCategory());
-    state.ui.menu.backgroundChoice = state.ui.backgroundSelection;
-    state.ui.menu.styleChoice = state.ui.showroomStyle;
+    state.ui.syncMenuPresentation();
     state.ui.menu.hotspots = state.hotspotsEnabled();
     state.ui.menu.viewerSettings = state.viewer.settings;
     state.ui.menu.viewerPaused = state.viewer.paused;
@@ -435,7 +424,8 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
     const bool leftPress = left.poll(key(VK_LEFT) || pad.left, tick, true),
                rightPress = right.poll(key(VK_RIGHT) || pad.right, tick, true);
     const bool modal = state.ui.menu.open || state.shop.open() || state.photo.active || state.searching ||
-                       state.spawnReview != SpawnReview::None || state.plateOpen || state.informationOpen;
+                       state.spawnReview != SpawnReview::None || state.plateOpen || state.informationOpen || state.tutorialOpen() ||
+                       state.page == Page::Extras || state.selectionAdvancePending;
     const bool upPress = up.poll(key(VK_UP) || pad.up, tick, modal),
                downPress = down.poll(key(VK_DOWN) || pad.down, tick, modal);
     const bool editingText = (state.plateOpen && state.plateEditing) || (state.searching && state.searchEditing);
@@ -468,6 +458,22 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
                              downPress || search || favoritesPress || add || previousHotspot || nextHotspot ||
                              pauseView || togglePanels || wheel || pad.orbitX || pad.orbitY || pad.zoom;
     const bool information = informationKey.poll(key('I') || (pad.add && pad.favorites), tick);
+    if (state.tutorialOpen()) {
+        if (state.tutorialMotion.leaving >= 0.) { return; }
+        const auto button = renderer.tutorialButton(W, H, state);
+        if ((moved || click) && button.w > 0) {
+            state.tutorialFocus = button.contains(state.pointerX * W, state.pointerY * H);
+        }
+        if (upPress || downPress || leftPress || rightPress) { state.tutorialFocus = true; }
+        if (goBack || ((accept || (click && button.w > 0)) && state.tutorialFocus)) {
+            if (state.closeTutorial(!goBack) &&
+                !saveTutorialConfig(ini.c_str(), {state.tutorialsEnabled, state.tutorialsSeen})) {
+                log("Could not save showroom tutorial acknowledgement");
+            }
+            blockActions();
+        }
+        return;
+    }
     if (state.informationOpen) {
         if (state.informationMotion.leaving >= 0 || state.clock - state.opened < MenuFade::entryDuration) {
             return;
@@ -740,7 +746,11 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
             state.chooseSpawnReview(static_cast<ReviewChoice>(state.reviewChoice));
             blockActions();
         } else if (goBack || context) {
-            state.back();
+            if (!goBack && state.spawnReview == SpawnReview::Cinematic) {
+                state.chooseSpawnReview(ReviewChoice::Dismiss);
+            } else {
+                state.back();
+            }
             blockActions();
         }
         if (state.ui.dock && state.reviewChoice >= 0) {
@@ -748,6 +758,74 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
             target.y += state.reviewOffset(H);
             state.pointerX = (target.x + target.w * .5f) / W;
             state.pointerY = (target.y + target.h * .5f) / H;
+        }
+        return;
+    }
+    if (state.selectionAdvancePending) {
+        if (goBack || context) { state.back(); blockActions(); }
+        return;
+    }
+    if (state.page == Page::Extras && !state.ui.cinematic.active) {
+        auto& m = state.ui.menu;
+        const auto rows = m.items(1);
+        const int count = int(rows.size());
+        if (goBack || context) {
+            state.back();
+            blockActions();
+            return;
+        }
+        const float x = state.pointerX * W, y = state.pointerY * H;
+        if (count && m.monitorSlide(x, y, W, H, lDown, click)) {
+            const int group = m.extraGroup(m.sortRow);
+            if (m.sliderChanged && group >= 0) {
+                const int wanted = m.sliderValue(m.sortRow);
+                m.extraChoice = nativeExtras::choice;
+                state.cue = selectStudioExtra(group, wanted) ? Cue::Slider : Cue::Error;
+                m.sliderChanged = false;
+            }
+            state.ui.dock = false;
+            return;
+        }
+        if (moved || click) {
+            m.monitorKeyboard = false;
+            m.monitorHover = true;
+            m.monitorHoverLevel = m.monitorHoverIndex = m.monitorFooter = -1;
+            for (int i = 0; i < count; ++i) {
+                if (m.monitorField(1, i, W, H).contains(x, y)) {
+                    m.monitorHoverLevel = 1;
+                    m.monitorHoverIndex = m.sortRow = i;
+                    break;
+                }
+            }
+            for (int i = 0; i < 2; ++i) {
+                if (m.monitorButton(1, i, W, H).contains(x, y)) {
+                    m.monitorFooterLevel = 1;
+                    m.monitorFooter = i;
+                }
+            }
+        }
+        if (upPress || downPress) {
+            m.monitorKeyboard = true;
+            const int current = m.monitorFooter < 0 ? std::min(m.sortRow, count) : count + m.monitorFooter;
+            const int next = (current + (downPress ? 1 : -1) + count + 2) % (count + 2);
+            m.monitorFooterLevel = 1;
+            m.monitorFooter = next < count ? -1 : next - count;
+            if (next < count) { m.sortRow = next; }
+            state.cue = Cue::Move;
+        }
+        if ((leftPress || rightPress) && m.monitorFooter < 0 && count) {
+            m.monitorKeyboard = true;
+            m.sortRow = std::clamp(m.sortRow, 0, count - 1);
+            const int group = m.extraGroup(m.sortRow);
+            const int wanted = std::clamp(m.sliderValue(m.sortRow) + (rightPress ? 1 : -1), 0, m.sliderMaximum(m.sortRow));
+            if (group >= 0 && wanted != m.sliderValue(m.sortRow)) {
+                state.cue = selectStudioExtra(group, wanted) ? Cue::Slider : Cue::Error;
+            }
+        }
+        if (accept || (click && m.monitorFooter >= 0)) {
+            if (m.monitorFooter == 0) { state.back(); }
+            else { state.accept(entries); }
+            blockActions();
         }
         return;
     }
@@ -827,12 +905,6 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         auto applySliders = [&] {
             if (!m.sliderChanged) {
                 return;
-            }
-            if (m.childBranch() == MenuBranch::Extras) {
-                const int group = m.extraGroup(m.sortRow);
-                if (group >= 0 && !selectStudioExtra(group, m.extraChoice[size_t(group)])) {
-                    state.cue = Cue::Error;
-                }
             }
             if (m.childBranch() == MenuBranch::Volume && !setGameVolume(m.volume)) {
                 readGameVolume(m.volume);

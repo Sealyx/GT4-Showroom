@@ -7,6 +7,7 @@
 #include "HotkeyConfig.hpp"
 #include "KeyboardInput.hpp"
 #include "StudioConfig.hpp"
+#include "TutorialConfig.hpp"
 #include "NativePreview.hpp"
 #include "NativePrize.hpp"
 #include "NativeLiveries.hpp"
@@ -34,7 +35,8 @@ namespace gt4
     HMODULE module = nullptr;
     std::wstring base, logFile, ini;
     Model state;
-    int extrasModel = -1;
+    int extrasModel = -1, dirtyExtraModel = -1, extrasFramingModel = -1;
+    std::shared_ptr<const Mesh> extrasFraming;
     std::map<int, std::array<int, 3>> selectedExtras;
     ReturnFade returnFade;
     std::unique_ptr<Mesh> prizeMesh;
@@ -121,7 +123,7 @@ namespace gt4
 
     struct Cached
     {
-        std::unique_ptr<Mesh> mesh;
+        std::shared_ptr<Mesh> mesh;
         double touched = 0;
     };
 
@@ -311,6 +313,8 @@ namespace gt4
         state.shop = {};
         state.photo = {};
         extrasModel = -1;
+        dirtyExtraModel = extrasFramingModel = -1;
+        extrasFraming.reset();
         state.ui.menu.setExtras({}, {}, {});
         liveryNative::clear(state);
         prizeNative::release();
@@ -339,6 +343,7 @@ namespace gt4
         state.fade.reset();
         state.searching = false;
         state.informationOpen = false;
+        state.tutorial = Tutorial::None;
         state.ui.resetTransient();
         state.ui.favoritesOnly = false;
         audio.stopBed();
@@ -396,6 +401,9 @@ namespace gt4
             catalog.clear();
             known.clear();
             selectedExtras.clear();
+            extrasFraming.reset();
+            extrasFramingModel = -1;
+            dirtyExtraModel = -1;
             cache.clear();
             failed.clear();
             pending.clear();
@@ -462,7 +470,7 @@ namespace gt4
 
     std::pair<int, int> selectedLivery()
     {
-        if (state.page != Page::Livery || state.livery >= state.liveries.size()) {
+        if (!state.usesLivery() || state.livery >= state.liveries.size()) {
             return {-1, -1};
         }
         const auto& livery = state.liveries[state.livery];
@@ -482,8 +490,10 @@ namespace gt4
                 return customizationNative::preview.get();
             }
         }
-        if (state.page == Page::Livery && state.selected < entries.size() && entries[state.selected].id == id &&
-            state.livery > 0 && liveryNative::preview) {
+        if (state.usesLivery() && state.selected < entries.size() && entries[state.selected].id == id &&
+            state.livery > 0 && state.livery < state.liveries.size() && liveryNative::preview &&
+            liveryNative::capturedModel == id && liveryNative::capturedPaint == int(state.paint) &&
+            liveryNative::displayedLivery == state.liveries[state.livery].index) {
             return liveryNative::preview.get();
         }
         auto it = cache.find(id);
@@ -496,6 +506,11 @@ namespace gt4
             return;
         }
         auto& e = entries[state.selected];
+        state.extrasResolved = extrasModel == e.id && nativeExtras::metadataReady && !nativeExtras::selectionPending();
+        if (extrasFramingModel != e.id) {
+            extrasFramingModel = -1;
+            extrasFraming.reset();
+        }
         if (customizationNative::state.model >= 0 && customizationNative::state.model != e.id) {
             customizationNative::clear();
         }
@@ -680,15 +695,6 @@ namespace gt4
                 cache.erase(selectedEntry.id);
             }
         }
-        if (nativeExtras::model == selectedEntry.id) {
-            state.ui.menu.setExtras(nativeExtras::labels(0), nativeExtras::labels(1), nativeExtras::labels(2));
-            const auto& menu = state.ui.menu;
-            if (cache.count(selectedEntry.id) && menu.open && menu.sub && menu.childBranch() == MenuBranch::Extras) {
-                if (nativeExtras::pump(GetTickCount64())) {
-                    state.ui.menu.setExtras(nativeExtras::labels(0), nativeExtras::labels(1), nativeExtras::labels(2));
-                }
-            }
-        }
         liveryNative::update(state, selectedEntry);
         if (state.postSelectionCinematic) {
             const auto livery = selectedLivery();
@@ -755,7 +761,8 @@ namespace gt4
                 continue;
             }
             auto it = cache.find(id);
-            if (it != cache.end() && (id != want.front() || it->second.mesh->textureLimit == 0)) {
+            const bool refreshExtras = id == want.front() && id == dirtyExtraModel;
+            if (it != cache.end() && (id != want.front() || (it->second.mesh->textureLimit == 0 && !refreshExtras))) {
                 it->second.touched = state.clock;
                 continue;
             }
@@ -787,6 +794,7 @@ namespace gt4
                 log(capture);
             }
             const bool selected = id == entries[state.selected].id;
+            if (refreshExtras) { dirtyExtraModel = -1; }
             auto mesh = selected ? nativeExtras::capture(id) : nativePreview::snapshot(id, nullptr, false, 512);
             static std::set<int> wheelReports;
             if (nativePreview::lastModel == id && wheelReports.size() < 1000 && wheelReports.insert(id).second &&
@@ -833,6 +841,29 @@ namespace gt4
                                   nativePreview::captureFailure.c_str());
                 log(b);
             }
+        }
+        if (state.page == Page::Extras && !extrasFraming) {
+            const auto current = cache.find(selectedEntry.id);
+            if (liveryNative::preview && lookup(selectedEntry.id) == liveryNative::preview.get()) {
+                extrasFraming = liveryNative::preview;
+            } else if (current != cache.end()) {
+                extrasFraming = current->second.mesh;
+            }
+            if (extrasFraming) { extrasFramingModel = selectedEntry.id; }
+        }
+        const bool extrasScanned = extrasModel == selectedEntry.id && nativeExtras::metadataReady;
+        if (extrasScanned) {
+            if (state.selectionAdvancePending) {
+                nativeExtras::probeSelection(tick);
+            } else if (state.ui.menu.selectionExtras && cache.count(selectedEntry.id)) {
+                nativeExtras::pump(tick);
+            }
+            state.ui.menu.setExtras(nativeExtras::labels(0), nativeExtras::labels(1), nativeExtras::labels(2));
+        }
+        state.extrasResolved = extrasScanned ? !nativeExtras::selectionPending()
+            : std::find(failed.begin(), failed.end(), selectedEntry.id) != failed.end();
+        if (state.selectionAdvancePending && state.extrasResolved) {
+            state.reviewSelectedAppearance();
         }
         size_t textureBytes = 0;
         for (const auto& item : cache) {
@@ -930,6 +961,9 @@ namespace gt4
         nativeExtras::resetCatalogues();
         extrasModel = -1;
         selectedExtras.clear();
+        extrasFraming.reset();
+        extrasFramingModel = -1;
+        dirtyExtraModel = -1;
         cache.clear();
         failed.clear();
         if (state.page == Page::Prize) {
@@ -1006,6 +1040,9 @@ namespace gt4
         secretSchoolView.reset();
         liveryNative::clear(state);
         prizeMesh.reset();
+        extrasFraming.reset();
+        extrasFramingModel = -1;
+        dirtyExtraModel = -1;
         cache.clear();
         failed.clear();
         pending.clear();
@@ -1206,11 +1243,17 @@ namespace gt4
                     }
                 }
                 state.begin(entries.size());
-                if (GetPrivateProfileIntW(L"GT4Showroom", L"TutorialBox", 1, ini.c_str()) != 0) {
+                const auto tutorialOptions = loadTutorialConfig(ini.c_str());
+                state.tutorialsEnabled = tutorialOptions.enabled;
+                state.tutorialsSeen |= tutorialOptions.seen;
+                if (state.tutorialsEnabled && !(state.tutorialsSeen & welcomeTutorialBit)) {
                     state.informationOpen = true;
                     state.informationMotion = {state.clock};
                     state.informationChoice = 3;
-                    WritePrivateProfileStringW(L"GT4Showroom", L"TutorialBox", L"0", ini.c_str());
+                    state.tutorialsSeen |= welcomeTutorialBit;
+                    if (!saveTutorialConfig(ini.c_str(), {state.tutorialsEnabled, state.tutorialsSeen})) {
+                        log("Could not save Welcome tutorial acknowledgement");
+                    }
                 }
                 refreshSelected();
                 failed.clear();
@@ -1622,7 +1665,9 @@ namespace gt4
             updateShopGeometry();
         }
         if (game::renderCamera() == camera &&
-            renderer.draw(device, output.Width, output.Height, state, entries, lookup, shopPart, true)) {
+            renderer.draw(device, output.Width, output.Height, state, entries, lookup, shopPart, true,
+                          extrasFramingModel >= 0 && state.selected < entries.size() &&
+                              entries[state.selected].id == extrasFramingModel ? extrasFraming.get() : nullptr)) {
             studioPreparedFrame = frameSerial;
             if (state.photo.active && state.photo.requested) {
                 std::filesystem::path saved;
@@ -1789,6 +1834,9 @@ namespace gt4
         catalog.clear();
         known.clear();
         selectedExtras.clear();
+        extrasFraming.reset();
+        extrasFramingModel = -1;
+        dirtyExtraModel = -1;
         cache.clear();
         failed.clear();
         pending.clear();
@@ -1817,6 +1865,9 @@ namespace gt4
         clearShopGeometry();
         state.appearanceReady = !state.postSelectionCinematic;
         renderer.reset();
+        extrasFraming.reset();
+        extrasFramingModel = -1;
+        dirtyExtraModel = -1;
         cache.clear();
         failed.clear();
         pending.clear();

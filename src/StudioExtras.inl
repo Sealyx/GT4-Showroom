@@ -1,9 +1,8 @@
 void invalidateStudioExtraPreview(int id)
 {
-    cache.erase(id);
+    dirtyExtraModel = id;
     failed.erase(std::remove(failed.begin(), failed.end(), id), failed.end());
     pending.erase(id);
-    liveryNative::preview.reset();
     liveryNative::capturedLivery = -2;
 }
 
@@ -31,14 +30,16 @@ void syncStudioExtraPreview()
     if (entries.empty() || state.selected >= entries.size() || extrasModel != entries[state.selected].id) {
         return;
     }
-    const auto wanted = state.ui.menu.previewExtras();
+    const auto wanted = state.skipSelectionExtras ? std::array<int, 3>{} : state.ui.menu.extraChoice;
     const auto before = nativeExtras::choice;
     for (int group = 0; group < 3; ++group) {
         if (wanted[size_t(group)] != before[size_t(group)]) {
             nativeExtras::select(group, wanted[size_t(group)]);
         }
     }
-    state.ui.menu.setExtras(nativeExtras::labels(0), nativeExtras::labels(1), nativeExtras::labels(2));
+    if (!state.skipSelectionExtras) {
+        state.ui.menu.setExtras(nativeExtras::labels(0), nativeExtras::labels(1), nativeExtras::labels(2));
+    }
     if (before != nativeExtras::choice) {
         invalidateStudioExtraPreview(extrasModel);
     }

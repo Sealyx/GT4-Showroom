@@ -50,7 +50,7 @@ void drawShopTile(IDirect3DDevice9* device, float width, float height, float x, 
 
 void shopMirror(IDirect3DDevice9* device, const Mesh& car, const Camera& camera, float angle, const Paint& paint,
                 float alpha, float size, float rideHeight, bool clean, int quality = 2,
-                const CinematicVehicleState* vehicle = nullptr, float reflectivity = .31f)
+                const CinematicVehicleState* vehicle = nullptr, float reflectivity = .31f, const V3* origin = nullptr)
 {
     const float requested = .25f * std::clamp(quality, 1, 4);
     const float scale = std::min(requested, 1440.f / std::max(camera.w, camera.h));
@@ -74,7 +74,7 @@ void shopMirror(IDirect3DDevice9* device, const Mesh& car, const Camera& camera,
         device->SetRenderState(D3DRS_DESTBLENDALPHA, D3DBLEND_INVSRCALPHA);
         device->SetRenderState(D3DRS_BLENDOPALPHA, D3DBLENDOP_ADD);
         device->SetRenderState(D3DRS_SEPARATEALPHABLENDENABLE, TRUE);
-        mesh(device, car, reduced, angle, paint, 1, size, false, true, false, vehicle, false, rideHeight, false, clean);
+        mesh(device, car, reduced, angle, paint, 1, size, false, true, false, vehicle, false, rideHeight, false, clean, false, origin);
         device->SetRenderState(D3DRS_SEPARATEALPHABLENDENABLE, FALSE);
     }
     if (!layers.restore() || !ready) {

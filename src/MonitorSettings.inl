@@ -46,6 +46,12 @@ inline std::array<UIRect, 3> ContextMenu::monitorPanels(float w, float h) const
         return r;
     };
     std::array<UIRect, 3> out{};
+    if (selectionExtras) {
+        const float width = std::min(360 * s, w - margin * 2);
+        const float height = (22 + 28 * std::max(size_t(1), items(1).size()) + 35) * s;
+        out[1] = {(w - width) * .5f, h * .85f - height, width, height};
+        return out;
+    }
     out[0] = bound({x * w, y * h, 480 * s, (22 + 28 * rootItems().size() + 35) * s});
     const auto parent = out[0];
     const float childX = parent.x - 372 * s >= margin ? parent.x - 372 * s : parent.x + parent.w + 12 * s;
@@ -497,7 +503,7 @@ inline UIRect ContextMenu::monitorSlider(int index, float w, float h) const
 
 inline bool ContextMenu::monitorSlide(float px, float py, float w, float h, bool down, bool pressed)
 {
-    if (!open || !sub || !sliderWindow()) {
+    if ((!selectionExtras && (!open || !sub)) || !sliderWindow()) {
         sliderDrag = -1;
         return false;
     }

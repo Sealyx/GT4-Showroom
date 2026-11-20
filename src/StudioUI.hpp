@@ -288,6 +288,7 @@ namespace gt4
         std::array<int, countryCount> counts{};
         std::array<int, classCount> classCounts{};
         std::array<std::vector<std::string>, 3> extras;
+        bool selectionExtras = false;
         std::array<int, 3> extraChoice{{0, 0, 0}};
         bool shadows = true, carLogo = false, brandLogo = false,
              displayModelId = true, displayModelName = true;
@@ -506,15 +507,11 @@ namespace gt4
                                        {"Anti-Aliasing", StudioAction::None, -1, MenuBranch::Antialiasing},
                                        {"Ambient Occlusion", StudioAction::None, -1, MenuBranch::AmbientOcclusion},
                                        {"Reflections", StudioAction::None, -1, MenuBranch::Reflections}};
-            if (!extras[0].empty() || !extras[1].empty() || !extras[2].empty()) {
-                rows.push_back({"Extras", StudioAction::None, -1, MenuBranch::Extras});
-            }
             {
                 if (styleChoice == 0) { rows.insert(rows.begin(), {"Background", StudioAction::None, -1, MenuBranch::Background}); }
                 rows.insert(rows.begin(), {"Style", StudioAction::None, -1, MenuBranch::ShowroomStyle});
             }
             rows.push_back({"Cinematic", StudioAction::Cinematic});
-            rows.push_back({"Vehicle Viewer", StudioAction::ViewerEnter});
             rows.push_back({"Volume", StudioAction::None, -1, MenuBranch::Volume});
             return rows;
         }
@@ -721,6 +718,7 @@ namespace gt4
 
         MenuBranch childBranch() const
         {
+            if (selectionExtras) { return MenuBranch::Extras; }
             const auto r = rootItems();
             return row >= 0 && size_t(row) < r.size() ? r[size_t(row)].child : MenuBranch::None;
         }
@@ -745,22 +743,6 @@ namespace gt4
             return level == 0 ? rootItems() : branchItems(level == 1 ? childBranch() : thirdBranch());
         }
 
-        std::array<int, 3> previewExtras() const
-        {
-            auto selected = extraChoice;
-            if (open && focus() == 2) {
-                const auto branch = thirdBranch();
-                const int branchGroup = extraBranchGroup(branch);
-                if (branchGroup >= 0) {
-                    const size_t group = size_t(branchGroup);
-                    if (countryRow >= 0 && size_t(countryRow) < extras[group].size()) {
-                        selected[group] = countryRow;
-                    }
-                }
-            }
-            return selected;
-        }
-
         int current(int level) const
         {
             return level == 0 ? row : level == 1 ? sortRow : countryRow;
@@ -773,6 +755,7 @@ namespace gt4
 
         int focus() const
         {
+            if (selectionExtras) { return 1; }
             return countryFocus ? 2 : focusLevel;
         }
 
@@ -1093,7 +1076,6 @@ namespace gt4
         CinematicVehicleState vehicle, menuVehicle;
         AudioLevels audioLevels;
         StudioPreferences menuPreferences;
-        std::array<int, 3> menuExtras{{0, 0, 0}};
         std::array<int, 2> menuVolume{{64, 64}};
         bool menuSnapshot = false;
         ControllerKeyboard keyboard;
@@ -1112,6 +1094,14 @@ namespace gt4
             const int background = backgroundStyle();
             const uint8_t saved = presets[reflectionPreset(showroomStyle, background)].floorQuality;
             return saved == inheritedFloorQuality ? defaultFloorQuality(showroomStyle, background) : saved;
+        }
+
+        void syncMenuPresentation()
+        {
+            menu.backgroundChoice = backgroundStyle();
+            menu.styleChoice = showroomStyle;
+            menu.floorReflections = floorReflections();
+            menu.shadows = shadows();
         }
 
         void chooseBackground(int selection)

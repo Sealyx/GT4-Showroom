@@ -5,7 +5,7 @@ void processStudioPlate(const PadActions& pad, float width, float height, double
     if (state.plateAction >= 0) {
         return;
     }
-    if (goBack) {
+    if (goBack && state.plateBackNavigates(pad.back)) {
         state.finishPlate(false);
         blockActions();
         return;

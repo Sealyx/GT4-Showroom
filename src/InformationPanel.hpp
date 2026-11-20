@@ -7,13 +7,13 @@ namespace gt4
 {
     struct InformationPanel
     {
-        float scale;
+        float scale, heightUnits;
         UIRect box;
 
-        InformationPanel(float width, float height, float offset = 0)
-            : scale(std::min(height / 720.f, width / 960.f))
+        InformationPanel(float width, float height, float offset = 0, float panelWidth = 760, float panelHeight = 444)
+            : scale(std::min(height / 720.f, width / 960.f)), heightUnits(panelHeight)
         {
-            const float w = 760 * scale, h = 444 * scale;
+            const float w = panelWidth * scale, h = heightUnits * scale;
             box = {(width - w) * .5f, (height - h) * .5f + offset, w, h};
         }
 
@@ -25,7 +25,7 @@ namespace gt4
             if (index == 2) {
                 return {box.x + 22 * scale, box.y + 408 * scale, 180 * scale, 24 * scale};
             }
-            return {box.x + box.w * .35f, box.y + 405 * scale, box.w * .30f, 26 * scale};
+            return {box.x + box.w * .35f, box.y + (heightUnits - 39) * scale, box.w * .30f, 26 * scale};
         }
 
         int hit(float x, float y) const
