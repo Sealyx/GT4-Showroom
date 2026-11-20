@@ -1095,7 +1095,6 @@ namespace gt4
         StudioPreferences menuPreferences;
         std::array<int, 3> menuExtras{{0, 0, 0}};
         std::array<int, 2> menuVolume{{64, 64}};
-        bool menuShadows = true;
         bool menuSnapshot = false;
         ControllerKeyboard keyboard;
         ViewTransition transition;
@@ -1104,32 +1103,33 @@ namespace gt4
         uint32_t countryMask = 0, classMask = 0;
         int backgroundSelection = 0, showroomStyle = 0;
         int unitFormat = 0, japanBackground = 0, bikeBackground = 0, antialiasing = 2, ambientOcclusion = 2;
-        int floorReflections = 0, vehicleReflections = 3;
-        int floorReflectionQuality = 3;
-        bool backgroundOverridden = false, floorReflectionsOverridden = false;
+        int vehicleReflections = 3;
+        bool backgroundOverridden = false;
+        std::array<PresentationPreset, reflectionPresetCount> presets{};
 
-        int activeReflectionPresentation() const { return showroomStyle == 1 ? prologueReflectionPresentation : backgroundStyle(); }
-
-        void syncFloorReflections()
+        int floorReflections() const
         {
-            if (floorReflectionsOverridden) { return; }
-            const int presentation = activeReflectionPresentation();
-            floorReflections = (presentation == RedBackground || presentation >= StaticBackground)
-                ? floorReflectionQuality : 0;
+            const int background = backgroundStyle();
+            const uint8_t saved = presets[reflectionPreset(showroomStyle, background)].floorQuality;
+            return saved == inheritedFloorQuality ? defaultFloorQuality(showroomStyle, background) : saved;
         }
 
         void chooseBackground(int selection)
         {
             backgroundSelection = std::clamp(selection, 0, studioBackgroundCount - 1);
             backgroundOverridden = true;
-            syncFloorReflections();
         }
 
         void chooseFloorReflections(int quality)
         {
-            floorReflections = std::clamp(quality, 0, 4);
-            floorReflectionsOverridden = true;
-            if (floorReflections > 0) { floorReflectionQuality = floorReflections; }
+            presets[reflectionPreset(showroomStyle, backgroundStyle())].floorQuality = uint8_t(std::clamp(quality, 0, 4));
+        }
+
+        bool shadows() const { return presets[reflectionPreset(showroomStyle, backgroundStyle())].shadows; }
+
+        void chooseShadows(bool enabled)
+        {
+            presets[reflectionPreset(showroomStyle, backgroundStyle())].shadows = enabled;
         }
 
         int language = 0;
@@ -1152,12 +1152,7 @@ namespace gt4
         int backgroundStyle() const
         {
             if (backgroundOverridden) { return backgroundSelection; }
-            if (bikeCategory()) { return DarkGrayBackground; }
-            if (japaneseCategory()) { return RedBackground; }
-            if (singleCountry(Country::Germany)) { return BrushedSteelBackground; }
-            if (singleCountry(Country::SouthKorea)) { return DarkGraphiteBackground; }
-            if (singleCountry(Country::UK)) { return WarmBackground; }
-            return DefaultBackground;
+            return studioBackgroundForFilters(countryMask, countryFilter, classMask, classFilter);
         }
 
         bool accepts(Country country, int category) const
@@ -1169,7 +1164,7 @@ namespace gt4
                                            : classFilter < 0 || classFilter == index;
             return hasCountry && hasClass;
         }
-        bool shadows = true, carLogo = false, brandLogo = false, displayModelId = true, displayModelName = true;
+        bool carLogo = false, brandLogo = false, displayModelId = true, displayModelName = true;
         double pointerMoved = 0;
         bool countryShortcut = false;
         int shortcutCountry = -1, shortcutOrder = 5, shortcutModel = -1;
@@ -1195,9 +1190,7 @@ namespace gt4
             result.classMask = classMask;
             result.antialiasing = antialiasing;
             result.ambientOcclusion = ambientOcclusion;
-            result.floorReflections = floorReflectionsOverridden ? floorReflections : 0;
-            result.floorReflectionQuality = floorReflectionQuality;
-            result.floorReflectionsOverridden = floorReflectionsOverridden;
+            result.presets = presets;
             result.vehicleReflections = vehicleReflections;
             result.language = language;
             result.unitFormat = unitFormat;
@@ -1206,7 +1199,6 @@ namespace gt4
             result.showroomStyle = showroomStyle;
             result.japanBackground = japanBackground;
             result.bikeBackground = bikeBackground;
-            result.shadows = shadows;
             result.sortMode = sortMode;
             result.countryFilter = countryFilter;
             result.classFilter = classFilter;
@@ -1229,9 +1221,7 @@ namespace gt4
             classMask = preferences.classMask;
             antialiasing = preferences.antialiasing;
             ambientOcclusion = preferences.ambientOcclusion;
-            floorReflections = preferences.floorReflections;
-            floorReflectionsOverridden = preferences.floorReflectionsOverridden;
-            floorReflectionQuality = preferences.floorReflectionQuality;
+            presets = preferences.presets;
             vehicleReflections = preferences.vehicleReflections;
             language = preferences.language;
             unitFormat = preferences.unitFormat;
@@ -1240,7 +1230,6 @@ namespace gt4
             showroomStyle = preferences.showroomStyle;
             japanBackground = preferences.japanBackground;
             bikeBackground = preferences.bikeBackground;
-            shadows = preferences.shadows;
             sortMode = preferences.sortMode;
             countryFilter = preferences.countryFilter;
             classFilter = preferences.classFilter;
@@ -1249,7 +1238,6 @@ namespace gt4
             displayModelId = preferences.displayModelId;
             displayModelName = preferences.displayModelName;
             audioLevels = preferences.audio;
-            syncFloorReflections();
         }
 
         bool countryNotice(Country country, bool searching, bool searchResult) const

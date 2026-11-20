@@ -1070,7 +1070,7 @@ namespace gt4
                 Localization::folders[size_t(std::clamp(state.ui.language, 0, 6))], state.ui.unitFormat,
                 state.ui.sortMode, static_cast<unsigned long>(state.ui.countryMask),
                 static_cast<unsigned long>(state.ui.classMask), state.ui.antialiasing, state.ui.ambientOcclusion,
-                state.ui.floorReflections, state.ui.vehicleReflections);
+                state.ui.floorReflections(), state.ui.vehicleReflections);
             log(detail);
         }
     }

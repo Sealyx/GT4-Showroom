@@ -2492,7 +2492,7 @@ namespace gt4
                 }
                 rect(d, 0, H * .900f, W, H * .100f, 0xFF000000);
                 d->Clear(0, nullptr, D3DCLEAR_ZBUFFER | D3DCLEAR_STENCIL, 0, 1, 0);
-                if (s.ui.shadows) {
+                if (s.ui.shadows()) {
                     mesh(d, *car, camera, pose.yaw, paint, pose.alpha * .38f, size, true);
                 }
                 mesh(d, *car, camera, pose.yaw, paint, pose.alpha, size);
@@ -3721,11 +3721,11 @@ namespace gt4
                                    rideHeight,
                                    s.shop.washed);
                     }
-                    if (!s.viewer.active && s.ui.floorReflections > 0) {
+                    if (!s.viewer.active && s.ui.floorReflections() > 0) {
                         shopMirror(d, *main, mainCam, angle, paint, materialOpacity, lastCarSize, rideHeight,
-                                   s.shop.washed, s.ui.floorReflections, vehicle, .31f + .22f * studioSurfaceWeight);
+                                   s.shop.washed, s.ui.floorReflections(), vehicle, .31f + .22f * studioSurfaceWeight);
                     }
-                    if (s.viewer.active ? s.viewer.settings.shadows : s.ui.shadows) {
+                    if (s.viewer.active ? s.viewer.settings.shadows : s.ui.shadows()) {
                         mesh(d,
                              *main,
                              mainCam,
@@ -3833,7 +3833,7 @@ namespace gt4
                                     small.w = float(thumbVP.Width);
                                     small.h = float(thumbVP.Height);
                                     d->SetRenderState(D3DRS_ZENABLE, TRUE);
-                                    if (s.ui.shadows) {
+                                    if (s.ui.shadows()) {
                                         mesh(d, *thumb, small, thumbAngle, Paint{}, carStrip, 1,
                                              true, false, false, nullptr, false, 0, false, false, true);
                                     }

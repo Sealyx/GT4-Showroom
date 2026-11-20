@@ -17,7 +17,6 @@ void finishSettings()
         }
         rebuildCatalogueView();
         refreshSelected();
-        ui.shadows = ui.menuShadows;
         for (size_t group = 0; group < ui.menuExtras.size(); ++group) {
             if (ui.menu.extraChoice[group] != ui.menuExtras[group]) {
                 selectStudioExtra(int(group), ui.menuExtras[group]);
@@ -49,7 +48,6 @@ void openStudioSettings(float x, float y, bool keyboard)
     ui.menuCinematic = ui.cinematic;
     ui.menuVehicle = ui.vehicle;
     ui.menuPreferences = ui.preferences();
-    ui.menuShadows = ui.shadows;
     ui.menuExtras = ui.menu.extraChoice;
     readGameVolume(ui.menu.volume);
     ui.menuVolume = ui.menu.volume;
@@ -117,8 +115,7 @@ void requestStudioAction(StudioAction action)
         return;
     }
     if (action == StudioAction::ShowroomStyle) {
-        state.ui.showroomStyle = std::clamp(state.ui.menu.choice, 0, 1);
-        state.ui.syncFloorReflections();
+        state.ui.showroomStyle = std::clamp(state.ui.menu.choice, 0, studioStyleCount - 1);
         state.ui.menu.open = true;
         state.ui.menu.selectedAction();
         state.cue = Cue::Accept;
@@ -257,7 +254,7 @@ void requestStudioAction(StudioAction action)
         action == StudioAction::DisplayModelId || action == StudioAction::DisplayModelName) {
         const bool value = state.ui.menu.choice != 0;
         if (action == StudioAction::Shadows) {
-            state.ui.shadows = value;
+            state.ui.chooseShadows(value);
         } else if (action == StudioAction::CarLogo) {
             state.ui.carLogo = value;
         } else if (action == StudioAction::BrandLogo) {
@@ -400,7 +397,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
     state.ui.menu.sync(state.ui.sortMode,
                        state.ui.countryFilter,
                        state.ui.classFilter,
-                       state.ui.shadows,
+                       state.ui.shadows(),
                        state.ui.carLogo,
                        state.ui.brandLogo,
                        state.ui.displayModelId,
@@ -409,7 +406,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
     state.ui.menu.classMask = state.ui.classMask;
     state.ui.menu.antialiasing = state.ui.antialiasing;
     state.ui.menu.ambientOcclusion = state.ui.ambientOcclusion;
-    state.ui.menu.floorReflections = state.ui.floorReflections;
+    state.ui.menu.floorReflections = state.ui.floorReflections();
     state.ui.menu.vehicleReflections = state.ui.vehicleReflections;
     state.ui.menu.language = state.ui.language;
     state.ui.menu.unitFormat = state.ui.unitFormat;

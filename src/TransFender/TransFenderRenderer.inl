@@ -344,7 +344,7 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
         const float size = 4.8f / std::max(.2f, car->span());
         const float ride = float(suspension ? shop.rideHeight : shop.confirmedRideHeight) * .025f;
         shopMirror(device, *car, camera, angle, paint, reveal, size, ride, shop.washed);
-        if (model.ui.shadows) {
+        if (model.ui.shadows()) {
             mesh(device, *car, camera, angle, paint, reveal, size, true, false, false, nullptr, false, ride);
         }
         mesh(device, *car, camera, angle, paint, reveal, size, false, false, false, nullptr, false, ride, false,

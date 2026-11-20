@@ -711,7 +711,6 @@ namespace gt4
             shopResetGroup = -1;
             beforeFavoritesModel = -1;
             ui.resetTransient();
-            ui.syncFloorReflections();
             backgroundBlend.fill(0.f);
             backgroundBlend[size_t(ui.backgroundStyle())] = 1.f;
             prologueMix = float(ui.showroomStyle == 1);
@@ -794,7 +793,6 @@ namespace gt4
             if (std::abs(prologueMix - float(ui.showroomStyle == 1)) < .001f) {
                 prologueMix = float(ui.showroomStyle == 1);
             }
-            ui.syncFloorReflections();
             const int style = ui.backgroundStyle();
             for (int i = 0; i < studioBackgroundCount; ++i) {
                 backgroundBlend[size_t(i)] += (float(i == style) - backgroundBlend[size_t(i)]) *
