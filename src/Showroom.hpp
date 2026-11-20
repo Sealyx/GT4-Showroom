@@ -104,11 +104,18 @@ namespace gt4
         bool favorite = false;
     };
 
+    inline bool twoWheelerPreview(const Entry& entry)
+    {
+        const int category = classIndex(entry.classId);
+        return entry.kind == 9 || entry.kind == 10 || category == 7 || category == 8 || category == 11;
+    }
+
     struct Livery
     {
         int index = -1, txd = -1;
         std::shared_ptr<void> texture;
         float focusU = .5f, focusV = .5f;
+        std::shared_ptr<void> appearanceTexture{};
     };
     enum class Page
     {
@@ -249,7 +256,22 @@ namespace gt4
         bool extrasResolved = true, selectionAdvancePending = false, skipSelectionExtras = false;
         bool selectionHasColors = true;
 
-        bool usesLivery() const { return page == Page::Livery || (page == Page::Extras && extrasFrom == Page::Livery); }
+        bool appearanceResetPending = false, extrasResetPending = false;
+        bool twoWheelerSelected = false;
+        void resetVehicleAppearance()
+        {
+            paint = livery = 0;
+            ui.menu.extraChoice = {};
+            whitePaintRequested = false;
+            lastCompletedSelection = Page::Cars;
+            appearanceResetPending = extrasResetPending = true;
+        }
+
+        bool usesLivery() const
+        {
+            return page == Page::Livery || (page == Page::Paint && livery > 0) ||
+                   (page == Page::Extras && extrasFrom == Page::Livery);
+        }
         bool hasExtras() const
         {
             return std::any_of(ui.menu.extras.begin(), ui.menu.extras.end(),
@@ -278,6 +300,7 @@ namespace gt4
 
         void setSelectionPage(Page next)
         {
+            if (next == Page::Cars) { resetVehicleAppearance(); }
             page = next;
             stripChanged = clock;
             ui.menu.selectionExtras = next == Page::Extras;
@@ -411,8 +434,7 @@ namespace gt4
         {
             if (page == Page::Prize) {
                 selected = beforePrize;
-                page = Page::Cars;
-                paint = 0;
+                setSelectionPage(Page::Cars);
                 changed = motionBegan = clock;
                 scroll = scrollTarget();
                 prize = {};
@@ -547,7 +569,7 @@ namespace gt4
             cue = confirm ? Cue::Accept : Cue::Back;
         }
 
-        void returnToCarSelection(bool keepAppearance = false, Page destination = Page::Cars)
+        void returnToCarSelection(Page destination = Page::Cars)
         {
             shop = {};
             shopExitArmed = shopReturnNavigation = false;
@@ -566,9 +588,6 @@ namespace gt4
             if (destination == Page::Paint) { colorsReturned = clock; }
             selectionAdvancePending = skipSelectionExtras = false;
             tutorial = Tutorial::None;
-            if (!keepAppearance) {
-                paint = livery = 0;
-            }
             paintMix = 0;
             dragging = false;
             status.clear();
@@ -621,7 +640,7 @@ namespace gt4
                 (choice == ReviewChoice::Cinematic || choice == ReviewChoice::BackToShowroom)) {
                 const auto destination = choice == ReviewChoice::Cinematic && postSelectionCinematic
                     ? lastCompletedSelection : Page::Cars;
-                returnToCarSelection(true, destination);
+                returnToCarSelection(destination);
                 cue = Cue::Back;
                 return;
             }
@@ -897,8 +916,7 @@ namespace gt4
             searchResultName.clear();
             spawn = false;
             dragging = false;
-            page = Page::Cars;
-            paint = 0;
+            setSelectionPage(Page::Cars);
             selected = std::min(selected, count - 1);
             opened = changed = clock;
             informationOpen = false;
@@ -1003,6 +1021,7 @@ namespace gt4
             }
             count = cars.size();
             selected = index;
+            twoWheelerSelected = twoWheelerPreview(cars[index]);
             selectionAdvancePending = skipSelectionExtras = false;
             shop = {};
             shopExitArmed = shopReturnNavigation = false;
@@ -1012,7 +1031,7 @@ namespace gt4
             viewerSnapshot = postSelectionCinematic = false;
             spawnReview = SpawnReview::None;
             appearanceReady = true;
-            paint = livery = 0;
+            resetVehicleAppearance();
             changed = motionBegan = clock;
             status.clear();
             cue = Cue::Slider;
@@ -1222,14 +1241,15 @@ namespace gt4
             return scale(clock - changed);
         }
 
-        float heading(double age) const
+        float heading(double age, bool twoWheeler = false) const
         {
-            return float(age) * 2 * pi / 20.f + .16f;
+            constexpr float frontThreeQuarter = -.59f;
+            return float(age) * 2 * pi / 20.f + (twoWheeler ? frontThreeQuarter : .16f);
         }
 
         float heading() const
         {
-            return heading(clock - changed);
+            return heading(clock - changed, twoWheelerSelected);
         }
 
         float titleMix() const

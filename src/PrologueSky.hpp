@@ -14,7 +14,7 @@ namespace gt4
         IDirect3DPixelShader9* clouds = nullptr;
         IDirect3DPixelShader9* studio = nullptr;
         bool attempted = false;
-        float renderedPhase = -1.f, renderedDrift = -1.f;
+        float renderedPhase = -1.f, renderedDrift = -1.f, renderedEvolution = -1.f;
 
         static float noise(float x, float y, float z, int repeat)
         {
@@ -124,9 +124,9 @@ namespace gt4
                 SUCCEEDED(device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, vertices, sizeof(Vertex)));
         }
 
-        bool renderLayer(IDirect3DDevice9* device, float phase, float drift)
+        bool renderLayer(IDirect3DDevice9* device, float phase, float drift, float evolution)
         {
-            if (renderedPhase == phase && renderedDrift == drift) { return true; }
+            if (renderedPhase == phase && renderedDrift == drift && renderedEvolution == evolution) { return true; }
             RenderTargets<> targets(device);
             if (!targets.select(cloudSurface, nullptr, {0, 0, cloudWidth, cloudHeight, 0, 1})) {
                 return false;
@@ -134,7 +134,7 @@ namespace gt4
             DWORD scissor = FALSE;
             device->GetRenderState(D3DRS_SCISSORTESTENABLE, &scissor);
             device->SetRenderState(D3DRS_SCISSORTESTENABLE, FALSE);
-            const float settings[]{phase, drift, 1.f, 0.f};
+            const float settings[]{phase, drift, evolution, 0.f};
             device->SetTexture(5, volume);
             sampleLinear(device, 5, D3DTADDRESS_WRAP);
             const bool drawn = SUCCEEDED(device->SetPixelShaderConstantF(0, settings, 1)) &&
@@ -146,6 +146,7 @@ namespace gt4
             if (drawn && restored) {
                 renderedPhase = phase;
                 renderedDrift = drift;
+                renderedEvolution = evolution;
             }
             return drawn && restored;
         }
@@ -160,10 +161,10 @@ namespace gt4
         {
             release();
             attempted = false;
-            renderedPhase = renderedDrift = -1.f;
+            renderedPhase = renderedDrift = renderedEvolution = -1.f;
         }
 
-        bool available(IDirect3DDevice9* device, float phase, float drift)
+        bool available(IDirect3DDevice9* device, float phase, float drift, float evolution)
         {
             if (!attempted) {
                 attempted = true;
@@ -196,9 +197,10 @@ float4 cloudPass(float2 uv : TEXCOORD0) : COLOR0
         float z = (i + .5) / 9.0;
         const float drift = z < .56 ? nearDrift : farDrift;
         float2 plane = float2(.40 + drift, .17) + view * float2(.90, .52) * (1 + .23 * z);
-        float3 samplePosition = float3(plane + float2(.040, -.078) * z, .31 + z * .245);
+        float3 samplePosition = float3(plane + float2(.040, -.078) * z, .31 + z * .245 + options.z);
         float density = densityAt(samplePosition);
-        float shape = max(0, density - .388);
+        const float formation = densityAt(float3(.24 + drift + uv.x * .56, .32 + uv.y * .29, options.z - .17));
+        float shape = max(0, density - lerp(.357, .422, formation));
         float mass = saturate(shape * 4.3) * mask * (1 - abs(2 * z - 1)) * .84;
         float above = densityAt(samplePosition + float3(-.014, -.039, .021));
         float sunlight = saturate(.74 + (density - above) * 3.05 - shape * .36);
@@ -207,7 +209,7 @@ float4 cloudPass(float2 uv : TEXCOORD0) : COLOR0
         transmittance *= (1 - mass);
     }
     // Stretch the distant layer along the horizon and composite it behind the nearer clouds.
-    const float3 distant = float3(.18 + farDrift + uv.x * .58, uv.y * 1.94 + .12, .65);
+    const float3 distant = float3(.18 + farDrift + uv.x * .58, uv.y * 1.94 + .12, .65 - options.z);
     const float4 bands = float4(densityAt(distant), densityAt(distant + float3(.084, .016, .094)),
         densityAt(distant + float3(-.041, .053, -.016)),
         densityAt(distant + float3(.11, -.028, .08)));
@@ -269,7 +271,7 @@ float4 studioPass(float2 uv : TEXCOORD0, float2 pixel : VPOS) : COLOR0
                     release();
                 }
             }
-            return cloudSurface && renderLayer(device, phase, drift);
+            return cloudSurface && renderLayer(device, phase, drift, evolution);
         }
 
         bool draw(IDirect3DDevice9* device, float width, float height, float floorShift, float opacity)

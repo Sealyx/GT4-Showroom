@@ -321,8 +321,7 @@ void applyViewTransition()
     state.viewer.reset(state.clock);
     state.viewerSnapshot = state.postSelectionCinematic = false;
     state.spawnReview = SpawnReview::None;
-    state.page = Page::Cars;
-    state.paint = state.livery = 0;
+    state.setSelectionPage(Page::Cars);
     state.paintMix = 0;
     state.spawn = false;
     state.closeSearch();

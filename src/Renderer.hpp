@@ -59,6 +59,7 @@ namespace gt4
         float alpha = 1;
         unsigned addressU = 1, addressV = 1;
         int component = -1;
+        bool remap = false;
     };
 
     struct Mesh
@@ -79,7 +80,10 @@ namespace gt4
         float middleBodyLength = 0.f;
         float roofBodyLength = 0.f;
         V3 framingBodyLow{}, framingBodyHigh{};
-        struct FramingSlice { float radius = 0, low = 1e9f, high = -1e9f; };
+        struct FramingSlice {
+            float radius = 0, low = 1e9f, high = -1e9f;
+            float left = 1e9f, right = -1e9f, front = 1e9f, rear = -1e9f;
+        };
         std::array<FramingSlice, 64> framingSlices{};
 
         float framingTop = -1e9f;
@@ -113,7 +117,7 @@ namespace gt4
 
         void compact()
         {
-            std::map<std::tuple<uintptr_t, uintptr_t, uint32_t, int, float, unsigned, unsigned, int>, size_t> groups;
+            std::map<std::tuple<uintptr_t, uintptr_t, uint32_t, int, float, unsigned, unsigned, int, bool>, size_t> groups;
             std::vector<Batch> merged;
             for (auto& b : batches) {
                 const auto key = std::make_tuple(reinterpret_cast<uintptr_t>(b.texture),
@@ -123,7 +127,8 @@ namespace gt4
                                                  b.alpha,
                                                  b.addressU,
                                                  b.addressV,
-                                                 b.component);
+                                                 b.component,
+                                                 b.remap);
                 auto it = groups.find(key);
                 if (b.alpha >= .98f && it != groups.end()) {
                     auto& to = merged[it->second].vertices;
@@ -212,6 +217,10 @@ namespace gt4
                         0,int(sections-1));
                     auto& slice=framingSlices[size_t(bin)];
                     slice.radius=std::max(slice.radius,std::hypot(p.x-center.x,p.y-center.y));
+                    slice.left = std::min(slice.left, p.x - center.x);
+                    slice.right = std::max(slice.right, p.x - center.x);
+                    slice.front = std::min(slice.front, p.y - center.y);
+                    slice.rear = std::max(slice.rear, p.y - center.y);
                     slice.low=std::min(slice.low,p.z-low.z);
                     slice.high=std::max(slice.high,p.z-low.z);
                 }
@@ -437,7 +446,8 @@ namespace gt4
                 // Facing +Y, the vehicle's right is +X. Orient the fork axis upward even
                 // on models whose frame basis was authored with the opposite axis.
                 const auto axis = fork.axis.z < 0.f ? fork.axis * -1.f : fork.axis;
-                turn = cinematicRotation(fork.pivot, axis, -.30f);
+                constexpr float leftSteering = 26.f * pi / 180.f;
+                turn = cinematicRotation(fork.pivot, axis, leftSteering);
             }
             for (auto& vertex : copy.vertices) {
                 const auto position = turn.point({vertex.p.x, vertex.p.y, vertex.p.z});
@@ -495,6 +505,63 @@ namespace gt4
         StudioGradient studioGradient;
         StudioSurfaces studioSurfaces;
         PrologueSky prologueSky;
+        struct AppearanceBlend {
+            int model = -1;
+            double opened = -1, paintStarted = 0, liveryStarted = 0;
+            Paint fromPaint, toPaint;
+            std::shared_ptr<void> fromLivery, toLivery;
+        } appearance;
+        uint64_t appearanceMesh = 0;
+        float liveryBlend = 1;
+        bool liveryBlendSupported = false;
+
+        Paint appearancePaint(const Entry& entry, const Model& model, const Mesh* main,
+                              bool materialRemap)
+        {
+            constexpr double duration = .20;
+            const Paint target = entry.paints.empty() ? Paint{} :
+                                 entry.paints[std::min(model.paint, entry.paints.size() - 1)];
+            if (appearance.model != entry.id || appearance.opened != model.opened ||
+                model.ui.cinematic.active || model.viewer.active || model.page == Page::Prize) {
+                appearance = {};
+                appearance.model = entry.id;
+                appearance.opened = model.opened;
+                appearance.fromPaint = appearance.toPaint = target;
+            }
+            const auto paintAt = [&] {
+                Paint paint = appearance.toPaint;
+                const float t = ease(float((model.clock - appearance.paintStarted) / duration));
+                for (size_t i = 0; i < 4; ++i) {
+                    paint.rgb[i] = viewerBlend(appearance.fromPaint.rgb[i], paint.rgb[i], t);
+                }
+                return paint;
+            };
+            if (!std::equal(std::begin(target.rgb), std::end(target.rgb), std::begin(appearance.toPaint.rgb))) {
+                appearance.fromPaint = paintAt();
+                appearance.toPaint = target;
+                appearance.paintStarted = model.clock;
+            }
+
+            appearanceMesh = 0;
+            if (main && materialRemap && !model.ui.cinematic.active && !model.viewer.active) {
+                appearanceMesh = main->serial;
+                const bool wantsLivery = model.usesLivery() && model.livery > 0 && model.livery < model.liveries.size();
+                const auto incoming = wantsLivery ? model.liveries[model.livery].appearanceTexture : nullptr;
+                // Keep the displayed material while streaming and settle an in-flight blend before retargeting.
+                if (model.clock - appearance.liveryStarted >= duration) {
+                    appearance.fromLivery = appearance.toLivery;
+                    if ((!wantsLivery || incoming) && incoming != appearance.toLivery) {
+                        appearance.toLivery = incoming;
+                        appearance.liveryStarted = model.clock;
+                    }
+                }
+                liveryBlend = ease(float((model.clock - appearance.liveryStarted) / duration));
+            } else {
+                appearance.fromLivery.reset();
+                appearance.toLivery.reset();
+            }
+            return paintAt();
+        }
         int entryPreviewModel = -1;
         double entrySelectionStamp = -1., entrySessionStamp = -1., entryRenderableAt = -1.;
         uint32_t viewerLightTint = 0xFFFFFF;
@@ -1273,6 +1340,8 @@ namespace gt4
             studioGradient.reset();
             studioSurfaces.reset();
             prologueSky.reset();
+            appearance = {};
+            appearanceMesh = 0;
             entryPreviewModel = -1;
             entrySelectionStamp = entrySessionStamp = entryRenderableAt = -1.;
             unicodeText.reset();
@@ -1794,13 +1863,13 @@ namespace gt4
             return top * (1 - v) + bottom * v;
         }
 
-        static std::array<float, 3> prologueBackdrop(float u, float v, float drift)
+        static std::array<float, 3> prologueBackdrop(float u, float v, float drift, float evolution)
         {
             const float x = u * 7.2f + drift, y = v * 9.4f;
             const float warp = cloudNoise(x * .61f, y * .75f);
             const float warpedY = y + warp * 1.3f;
             const float density = .50f * cloudNoise(x + warpedY * .22f, warpedY - x * .17f) +
-                .27f * cloudNoise(x * 1.7f - warpedY * .90f, warpedY * 1.7f + x * .90f) +
+                .27f * cloudNoise(x * 1.7f - warpedY * .90f + evolution, warpedY * 1.7f + x * .90f) +
                 .16f * cloudNoise(x * 2.9f + warpedY * 2.4f, warpedY * 2.9f - x * 2.4f) +
                 .07f * cloudNoise(x * 6.f - warpedY * 3.3f, warpedY * 6.f + x * 3.3f);
             const float cloud = ease((density - .27f) / .47f);
@@ -1816,11 +1885,46 @@ namespace gt4
                     9.f + wall * 1.08f + floorLight * 1.04f};
         }
 
+        static constexpr float prologueStroke = 1.5f;
+        static constexpr uint32_t prologueOrange = 0xFFB340, prologueGlow = 0xFF941F;
+
+        static float prologuePulse(double clock)
+        {
+            const float phase = float(std::fmod(clock, .75) / .75);
+            return ease(phase < .5f ? phase * 2.f : (1.f - phase) * 2.f);
+        }
+
+        void prologueFrameBand(IDirect3DDevice9* d, Rect box, float radius, float inner, float outer,
+                               DWORD innerInk, DWORD outerInk)
+        {
+            screen(d);
+            d->SetTexture(0, nullptr);
+            d->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG2);
+            d->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG2);
+            std::array<ScreenVertex, 106> strip{};
+            size_t index = 0;
+            const auto point = [&](int corner, float a, float expansion, DWORD ink) {
+                const float rx = box.x + (corner == 0 || corner == 3 ? radius : box.w - radius);
+                const float ry = box.y + (corner < 2 ? radius : box.h - radius);
+                return ScreenVertex{rx + (radius + expansion) * std::cos(a),
+                                    ry + (radius + expansion) * std::sin(a), 0, 1, ink, 0, 0};
+            };
+            for (int corner = 0; corner < 4; ++corner) {
+                for (int step = 0; step <= 12; ++step) {
+                    const float a = -pi + corner * pi * .5f + step * pi / 24;
+                    strip[index++] = point(corner, a, outer, outerInk);
+                    strip[index++] = point(corner, a, inner, innerInk);
+                }
+            }
+            strip[index++] = strip[0];
+            strip[index++] = strip[1];
+            d->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, UINT(index - 2), strip.data(), sizeof(ScreenVertex));
+        }
+
         void prologuePaintChip(IDirect3DDevice9* d, Rect slot, const Paint& paint, bool selected,
                                float alpha, double clock, uint8_t paintMask)
         {
-            const float phase = float(std::fmod(clock, .75) / .75);
-            const float pulse = selected ? ease(phase < .5f ? phase * 2.f : (1.f - phase) * 2.f) : 0.f;
+            const float pulse = selected ? prologuePulse(clock) : 0.f;
             const float radius = slot.w * (selected ? .525f : .43f);
             const float x = slot.x + slot.w * .5f, y = slot.y + slot.h * .5f;
             screen(d);
@@ -1840,8 +1944,8 @@ namespace gt4
             };
 
             if (selected) {
-                const DWORD glow = color(0xFF941F, alpha * .90f * pulse);
-                const DWORD ring = color(0xFFB340, alpha * pulse);
+                const DWORD glow = color(prologueGlow, alpha * .90f * pulse);
+                const DWORD ring = color(prologueOrange, alpha * pulse);
                 const auto haloBand = [&](float inner, float outer, DWORD innerInk, DWORD outerInk) {
                     std::array<ScreenVertex, 82> halo{};
                     for (size_t i = 0; i <= 40; ++i) {
@@ -1860,7 +1964,7 @@ namespace gt4
                     const float co = std::cos(angle), si = std::sin(angle);
                     stroke[i * 2] = {x + (radius + 3.f) * co, y + (radius + 3.f) * si,
                                      0, 1, ring, 0, 0};
-                    stroke[i * 2 + 1] = {x + (radius + 1.5f) * co, y + (radius + 1.5f) * si,
+                    stroke[i * 2 + 1] = {x + (radius + 3.f - prologueStroke) * co, y + (radius + 3.f - prologueStroke) * si,
                                          0, 1, ring, 0, 0};
                 }
                 d->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 80, stroke.data(), sizeof(ScreenVertex));
@@ -1904,9 +2008,10 @@ namespace gt4
             float x = 0, floorY = 0, z = 0, rhw = 0;
             const bool floorVisible = cam.project({0, 0, 0}, x, floorY, z, rhw);
             const float floorShift = floorVisible ? std::clamp(floorY / cam.h - .56f, -.12f, .12f) : 0.f;
-            const float nearDrift = float(std::fmod(seconds * .1582, 1.));
-            const float farDrift = float(std::fmod(seconds * .1148, 1.));
-            bool cloudLayer = prologueStyle > 0.f && prologueSky.available(d, nearDrift, farDrift);
+            const float nearDrift = float(std::fmod(seconds * .2057, 1.));
+            const float farDrift = float(std::fmod(seconds * .1492, 1.));
+            const float cloudEvolution = float(std::fmod(seconds * .037, 1.));
+            bool cloudLayer = prologueStyle > 0.f && prologueSky.available(d, nearDrift, farDrift, cloudEvolution);
             const float cloudOpacity = opacity * prologueStyle;
             const auto drawPrologue = [&] {
                 if (!prologueSky.draw(d, cam.w, cam.h, floorShift, cloudOpacity)) {
@@ -2011,7 +2116,8 @@ namespace gt4
                         }
                     }
                     if (prologueStyle > 0.f && !cloudLayer) {
-                        const auto sky = prologueBackdrop(u, v, float(std::fmod(seconds * .63, 256.)));
+                        const auto sky = prologueBackdrop(u, v, float(std::fmod(seconds * .82, 256.)),
+                                                         float(2.5 * std::sin(seconds * .22)));
                         for (size_t i = 0; i < rgb.size(); ++i) {
                             rgb[i] += (sky[i] - rgb[i]) * prologueStyle;
                         }
@@ -2275,6 +2381,10 @@ namespace gt4
             }
             auto* room = viewerSubject && (m.paintMask || panoramaReflection) ? studioEnvironment.cubeTexture() :
                 !thumbnail && mainReflectionActive && mainReflectionQuality > 0 && !reflection ? mainEnvironment.cubeTexture() : nullptr;
+            const bool remapActive = m.serial == appearanceMesh && !absolute && !thumbnail;
+            const bool blendRemap = remapActive && liveryBlendSupported &&
+                                    appearance.fromLivery != appearance.toLivery;
+            const DWORD roomStage = blendRemap ? 3 : 1;
             if (room) {
                 D3DMATRIX roomTransform = identity();
                 roomTransform._11 = cam.right.x;
@@ -2286,32 +2396,32 @@ namespace gt4
                 roomTransform._31 = cam.forward.x;
                 roomTransform._32 = cam.forward.z;
                 roomTransform._33 = cam.forward.y;
-                d->SetTransform(D3DTS_TEXTURE1, &roomTransform);
-                d->SetTexture(1, room);
-                d->SetTextureStageState(1, D3DTSS_TEXCOORDINDEX, D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR);
-                d->SetTextureStageState(1, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_COUNT3);
-                d->SetTextureStageState(1, D3DTSS_COLORARG0, D3DTA_CURRENT);
-                d->SetTextureStageState(1, D3DTSS_COLORARG1, D3DTA_TEXTURE);
-                d->SetTextureStageState(1, D3DTSS_COLORARG2, D3DTA_TFACTOR);
-                d->SetTextureStageState(1, D3DTSS_ALPHAARG1, D3DTA_CURRENT);
-                d->SetTextureStageState(1, D3DTSS_RESULTARG, D3DTA_CURRENT);
+                d->SetTransform(D3DTRANSFORMSTATETYPE(D3DTS_TEXTURE0 + roomStage), &roomTransform);
+                d->SetTexture(roomStage, room);
+                d->SetTextureStageState(roomStage, D3DTSS_TEXCOORDINDEX, D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR);
+                d->SetTextureStageState(roomStage, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_COUNT3);
+                d->SetTextureStageState(roomStage, D3DTSS_COLORARG0, D3DTA_CURRENT);
+                d->SetTextureStageState(roomStage, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+                d->SetTextureStageState(roomStage, D3DTSS_COLORARG2, D3DTA_TFACTOR);
+                d->SetTextureStageState(roomStage, D3DTSS_ALPHAARG1, D3DTA_CURRENT);
+                d->SetTextureStageState(roomStage, D3DTSS_RESULTARG, D3DTA_CURRENT);
                 const DWORD reflectionGain = !panoramaReflection ? 0xFF333333
                                                : m.paintMask      ? 0xFF171717
                                                                   : 0xFF0B0B0B;
                 d->SetRenderState(D3DRS_TEXTUREFACTOR, reflectionGain);
-                d->SetRenderState(D3DRS_WRAP1, 0);
-                d->SetSamplerState(1, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
-                d->SetSamplerState(1, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
-                d->SetSamplerState(1, D3DSAMP_ADDRESSW, D3DTADDRESS_CLAMP);
-                d->SetSamplerState(1, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
-                d->SetSamplerState(1, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
-                d->SetSamplerState(1, D3DSAMP_MIPFILTER, D3DTEXF_LINEAR);
-                d->SetSamplerState(1, D3DSAMP_MAXMIPLEVEL, 0);
+                d->SetRenderState(D3DRENDERSTATETYPE(D3DRS_WRAP0 + roomStage), 0);
+                d->SetSamplerState(roomStage, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
+                d->SetSamplerState(roomStage, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
+                d->SetSamplerState(roomStage, D3DSAMP_ADDRESSW, D3DTADDRESS_CLAMP);
+                d->SetSamplerState(roomStage, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
+                d->SetSamplerState(roomStage, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
+                d->SetSamplerState(roomStage, D3DSAMP_MIPFILTER, D3DTEXF_LINEAR);
+                d->SetSamplerState(roomStage, D3DSAMP_MAXMIPLEVEL, 0);
                 const float mipBias = panoramaReflection ? .6f : 0.f;
                 DWORD mipBiasBits = 0;
                 std::memcpy(&mipBiasBits, &mipBias, sizeof(mipBiasBits));
-                d->SetSamplerState(1, D3DSAMP_MIPMAPLODBIAS, mipBiasBits);
-                d->SetSamplerState(1, D3DSAMP_SRGBTEXTURE, FALSE);
+                d->SetSamplerState(roomStage, D3DSAMP_MIPMAPLODBIAS, mipBiasBits);
+                d->SetSamplerState(roomStage, D3DSAMP_SRGBTEXTURE, FALSE);
                 d->SetTextureStageState(2, D3DTSS_COLOROP, D3DTOP_DISABLE);
                 d->SetTextureStageState(2, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
             }
@@ -2346,8 +2456,8 @@ namespace gt4
                                                        (mainReflectionActive && pass == 1 && b.alpha > .1f));
                     if (glossyPaint != reflective) {
                         reflective = glossyPaint;
-                        d->SetTextureStageState(1, D3DTSS_COLOROP, reflective ? D3DTOP_MULTIPLYADD : D3DTOP_DISABLE);
-                        d->SetTextureStageState(1, D3DTSS_ALPHAOP, reflective ? D3DTOP_SELECTARG1 : D3DTOP_DISABLE);
+                        d->SetTextureStageState(roomStage, D3DTSS_COLOROP, reflective ? D3DTOP_MULTIPLYADD : D3DTOP_DISABLE);
+                        d->SetTextureStageState(roomStage, D3DTSS_ALPHAOP, reflective ? D3DTOP_SELECTARG1 : D3DTOP_DISABLE);
                     }
                     const uint32_t rgb = b.paint >= 0 ? paint.rgb[b.paint] : b.rgb;
                     D3DMATERIAL9 mat{};
@@ -2371,6 +2481,46 @@ namespace gt4
                     d->SetTexture(0, texture);
                     d->SetTextureStageState(0, D3DTSS_COLOROP, texture ? D3DTOP_MODULATE : D3DTOP_SELECTARG2);
                     d->SetTextureStageState(0, D3DTSS_ALPHAOP, texture ? D3DTOP_MODULATE : D3DTOP_SELECTARG2);
+                    if (remapActive && b.remap && texture && appearance.toLivery) {
+                        d->SetTexture(0, static_cast<IDirect3DTexture9*>(appearance.toLivery.get()));
+                    }
+                    if (blendRemap) {
+                        const bool mix = b.remap && texture;
+                        if (mix) {
+                            auto* from = static_cast<IDirect3DTexture9*>(appearance.fromLivery.get());
+                            auto* to = static_cast<IDirect3DTexture9*>(appearance.toLivery.get());
+                            d->SetTexture(0, from ? from : texture);
+                            d->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+                            d->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+                            d->SetTexture(1, to ? to : texture);
+                            d->SetTextureStageState(1, D3DTSS_TEXCOORDINDEX, 0);
+                            d->SetTextureStageState(1, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
+                            d->SetSamplerState(1, D3DSAMP_ADDRESSU, b.addressU);
+                            d->SetSamplerState(1, D3DSAMP_ADDRESSV, b.addressV);
+                            d->SetSamplerState(1, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
+                            d->SetSamplerState(1, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
+                            d->SetSamplerState(1, D3DSAMP_MIPFILTER, D3DTEXF_LINEAR);
+                            d->SetSamplerState(1, D3DSAMP_SRGBTEXTURE, FALSE);
+                            const DWORD t = DWORD(std::round(liveryBlend * 255)) * 0x01010101u;
+                            d->SetTextureStageState(1, D3DTSS_CONSTANT, t);
+                        }
+                        const DWORD action = mix ? D3DTOP_LERP : D3DTOP_SELECTARG2;
+                        for (const auto type : {D3DTSS_COLOROP, D3DTSS_ALPHAOP}) {
+                            d->SetTextureStageState(1, type, action);
+                            d->SetTextureStageState(2, type, mix ? D3DTOP_MODULATE : D3DTOP_SELECTARG1);
+                        }
+                        for (const auto type : {D3DTSS_COLORARG0, D3DTSS_ALPHAARG0}) {
+                            d->SetTextureStageState(1, type, D3DTA_CONSTANT);
+                        }
+                        for (const auto type : {D3DTSS_COLORARG1, D3DTSS_ALPHAARG1}) {
+                            d->SetTextureStageState(1, type, D3DTA_TEXTURE);
+                            d->SetTextureStageState(2, type, D3DTA_CURRENT);
+                        }
+                        for (const auto type : {D3DTSS_COLORARG2, D3DTSS_ALPHAARG2}) {
+                            d->SetTextureStageState(1, type, D3DTA_CURRENT);
+                            d->SetTextureStageState(2, type, D3DTA_DIFFUSE);
+                        }
+                    }
                     d->SetRenderState(D3DRS_ZWRITEENABLE, pass == 0);
                     d->SetRenderState(D3DRS_ALPHATESTENABLE, TRUE);
                     d->SetRenderState(D3DRS_ALPHAFUNC, D3DCMP_GREATER);
@@ -2404,10 +2554,17 @@ namespace gt4
                 }
             }
             if (room) {
-                d->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
-                d->SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
-                d->SetTextureStageState(1, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
+                d->SetTextureStageState(roomStage, D3DTSS_COLOROP, D3DTOP_DISABLE);
+                d->SetTextureStageState(roomStage, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
+                d->SetTextureStageState(roomStage, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
+                d->SetTexture(roomStage, nullptr);
+            }
+            if (blendRemap) {
                 d->SetTexture(1, nullptr);
+                for (DWORD stage : {1u, 2u}) {
+                    d->SetTextureStageState(stage, D3DTSS_COLOROP, D3DTOP_DISABLE);
+                    d->SetTextureStageState(stage, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
+                }
             }
             if (viewerSubject) {
                 d->SetRenderState(D3DRS_AMBIENT, 0xFF6B6B6B);
@@ -3030,6 +3187,9 @@ namespace gt4
         Camera lastCarCamera{1280, 720, 5};
         UINT presentationWidth = 0, presentationHeight = 0;
         float lastCarAngle = 0, lastCarSize = 1;
+#ifdef BODY_REVIEW
+        float lastCarOpacity = 0;
+#endif
         uint64_t lastCarSerial = 0;
 
         bool hitCar(const Mesh& source, float x, float y) const
@@ -3375,6 +3535,12 @@ namespace gt4
             const Entry emptyEntry{};
             const Entry& e = entries.empty() ? emptyEntry : entries[s.selected];
             const Mesh* main = entries.empty() ? nullptr : lookup(e.id);
+            D3DCAPS9 materialCaps{};
+            liveryBlendSupported = SUCCEEDED(d->GetDeviceCaps(&materialCaps)) &&
+                materialCaps.MaxTextureBlendStages >= 4 && materialCaps.MaxSimultaneousTextures >= 3 &&
+                (materialCaps.PrimitiveMiscCaps & D3DPMISCCAPS_PERSTAGECONSTANT) != 0;
+            const bool remap = main && std::any_of(main->batches.begin(), main->batches.end(),
+                                                   [](const Batch& batch) { return batch.remap && batch.texture; });
             const bool bikePose = main && (e.kind == 9 || e.kind == 10) && !s.shop.open() &&
                 s.page != Page::Prize;
             if (bikePose) {
@@ -3412,6 +3578,7 @@ namespace gt4
             const V3 framingHigh = framing ? previewFramingHigh(e, *framing) : V3{};
             const float span = framing ? std::max({framingHigh.x - framing->low.x,
                 framingHigh.y - framing->low.y, framingHigh.z - framing->low.z, 2.f}) : 5.f;
+            appearanceMesh = 0;
             if (s.shop.open() && s.shop.page != ShopPage::Closed) {
                 drawTransFender(d, W, H, s, e, main, parts);
                 spawnReviewDialog(d, W, H, s);
@@ -3433,7 +3600,7 @@ namespace gt4
                 cam.up = cross(cam.right, cam.forward);
                 const double studioTime = s.ui.cinematic.active ? s.ui.cinematic.lightTime(s.clock) : s.clock;
                 lastShadowPhase = float(studioTime) * .42f;
-                const Paint paint = e.paints.empty() ? Paint{} : e.paints[std::min(s.paint, e.paints.size() - 1)];
+                const Paint paint = appearancePaint(e, s, main, remap);
                 const bool browseEntry = !s.enthusia && !s.viewer.active && !s.photo.active &&
                     !s.ui.cinematic.active && s.ui.cinematic.mix <= .001f;
                 // Keep the floor at its settled position while models load and their entry camera moves.
@@ -3443,11 +3610,13 @@ namespace gt4
                 browseBackdrop.focal *= 1.f + (1.06f * 1.065f - 1.f) * darkWeight;
                 if (main) {
                     Camera mainCam = cam;
-                    float angle = s.heading() + pi;
+                    const bool protectedBike = twoWheelerPreview(e);
+                    float angle = s.heading(s.clock - s.changed, protectedBike) + pi;
                     const bool normalAutomobile = (e.kind == 0 || e.kind == 1) && !s.enthusia &&
                                                   !s.viewer.active && !s.photo.active;
                     const float browseMix = normalAutomobile ? (1.f - s.ui.cinematic.mix) : 0.f;
-                    const bool stagedEntry = (normalAutomobile || bikePose) && browseEntry;
+                    const int framingClass = classIndex(e.classId);
+                    const bool stagedEntry = (normalAutomobile || protectedBike) && browseEntry;
                     if (entryPreviewModel != e.id || entrySelectionStamp != s.changed ||
                         entrySessionStamp != s.opened || entryRenderableAt > s.clock) {
                         entryPreviewModel = e.id;
@@ -3464,7 +3633,7 @@ namespace gt4
                     const float entryScale = s.scale(revealAge);
                     const float targetSpan = adaptivePreviewSpan(span, compactThumbnail(e) || span < 2.8f);
                     float previewSize = stagedEntry ? targetSpan / span : s.scale() * targetSpan / span;
-                    if (stagedEntry) {
+                    if (stagedEntry && !protectedBike) {
                         angle = s.heading(revealAge) + pi;
                     }
                     Camera backdropCamera = mainCam;
@@ -3506,8 +3675,6 @@ namespace gt4
                         mainCam.cy += (std::max(0.f, upperLimit - top) -
                                        std::max(0.f, bottom - lowerLimit)) * browseMix;
                     }
-                    const int framingClass=classIndex(e.classId);
-                    const bool protectedBike=e.kind==9 || e.kind==10 || framingClass==7 || framingClass==8 || framingClass==11;
                     if (browseMix>0.f && !protectedBike) {
                         const float measuredLength=std::max(.5f,framing->framingBodyHigh.y-framing->framingBodyLow.y);
                         // A long rooftop overhang can survive the area trim. Confirm that a
@@ -3637,7 +3804,7 @@ namespace gt4
                         mainCam.focal = closerFocal;
                         if (showroomMix > 0.f && settledSize > 0.f) {
                             const float fittedSize = std::min(settledSize, std::max(.001f, fit));
-                            if (stagedEntry && bikePose) {
+                            if (stagedEntry) {
                                 previewSize = fittedSize / poseSize;
                             } else {
                                 const float allowedRetreat = std::clamp(fit / settledSize - 1.f, 0.f, .95f);
@@ -3649,10 +3816,8 @@ namespace gt4
                     // fit the settled pose first; feeding the dolly into camera fitting makes it pump during entry.
                     if (stagedEntry && entryScale > 1.f) {
                         float sizeScale = entryScale;
-                        if (framing->raisedAccessory || bikePose) {
-                            // Limit the distance travelled by tall geometry, using the same ground-pivot
-                            // scale and cubic entry progression as the other vehicles.
-                            const float groundedSize = previewSize * (bikePose ? 1.08f : 1.f);
+                        if (!protectedBike && framing->raisedAccessory) {
+                            // Accessories can cap the shared entry scale for wide/tall car bodies.
                             const auto clearance = [&](V3 inward) {
                                 float reach = .0001f;
                                 const float outward = std::hypot(inward.x, inward.y);
@@ -3661,11 +3826,11 @@ namespace gt4
                                     const float height = inward.z < 0 ? slice.high : slice.low;
                                     reach = std::max(reach, outward * slice.radius - inward.z * height);
                                 }
-                                return -dot(mainCam.eye, inward) / (reach * groundedSize);
+                                return -dot(mainCam.eye, inward) / (reach * previewSize);
                             };
                             const float side = mainCam.w * .487f / mainCam.focal;
                             const float top = (mainCam.cy - H * .009f) / mainCam.focal;
-                            const float bottom = (H * (bikePose ? .701f : .688f) - mainCam.cy) / mainCam.focal;
+                            const float bottom = (H * .688f - mainCam.cy) / mainCam.focal;
                             const float available = std::min({clearance(mainCam.forward * side + mainCam.right),
                                 clearance(mainCam.forward * side - mainCam.right),
                                 clearance(mainCam.forward * top - mainCam.up),
@@ -3676,6 +3841,9 @@ namespace gt4
                         previewSize *= sizeScale;
                     }
                     const float opacity = s.carAlpha(revealAge);
+#ifdef BODY_REVIEW
+                    lastCarOpacity = opacity;
+#endif
                     const float materialOpacity = stagedEntry && opacity > 0.f ? 1.f : opacity;
                     if (s.enthusia) {
                         const auto pose = enthusiaPose(s.clock - s.motionBegan);
@@ -3869,27 +4037,23 @@ namespace gt4
                                 const bool selected = i == int(s.selected);
                                 const float alpha = carStrip * prologueStyle;
                                 const float radius = 6.8f * scale;
-                                const float border = (selected ? 3.5f : 3.f) * scale;
-                                for (int ring = 3; ring >= 1; --ring) {
-                                    const float grow = float(ring) * 1.05f * scale;
-                                    roundedRectangle(d, box.x - grow, box.y + 3.1f * scale - grow,
-                                                     box.w + grow * 2.f, box.h + grow * 2.f, radius + grow,
-                                                     color(0x050508, alpha * (.38f - .073f * ring)));
-                                }
                                 if (selected) {
-                                    const float pulse = .5f + .5f * std::sin(float(s.clock) * 3.8f);
-                                    for (int ring = 4; ring >= 1; --ring) {
-                                        const float grow = float(ring) * 1.35f * scale;
-                                        roundedRectangle(d, box.x - grow, box.y - grow,
-                                                         box.w + grow * 2.f, box.h + grow * 2.f, radius + grow,
-                                                         color(0xFFA42E, alpha * (.31f - .063f * ring) *
-                                                               (.72f + .28f * pulse)));
-                                    }
+                                    const float pulse = prologuePulse(s.clock);
+                                    const DWORD glow = color(prologueGlow, alpha * .90f * pulse);
+                                    const DWORD clear = color(prologueGlow, 0);
+                                    const DWORD stroke = color(prologueOrange, alpha * pulse);
+                                    prologueFrameBand(d, box, radius, -2.25f, -.75f, glow, clear);
+                                    prologueFrameBand(d, box, radius, -.75f, 9.f, glow, clear);
+                                    prologueFrameBand(d, box, radius, -prologueStroke, 0, stroke, stroke);
+                                } else {
+                                    Rect shadow = box;
+                                    shadow.y += 2.2f * scale;
+                                    const DWORD shade = color(0x050508, alpha * .31f);
+                                    prologueFrameBand(d, shadow, radius, -2.f * scale, 2.5f * scale,
+                                                      shade, color(0x050508, 0));
+                                    const DWORD stroke = color(0x585F68, alpha);
+                                    prologueFrameBand(d, box, radius, -3.f * scale, 0, stroke, stroke);
                                 }
-                                roundedRectangle(d, box.x, box.y, box.w, box.h, radius,
-                                                 color(selected ? 0xF5AD4C : 0x585F68, alpha));
-                                roundedRectangle(d, box.x + border, box.y + border, box.w - border * 2.f,
-                                                 box.h - border * 2.f, radius - border, color(0x252A32, alpha));
                             }
                             if (const Mesh* thumb = lookup(entries[i].id)) {
                                 constexpr float thumbAngle = pi - .78f;

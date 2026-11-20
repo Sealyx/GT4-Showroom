@@ -493,7 +493,8 @@ namespace gt4
         if (state.usesLivery() && state.selected < entries.size() && entries[state.selected].id == id &&
             state.livery > 0 && state.livery < state.liveries.size() && liveryNative::preview &&
             liveryNative::capturedModel == id && liveryNative::capturedPaint == int(state.paint) &&
-            liveryNative::displayedLivery == state.liveries[state.livery].index) {
+            liveryNative::displayedLivery == state.liveries[state.livery].index &&
+            !state.liveries[state.livery].appearanceTexture) {
             return liveryNative::preview.get();
         }
         auto it = cache.find(id);
@@ -506,6 +507,7 @@ namespace gt4
             return;
         }
         auto& e = entries[state.selected];
+        state.twoWheelerSelected = twoWheelerPreview(e);
         state.extrasResolved = extrasModel == e.id && nativeExtras::metadataReady && !nativeExtras::selectionPending();
         if (extrasFramingModel != e.id) {
             extrasFramingModel = -1;
@@ -547,6 +549,15 @@ namespace gt4
 #include "TransFenderNative.inl"
 
     // load a little at a time while paused. the whole catalogue does not need to pile in at once
+    void syncStudioExtraPreview();
+
+    bool materialLiverySupported(int id)
+    {
+        const auto it = cache.find(id);
+        return it != cache.end() && std::any_of(it->second.mesh->batches.begin(), it->second.mesh->batches.end(),
+                                               [](const Batch& batch) { return batch.remap && batch.texture; });
+    }
+
     void fillCache(UINT outputWidth, UINT outputHeight)
     {
         if (entries.empty()) {
@@ -695,7 +706,10 @@ namespace gt4
                 cache.erase(selectedEntry.id);
             }
         }
-        liveryNative::update(state, selectedEntry);
+        if (state.appearanceResetPending || state.extrasResetPending) {
+            syncStudioExtraPreview();
+        }
+        liveryNative::update(state, selectedEntry, materialLiverySupported(selectedEntry.id));
         if (state.postSelectionCinematic) {
             const auto livery = selectedLivery();
             const int previousCustomizationModel = customizationNative::state.model;

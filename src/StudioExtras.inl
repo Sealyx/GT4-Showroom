@@ -27,8 +27,22 @@ bool selectStudioExtra(int group, int option)
 
 void syncStudioExtraPreview()
 {
+    if (state.appearanceResetPending) {
+        state.appearanceResetPending = false;
+        state.clearWhitePaint(entries);
+        selectedExtras.clear();
+    }
     if (entries.empty() || state.selected >= entries.size() || extrasModel != entries[state.selected].id) {
         return;
+    }
+    if (state.extrasResetPending && nativeExtras::metadataReady) {
+        state.extrasResetPending = false;
+        for (int group = 0; group < 2; ++group) {
+            const auto& options = nativeExtras::labels(group);
+            state.ui.menu.extraChoice[size_t(group)] =
+                options.size() > 1 && options[1] == "None" ? 1 : 0;
+        }
+        state.ui.menu.extraChoice[2] = 0;
     }
     const auto wanted = state.skipSelectionExtras ? std::array<int, 3>{} : state.ui.menu.extraChoice;
     const auto before = nativeExtras::choice;

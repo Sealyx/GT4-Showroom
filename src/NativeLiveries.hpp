@@ -14,6 +14,7 @@ namespace gt4::liveryNative
         preview.reset();
         for (auto& livery : s.liveries) {
             livery.texture.reset();
+            livery.appearanceTexture.reset();
         }
         capturedModel = displayedLivery = -1;
         capturedLivery = -2;
@@ -90,7 +91,7 @@ namespace gt4::liveryNative
                 }};
     }
 
-    inline void update(Model& s, const Entry& e)
+    inline void update(Model& s, const Entry& e, bool materialRemap = false)
     {
         scan(s, e.id);
         if (s.page != Page::Paint && !s.usesLivery()) {
@@ -112,7 +113,18 @@ namespace gt4::liveryNative
             capturedLivery = -2;
             return;
         }
-        const auto& option = s.liveries[s.livery];
+        auto& option = s.liveries[s.livery];
+        if (materialRemap && option.texture && !option.appearanceTexture) {
+            TextureSnapshots copies;
+            if (auto* privateTexture = copies.get(game::device(), static_cast<IDirect3DTexture9*>(option.texture.get()))) {
+                option.appearanceTexture = {privateTexture, [](void* pointer) {
+                    static_cast<IDirect3DTexture9*>(pointer)->Release();
+                }};
+            }
+        }
+        if (materialRemap && option.appearanceTexture) {
+            return;
+        }
         if (!prizeNative::txdReady(option.txd)) {
             preview.reset();
             return;

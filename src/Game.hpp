@@ -546,6 +546,7 @@ namespace gt4::game
                 b.addressU = address.first;
                 b.addressV = address.second;
             }
+            b.remap = !plate && _strnicmp(textureName.data(), "remap", 5) == 0;
             const auto bound = plate ? NativeTextureView{} : nativeTexture(tex, at<int>(0xB4E9E0));
             if (bound.declared) {
                 ++c.out->declaredTextures;
