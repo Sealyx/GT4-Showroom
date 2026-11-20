@@ -152,12 +152,16 @@ namespace gt4::studioLighting
                     .0524f * wall + .1855f * floor};
         }
         if (style == 2) {
-            const float floor = smooth((y - .55f) / .10f);
-            const float wall = gaussian((x - .56f) / .30f, (y - .04f) / .61f);
-            const float pool = gaussian((x - .51f) / .37f, (y - .69f) / .09f);
-            const float grain = wallTexture ? wallGrain(x, y) * (1.f - floor) : 0.f;
-            const float value = (28.f + 95.f * wall + grain) * (1.f - floor) +
-                                (28.f + 48.f * pool) * floor;
+            const float cove = smooth((y - .435f) / .08f);
+            const float wall = 30.f - 5.f * smooth((y - .20f) / .66f) +
+                105.f * gaussian((x - .503f) / .239f, (y + .075f) / .50f) +
+                17.f * gaussian((x - .776f) / .32f, (y - .39f) / .34f) -
+                6.f * gaussian((x - .134f) / .186f, (y - .46f) / .31f);
+            const float floor = 24.f + 26.f * gaussian((x - .477f) / .557f, (y - .575f) / .111f) +
+                68.f * gaussian((x - .485f) / .143f, (y - .578f) / .037f) +
+                12.f * gaussian((x - .542f) / .304f, (y - .567f) / .069f);
+            const float texture = wallTexture ? .32f * wallGrain(x, y) : 0.f;
+            const float value = (wall + texture) * (1.f - cove) + floor * cove;
             return {value, value, value};
         }
         const float u = std::clamp(x, 0.f, 1.f) * 8.f;

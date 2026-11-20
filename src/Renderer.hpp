@@ -35,6 +35,7 @@
 #include "ViewerPhotoCapture.hpp"
 #include "StudioLighting.hpp"
 #include "StudioGradient.hpp"
+#include "StudioSurfaces.hpp"
 #include "PrologueSky.hpp"
 #include "NativeStudio/EnvironmentMap.hpp"
 
@@ -468,8 +469,11 @@ namespace gt4
         float lastShadowPhase = 0, lastShadowAngle = 0, lastShadowSize = 1;
         studioLighting::LightFrame studioLight{};
         bool useStudioShadow = false, staticMainShadow = false;
+        float darkGrayShadowWeight = 0.f;
+        float studioSurfaceWeight = 0.f;
         float prologueStyle = 0;
         StudioGradient studioGradient;
+        StudioSurfaces studioSurfaces;
         PrologueSky prologueSky;
         int entryPreviewModel = -1;
         double entrySelectionStamp = -1., entrySessionStamp = -1., entryRenderableAt = -1.;
@@ -1243,6 +1247,7 @@ namespace gt4
             antialiasing.rejectedQuality = -1;
             occlusion.reset();
             studioGradient.reset();
+            studioSurfaces.reset();
             prologueSky.reset();
             entryPreviewModel = -1;
             entrySelectionStamp = entrySessionStamp = entryRenderableAt = -1.;
@@ -1862,7 +1867,7 @@ namespace gt4
         }
 
         void studio(IDirect3DDevice9* d, const Camera& cam, double seconds,
-                    std::array<float, 3> backdrop = {1, 0, 0}, bool wallTexture = true, float opacity = 1.f)
+                    std::array<float, studioBackgroundCount> backdrop = {1}, bool wallTexture = true, float opacity = 1.f)
         {
             studioLight = studioLighting::frame(seconds + 16.);
             useStudioShadow = true;
@@ -1887,12 +1892,53 @@ namespace gt4
                 cloudLayer = false;
             }
             // Account for the next layer's blend so the entry fade keeps the same total opacity.
-            const float baseOpacity = cloudLayer ? (opacity - cloudOpacity) / (1.f - cloudOpacity) : opacity;
+            const float opacityBelowCloud = cloudLayer ? (opacity - cloudOpacity) / (1.f - cloudOpacity) : opacity;
+            float shaderWeight = 0.f;
+            for (int index = DarkGrayBackground; index < studioBackgroundCount; ++index) {
+                shaderWeight += backdrop[size_t(index)];
+            }
+            shaderWeight = std::clamp(shaderWeight, 0.f, 1.f);
+            const bool useSurfaces = shaderWeight > .0001f && studioSurfaces.available(d);
+            if (!useSurfaces) {
+                backdrop[0] += shaderWeight - backdrop[DarkGrayBackground];
+            }
+            // Composite weighted backgrounds without dimming the scene during a transition.
+            float uncovered = 1.f;
+            std::array<float, studioBackgroundCount> surfaceAlpha{};
+            if (useSurfaces) {
+                for (int index = studioBackgroundCount - 1; index >= DarkGrayBackground; --index) {
+                    const float layerWeight = backdrop[size_t(index)] * opacityBelowCloud;
+                    surfaceAlpha[size_t(index)] = uncovered > 0.f ? std::clamp(layerWeight / uncovered, 0.f, 1.f) : 0.f;
+                    uncovered = std::max(0.f, uncovered - layerWeight);
+                }
+            }
+            const float legacyWeight = useSurfaces ? 1.f - shaderWeight : 1.f;
+            const float baseOpacity = uncovered > 0.f ? std::clamp(opacityBelowCloud * legacyWeight / uncovered, 0.f, 1.f) : 0.f;
+            if (useSurfaces && legacyWeight > .0001f) {
+                for (int index = 0; index < DarkGrayBackground; ++index) {
+                    backdrop[size_t(index)] /= legacyWeight;
+                }
+            }
+            const auto finishBackdrop = [&] {
+                for (int index = DarkGrayBackground; index < studioBackgroundCount; ++index) {
+                    const float alpha = surfaceAlpha[size_t(index)];
+                    if (alpha > 0.f && studioSurfaces.draw(d, cam.w, cam.h, index - StaticBackground,
+                                                           floorShift, seconds, alpha, wallTexture)) {
+                        triangles += 2;
+                        ++drawCalls;
+                    }
+                }
+                if (cloudLayer) { drawPrologue(); }
+            };
+            if (baseOpacity <= .0001f) {
+                finishBackdrop();
+                return;
+            }
             if (wallTexture && (prologueStyle == 0.f || cloudLayer) && backdrop[0] >= .9999f &&
                 studioGradient.drawLookup(d, cam.w, cam.h, floorShift, studioLight, baseOpacity)) {
                 triangles += 2;
                 ++drawCalls;
-                if (cloudLayer) { drawPrologue(); }
+                finishBackdrop();
                 return;
             }
             constexpr int columns = 64;
@@ -1981,7 +2027,7 @@ namespace gt4
             }
             triangles += indices.size() / 3;
             ++drawCalls;
-            if (cloudLayer) { drawPrologue(); }
+            finishBackdrop();
         }
 
 #include "VehicleViewerRenderer.inl"
@@ -2038,23 +2084,9 @@ namespace gt4
                 light.x *= 1.f - prologueStyle;
                 light.y *= 1.f - prologueStyle;
             }
-            if (shadow) {
-                D3DMATRIX flat = world;
-                for (int row = 0; row < 4; ++row) {
-                    flat.m[row][0] = world.m[row][0] - world.m[row][2] * light.x / light.z;
-                    flat.m[row][1] = world.m[row][1] - world.m[row][2] * light.y / light.z;
-                    flat.m[row][2] = row == 3 ? .003f : 0;
-                }
-                world = flat;
-                d->SetRenderState(D3DRS_STENCILENABLE, TRUE);
-                d->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_NOTEQUAL);
-                d->SetRenderState(D3DRS_STENCILREF, 1);
-                d->SetRenderState(D3DRS_STENCILMASK, 255);
-                d->SetRenderState(D3DRS_STENCILWRITEMASK, 255);
-                d->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_REPLACE);
-                d->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
-                d->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
-            }
+            const float directional = shadow && !thumbnail && !viewerSubject && !absolute ? darkGrayShadowWeight : 0.f;
+            const V3 shadowDirection{-.66f, -.55f, 1.f};
+            light = light * (1.f - directional) + shadowDirection * directional;
             transforms(d, cam, world);
             d->SetFVF(D3DFVF_XYZ | D3DFVF_NORMAL | D3DFVF_TEX1);
             d->SetStreamSource(0, g->vb, 0, sizeof(OcclusionVertex));
@@ -2123,27 +2155,54 @@ namespace gt4
                 if (prologueStyle > 0.f && !thumbnail && !viewerSubject && !absolute && !staticMainShadow) {
                     shadowOpacity += (studioLighting::frame(16.).shadowOpacity - shadowOpacity) * prologueStyle;
                 }
-                d->SetRenderState(D3DRS_TEXTUREFACTOR, color(0, opacity * shadowOpacity));
+                if (!thumbnail && !viewerSubject && !absolute) {
+                    shadowOpacity += (.80f - shadowOpacity) * studioSurfaceWeight;
+                }
+                d->SetRenderState(D3DRS_STENCILENABLE, TRUE);
+                d->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_NOTEQUAL);
+                d->SetRenderState(D3DRS_STENCILMASK, 255);
+                d->SetRenderState(D3DRS_STENCILWRITEMASK, 255);
+                d->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_REPLACE);
+                d->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
+                d->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
                 d->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
                 d->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
                 d->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TFACTOR);
                 d->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TFACTOR);
-                if ((vehicle || rideHeight) && m.cinematic.any()) {
-                    for (size_t i = 0; i < m.batches.size(); ++i) {
-                        const auto& b = m.batches[i];
-                        if (b.vertices.empty()) {
-                            continue;
+                const D3DMATRIX subjectWorld = world;
+                const auto projectShadow = [&](V3 ray, DWORD stencil, float strength) {
+                    for (int row = 0; row < 4; ++row) {
+                        world.m[row][0] = subjectWorld.m[row][0] - subjectWorld.m[row][2] * ray.x / ray.z;
+                        world.m[row][1] = subjectWorld.m[row][1] - subjectWorld.m[row][2] * ray.y / ray.z;
+                        world.m[row][2] = row == 3 ? .003f : 0.f;
+                    }
+                    d->SetRenderState(D3DRS_STENCILREF, stencil);
+                    d->SetRenderState(D3DRS_TEXTUREFACTOR, color(0, opacity * strength));
+                    if ((vehicle || rideHeight) && m.cinematic.any()) {
+                        for (size_t i = 0; i < m.batches.size(); ++i) {
+                            const auto& b = m.batches[i];
+                            if (b.vertices.empty()) { continue; }
+                            transforms(d, cam, partWorld(b.component));
+                            d->DrawPrimitive(D3DPT_TRIANGLELIST, g->starts[i], UINT(b.vertices.size() / 3));
+                            triangles += b.vertices.size() / 3;
+                            ++drawCalls;
                         }
-                        transforms(d, cam, partWorld(b.component));
-                        d->DrawPrimitive(D3DPT_TRIANGLELIST, g->starts[i], UINT(b.vertices.size() / 3));
-                        triangles += b.vertices.size() / 3;
+                    } else {
+                        transforms(d, cam, world);
+                        d->DrawPrimitive(D3DPT_TRIANGLELIST, 0, g->count / 3);
+                        triangles += g->count / 3;
                         ++drawCalls;
                     }
-                } else {
-                    d->DrawPrimitive(D3DPT_TRIANGLELIST, 0, g->count / 3);
-                    triangles += g->count / 3;
-                    ++drawCalls;
+                };
+                if (directional > .001f) {
+                    // The light's small angular spread softens elevated parts while tire contact stays fixed.
+                    constexpr V3 spread[]{{-.024f, 0, 0}, {.024f, 0, 0}, {0, -.046f, 0}, {0, .046f, 0}};
+                    for (DWORD i = 0; i < std::size(spread); ++i) {
+                        projectShadow(light + spread[i], i + 2, .095f * directional);
+                    }
+                    shadowOpacity += (.63f - shadowOpacity) * directional;
                 }
+                projectShadow(light, 1, shadowOpacity);
                 d->SetRenderState(D3DRS_STENCILENABLE, FALSE);
                 d->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
                 d->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
@@ -3187,7 +3246,16 @@ namespace gt4
             useStudioShadow = false;
             prologueStyle = !s.shop.open() && !s.viewer.active && !s.photo.active && s.page != Page::Prize
                 ? s.prologueMix : 0.f;
+            studioSurfaceWeight = 0.f;
+            if (!s.viewer.active && !s.shop.open()) {
+                for (int index = StaticBackground; index < studioBackgroundCount; ++index) {
+                    studioSurfaceWeight += s.backgroundBlend[size_t(index)];
+                }
+                studioSurfaceWeight = std::clamp(studioSurfaceWeight, 0.f, 1.f) * (1.f - prologueStyle);
+            }
             staticMainShadow = s.ui.backgroundStyle() != 0 && !s.viewer.active && !s.shop.open();
+            darkGrayShadowWeight = !s.viewer.active && !s.shop.open() && !s.photo.active && s.page != Page::Prize
+                ? std::clamp(s.backgroundBlend[DarkGrayBackground], 0.f, 1.f) * (1.f - prologueStyle) : 0.f;
             if (!d || !s.open || (!entries.empty() && s.selected >= entries.size())) {
                 return false;
             }
@@ -3486,7 +3554,37 @@ namespace gt4
                         mainCam.focal *= 1.f+(std::max(.2f,boost)-1.f)*browseMix;
                     }
                     if (protectedBike && !s.viewer.active && !s.photo.active && !s.enthusia) {
-                        mainCam.focal*=1.f+.06f*(1.f-s.ui.cinematic.mix);
+                        const float showroomMix = 1.f - s.ui.cinematic.mix;
+                        mainCam.focal *= 1.f + .06f * showroomMix;
+                        const float poseSize = bikePose ? 1.08f : 1.f;
+                        const float settledSize = targetSpan / span * poseSize;
+                        const float radius = .5f * std::hypot(main->high.x - main->low.x, main->high.y - main->low.y);
+                        const float height = main->high.z - main->low.z;
+                        const float upper = H * .045f;
+                        const float lower = H * (.725f - 15.f * 1.30f / 720.f - .027f);
+                        // A full-turn cylinder contains the mirrors and handlebars at every heading.
+                        const auto clearance = [&](float focal) {
+                            const auto limit = [&](V3 inward) {
+                                const float reach = radius * std::hypot(inward.x, inward.y) +
+                                    std::max(0.f, -inward.z * height);
+                                return -dot(mainCam.eye, inward) / std::max(.0001f, reach);
+                            };
+                            const float sideSlope = W * .465f / focal;
+                            return std::min({limit(mainCam.forward * sideSlope + mainCam.right),
+                                             limit(mainCam.forward * sideSlope - mainCam.right),
+                                             limit(mainCam.forward * ((mainCam.cy - upper) / focal) - mainCam.up),
+                                             limit(mainCam.forward * ((lower - mainCam.cy) / focal) + mainCam.up)});
+                        };
+                        const float closerFocal = mainCam.focal * (1.f + .065f * showroomMix);
+                        const float fit = clearance(closerFocal);
+                        mainCam.focal = closerFocal;
+                        if (showroomMix > 0.f && settledSize > 0.f) {
+                            // Reuse the original cubic retreat, changing only its amplitude when it would clip.
+                            const float allowedRetreat = std::clamp(fit / settledSize - 1.f, 0.f, .95f);
+                            const float fittedScale = 1.f + (entryScale - 1.f) * allowedRetreat / .95f;
+                            const float fittedSize = std::min(settledSize, std::max(.001f, fit)) * fittedScale / poseSize;
+                            previewSize += (fittedSize - previewSize) * showroomMix;
+                        }
                     }
                     // fit the settled pose first; feeding the dolly into camera fitting makes it pump during entry.
                     if (stagedEntry) {
@@ -3548,7 +3646,7 @@ namespace gt4
                         if (mainReflectionQuality > 0 && !mainEnvironmentUnavailable) {
                             const double interval = 1. / (mainReflectionQuality == 1 ? 4 :
                                 mainReflectionQuality == 2 ? 8 : mainReflectionQuality == 3 ? 15 : 30);
-                            const uint64_t style = uint64_t(s.ui.backgroundStyle() + 1) + 4 * uint64_t(s.ui.showroomStyle);
+                            const uint64_t style = uint64_t(s.ui.backgroundStyle() + 1) + (studioBackgroundCount + 1) * uint64_t(s.ui.showroomStyle);
                             for (unsigned candidate = mainEnvironmentResolution; candidate >= 64; candidate >>= 1) {
                                 mainEnvironment.resolution(candidate);
                                 if (mainEnvironment.update(d, style, studioTime, {0, 0, .8f}, [&](const Camera& view) {
@@ -3625,7 +3723,7 @@ namespace gt4
                     }
                     if (!s.viewer.active && s.ui.floorReflections > 0) {
                         shopMirror(d, *main, mainCam, angle, paint, materialOpacity, lastCarSize, rideHeight,
-                                   s.shop.washed, s.ui.floorReflections, vehicle);
+                                   s.shop.washed, s.ui.floorReflections, vehicle, .31f + .22f * studioSurfaceWeight);
                     }
                     if (s.viewer.active ? s.viewer.settings.shadows : s.ui.shadows) {
                         mesh(d,

@@ -96,9 +96,11 @@ void requestStudioAction(StudioAction action)
         return;
     }
     if (action == StudioAction::FloorReflections || action == StudioAction::VehicleReflections) {
-        auto& quality = action == StudioAction::FloorReflections ? state.ui.floorReflections : state.ui.vehicleReflections;
-        quality = std::clamp(state.ui.menu.choice, 0, 4);
-        if (action == StudioAction::FloorReflections && quality > 0) { state.ui.floorReflectionQuality = quality; }
+        if (action == StudioAction::FloorReflections) {
+            state.ui.chooseFloorReflections(state.ui.menu.choice);
+        } else {
+            state.ui.vehicleReflections = std::clamp(state.ui.menu.choice, 0, 4);
+        }
         state.ui.menu.open = true;
         state.ui.menu.selectedAction();
         state.cue = Cue::Accept;
@@ -115,7 +117,6 @@ void requestStudioAction(StudioAction action)
         return;
     }
     if (action == StudioAction::ShowroomStyle) {
-        state.ui.syncFloorReflections();
         state.ui.showroomStyle = std::clamp(state.ui.menu.choice, 0, 1);
         state.ui.syncFloorReflections();
         state.ui.menu.open = true;
@@ -126,9 +127,7 @@ void requestStudioAction(StudioAction action)
     }
     if (action == StudioAction::Background && state.ui.showroomStyle != 0) { return; }
     if (action == StudioAction::Background) {
-        state.ui.syncFloorReflections();
-        state.ui.backgroundSelection = std::clamp(state.ui.menu.choice, 0, 2);
-        state.ui.syncFloorReflections();
+        state.ui.chooseBackground(state.ui.menu.choice);
         state.ui.menu.open = true;
         state.ui.menu.selectedAction();
         state.cue = Cue::Accept;

@@ -531,7 +531,7 @@ namespace gt4
         bool cursorPressed = false;
         float cursorPressMix = 0;
         float prologueMix = 0;
-        std::array<float, 3> backgroundBlend{{1, 0, 0}};
+        std::array<float, studioBackgroundCount> backgroundBlend{{1}};
         float scroll = 0, paintMix = 0;
         size_t count = 0;
         float pointerX = .5f, pointerY = .79f;
@@ -711,6 +711,10 @@ namespace gt4
             shopResetGroup = -1;
             beforeFavoritesModel = -1;
             ui.resetTransient();
+            ui.syncFloorReflections();
+            backgroundBlend.fill(0.f);
+            backgroundBlend[size_t(ui.backgroundStyle())] = 1.f;
+            prologueMix = float(ui.showroomStyle == 1);
             viewer.reset(clock);
             viewerSnapshot = postSelectionCinematic = false;
             spawnReview = SpawnReview::None;
@@ -792,7 +796,7 @@ namespace gt4
             }
             ui.syncFloorReflections();
             const int style = ui.backgroundStyle();
-            for (int i = 0; i < 3; ++i) {
+            for (int i = 0; i < studioBackgroundCount; ++i) {
                 backgroundBlend[size_t(i)] += (float(i == style) - backgroundBlend[size_t(i)]) *
                                              float(1 - std::exp(-seconds * 7));
             }

@@ -1,4 +1,5 @@
 #pragma once
+#include "StudioBackgrounds.hpp"
 #include "AudioLevels.hpp"
 #include "Countries.hpp"
 
@@ -14,6 +15,7 @@ namespace gt4
         int antialiasing = 2, ambientOcclusion = 2;
         int floorReflections = 0, vehicleReflections = 3;
         int floorReflectionQuality = 3;
+        bool backgroundOverridden = false, floorReflectionsOverridden = false;
         int language = 0;
         bool carLogo = false, brandLogo = false, displayModelId = true, displayModelName = true;
         // bytes keep existing settings readable. playback uses gta's sliders
@@ -21,7 +23,7 @@ namespace gt4
 
         bool valid() const
         {
-            return showroomStyle >= 0 && showroomStyle <= 1 && backgroundSelection >= 0 && backgroundSelection <= 2 && sortMode >= 0 && sortMode <= 5 && countryFilter >= -1 && countryFilter < int(countryCount) &&
+            return showroomStyle >= 0 && showroomStyle <= 1 && backgroundSelection >= 0 && backgroundSelection < studioBackgroundCount && sortMode >= 0 && sortMode <= 5 && countryFilter >= -1 && countryFilter < int(countryCount) &&
                    classFilter >= -1 && classFilter <= 12 && unitFormat >= 0 && unitFormat <= 2 &&
                    japanBackground >= 0 && japanBackground <= 1 && bikeBackground >= 0 && bikeBackground <= 2 &&
                    antialiasing >= 0 && antialiasing <= 3 && ambientOcclusion >= 0 && ambientOcclusion <= 3 &&
@@ -38,7 +40,9 @@ namespace gt4
 
         bool operator==(const StudioPreferences& other) const
         {
-            return showroomStyle == other.showroomStyle && backgroundSelection == other.backgroundSelection && sortMode == other.sortMode && countryFilter == other.countryFilter &&
+            return showroomStyle == other.showroomStyle && backgroundSelection == other.backgroundSelection &&
+                   backgroundOverridden == other.backgroundOverridden &&
+                   floorReflectionsOverridden == other.floorReflectionsOverridden && sortMode == other.sortMode && countryFilter == other.countryFilter &&
                    classFilter == other.classFilter && carLogo == other.carLogo && brandLogo == other.brandLogo &&
                    displayModelId == other.displayModelId && displayModelName == other.displayModelName &&
                    audio == other.audio && countryMask == other.countryMask && classMask == other.classMask &&
@@ -64,10 +68,11 @@ namespace gt4
             return false;
         }
         const std::array<uint8_t, 4> magic{{'G', 'T', '4', 'P'}};
-        const bool legacy = size == 20 && bytes[4] == 1;
-        if (!std::equal(magic.begin(), magic.end(), bytes.begin()) || (!legacy && (size != 32 || (bytes[4] != 2 && bytes[4] != 3 && bytes[4] != 4 && bytes[4] != 5))) ||
-            (bytes[8] & 0xF0) != 0 ||
-            std::any_of(bytes.begin() + (legacy ? 12 : 25 + bytes[4]), bytes.begin() + size - 1, [](uint8_t value) {
+        const uint8_t version = bytes[4];
+        const bool legacy = size == 20 && version == 1;
+        if (!std::equal(magic.begin(), magic.end(), bytes.begin()) || (!legacy && (size != 32 || (version < 2 || version > 6))) ||
+            (bytes[8] & 0xF0) != 0 || (version == 6 && (bytes[30] & ~3u)) ||
+            std::any_of(bytes.begin() + (legacy ? 12 : 25 + version), bytes.begin() + size - 1, [](uint8_t value) {
                 return value != 0;
             })) {
             return false;
@@ -114,6 +119,22 @@ namespace gt4
         if (!loaded.valid()) {
             return false;
         }
+        if (version >= 6) {
+            loaded.backgroundOverridden = (bytes[30] & 1u) != 0;
+            loaded.floorReflectionsOverridden = (bytes[30] & 2u) != 0;
+        } else {
+            // Older files saved the effective values without recording which menu
+            // choices were manual. Preserve choices that differ from the old preset.
+            loaded.backgroundOverridden = loaded.backgroundSelection != DefaultBackground;
+            const bool automaticRed = !loaded.backgroundOverridden &&
+                !studioBikeSelected(loaded.classMask, loaded.classFilter) &&
+                studioCountrySelected(loaded.countryMask, loaded.countryFilter, Country::Japan);
+            const bool defaultReflection = loaded.showroomStyle == 1 || automaticRed ||
+                loaded.backgroundSelection == RedBackground || loaded.backgroundSelection >= StaticBackground;
+            const int preset = defaultReflection ? loaded.floorReflectionQuality : 0;
+            loaded.floorReflectionsOverridden = !legacy &&
+                (loaded.floorReflections != preset || loaded.floorReflectionQuality != 3);
+        }
         result = loaded;
         return true;
     }
@@ -123,7 +144,7 @@ namespace gt4
         if (!preferences.valid()) {
             return false;
         }
-        std::array<uint8_t, 32> bytes{{'G', 'T', '4', 'P', 5}};
+        std::array<uint8_t, 32> bytes{{'G', 'T', '4', 'P', 6}};
         bytes[5] = uint8_t(preferences.sortMode);
         bytes[6] = uint8_t(preferences.countryFilter + 1);
         bytes[7] = uint8_t(preferences.classFilter + 1);
@@ -149,6 +170,8 @@ namespace gt4
         bytes[27] = uint8_t(preferences.backgroundSelection);
         bytes[28] = uint8_t(preferences.showroomStyle);
         bytes[29] = uint8_t(preferences.floorReflectionQuality);
+        bytes[30] = uint8_t((preferences.backgroundOverridden ? 1u : 0u) |
+                            (preferences.floorReflectionsOverridden ? 2u : 0u));
         bytes.back() = 0xA7;
         for (size_t i = 0; i < bytes.size() - 1; ++i) {
             bytes.back() ^= bytes[i];

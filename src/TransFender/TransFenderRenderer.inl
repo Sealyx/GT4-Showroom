@@ -50,7 +50,7 @@ void drawShopTile(IDirect3DDevice9* device, float width, float height, float x, 
 
 void shopMirror(IDirect3DDevice9* device, const Mesh& car, const Camera& camera, float angle, const Paint& paint,
                 float alpha, float size, float rideHeight, bool clean, int quality = 2,
-                const CinematicVehicleState* vehicle = nullptr)
+                const CinematicVehicleState* vehicle = nullptr, float reflectivity = .31f)
 {
     const float requested = .25f * std::clamp(quality, 1, 4);
     const float scale = std::min(requested, 1440.f / std::max(camera.w, camera.h));
@@ -84,7 +84,7 @@ void shopMirror(IDirect3DDevice9* device, const Mesh& car, const Camera& camera,
     device->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
     device->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
     device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_ONE);
-    const float gain = .31f * alpha;
+    const float gain = reflectivity * alpha;
     ScreenVertex floor[] = {
         {0, 0, 0, 1, color(0xFFFFFF, gain, gain), 0, 0},
         {camera.w, 0, 0, 1, color(0xFFFFFF, gain, gain), 1, 0},

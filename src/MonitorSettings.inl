@@ -205,8 +205,7 @@ inline std::string ContextMenu::monitorValue(int level, int index) const
             return styleChoice == 1 ? "Prologue" : "Default";
         }
         if (branch == MenuBranch::Background) {
-            constexpr const char* names[]{"Default", "Red", "Dark Gray"};
-            return names[std::clamp(backgroundChoice, 0, 2)];
+            return studioBackgroundNames[size_t(std::clamp(backgroundChoice, 0, studioBackgroundCount - 1))];
         }
         if (branch == MenuBranch::UnitFormat) {
             static constexpr const char* names[] = {"Auto", "Metric", "Imperial"};
