@@ -116,6 +116,8 @@ namespace gt4
         std::shared_ptr<void> texture;
         float focusU = .5f, focusV = .5f;
         std::shared_ptr<void> appearanceTexture{};
+        std::shared_ptr<const std::vector<std::shared_ptr<void>>> appearanceMaterials{};
+        uint64_t appearanceSource = 0;
     };
     enum class Page
     {
@@ -262,14 +264,14 @@ namespace gt4
         {
             paint = livery = 0;
             ui.menu.extraChoice = {};
-            whitePaintRequested = false;
+            liveryWhite = false;
             lastCompletedSelection = Page::Cars;
             appearanceResetPending = extrasResetPending = true;
         }
 
         bool usesLivery() const
         {
-            return page == Page::Livery || (page == Page::Paint && livery > 0) ||
+            return page == Page::Livery ||
                    (page == Page::Extras && extrasFrom == Page::Livery);
         }
         bool hasExtras() const
@@ -300,7 +302,18 @@ namespace gt4
 
         void setSelectionPage(Page next)
         {
-            if (next == Page::Cars) { resetVehicleAppearance(); }
+            if (next == Page::Cars) {
+                resetVehicleAppearance();
+            } else if (next == Page::Paint || (next == Page::Livery && page == Page::Extras)) {
+                if (page == Page::Extras) {
+                    ui.menu.extraChoice = {};
+                    extrasResetPending = true;
+                }
+                if (next == Page::Paint) {
+                    livery = 0;
+                    liveryWhite = false;
+                }
+            }
             page = next;
             stripChanged = clock;
             ui.menu.selectionExtras = next == Page::Extras;
@@ -350,54 +363,19 @@ namespace gt4
         ReviewMotion plateMotion;
         std::string plate;
         int pendingReviewChoice = -1;
-        bool whitePaintRequested = false;
-        int whitePaintModel = -1;
+        bool liveryWhite = false;
+        uint32_t liveryWhiteRgb = 0xFFFFFF;
         int shopResetGroup = -1;
-        size_t whitePaintIndex = 0;
 
-        void clearWhitePaint(std::vector<Entry>& cars)
+        Paint previewPaint(const Entry& entry) const
         {
-            for (auto& entry : cars) {
-                if (entry.id == whitePaintModel && entry.paints.size() == whitePaintIndex + 1) {
-                    entry.paints.pop_back();
-                    if (paint == whitePaintIndex) {
-                        paint = 0;
-                    }
-                    break;
+            Paint color = entry.paints.empty() ? Paint{} : entry.paints[std::min(paint, entry.paints.size() - 1)];
+            if (page == Page::Livery && liveryWhite && !postSelectionCinematic) {
+                for (size_t channel = 0; channel < 2; ++channel) {
+                    color.rgb[channel] = liveryWhiteRgb;
                 }
             }
-            whitePaintModel = -1;
-            whitePaintRequested = false;
-        }
-
-        void syncWhitePaint(std::vector<Entry>& cars, uint32_t white)
-        {
-            if (selected >= cars.size()) {
-                clearWhitePaint(cars);
-                return;
-            }
-            if (whitePaintModel >= 0 && cars[selected].id != whitePaintModel) {
-                clearWhitePaint(cars);
-            }
-            if (!whitePaintRequested) {
-                return;
-            }
-            whitePaintRequested = false;
-            auto& entry = cars[selected];
-            Paint color = entry.paints.empty() ? Paint{} : entry.paints[std::min(paint, entry.paints.size() - 1)];
-            for (size_t channel = 0; channel < 2; ++channel) {
-                color.ids[channel] = 1;
-                color.rgb[channel] = white;
-            }
-            color.name = "White";
-            if (whitePaintModel == entry.id && whitePaintIndex < entry.paints.size()) {
-                entry.paints[whitePaintIndex] = color;
-            } else {
-                whitePaintModel = entry.id;
-                whitePaintIndex = entry.paints.size();
-                entry.paints.push_back(color);
-            }
-            paint = whitePaintIndex;
+            return color;
         }
 
         float reviewReveal() const
@@ -665,9 +643,8 @@ namespace gt4
                 return;
             }
             if (review == SpawnReview::LiveryWarning) {
-                whitePaintRequested = choice == ReviewChoice::Exit;
-                page = Page::Livery;
-                stripChanged = clock;
+                liveryWhite = choice == ReviewChoice::Exit;
+                setSelectionPage(Page::Livery);
                 cue = Cue::Accept;
                 return;
             }
@@ -1123,8 +1100,7 @@ namespace gt4
                     pendingReviewChoice = -1;
                     reviewChoice = 0;
                 } else {
-                    page = Page::Livery;
-                    stripChanged = clock;
+                    setSelectionPage(Page::Livery);
                 }
                 cue = Cue::Accept;
             } else if (page == Page::Extras) {

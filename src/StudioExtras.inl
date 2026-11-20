@@ -29,7 +29,6 @@ void syncStudioExtraPreview()
 {
     if (state.appearanceResetPending) {
         state.appearanceResetPending = false;
-        state.clearWhitePaint(entries);
         selectedExtras.clear();
     }
     if (entries.empty() || state.selected >= entries.size() || extrasModel != entries[state.selected].id) {
@@ -37,6 +36,7 @@ void syncStudioExtraPreview()
     }
     if (state.extrasResetPending && nativeExtras::metadataReady) {
         state.extrasResetPending = false;
+        selectedExtras.erase(extrasModel);
         for (int group = 0; group < 2; ++group) {
             const auto& options = nativeExtras::labels(group);
             state.ui.menu.extraChoice[size_t(group)] =

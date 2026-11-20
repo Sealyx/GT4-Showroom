@@ -15,6 +15,8 @@ namespace gt4::liveryNative
         for (auto& livery : s.liveries) {
             livery.texture.reset();
             livery.appearanceTexture.reset();
+            livery.appearanceMaterials.reset();
+            livery.appearanceSource = 0;
         }
         capturedModel = displayedLivery = -1;
         capturedLivery = -2;
@@ -91,7 +93,30 @@ namespace gt4::liveryNative
                 }};
     }
 
-    inline void update(Model& s, const Entry& e, bool materialRemap = false)
+    // A native capture can identify remap materials on add-ons without a remap name.
+    // Transfer only textures, and only after confirming the batch layout and UVs match.
+    inline std::shared_ptr<const std::vector<std::shared_ptr<void>>> matchMaterials(const Mesh& stock, const Mesh& painted)
+    {
+        if (stock.batches.size() != painted.batches.size()) { return {}; }
+        auto materials = std::make_shared<std::vector<std::shared_ptr<void>>>(stock.batches.size());
+        bool changed = false;
+        for (size_t i = 0; i < stock.batches.size(); ++i) {
+            const auto& from = stock.batches[i];
+            const auto& to = painted.batches[i];
+            if (from.vertices.size() != to.vertices.size() ||
+                std::memcmp(from.vertices.data(), to.vertices.data(), from.vertices.size() * sizeof(Vertex)) != 0) {
+                return {};
+            }
+            if (from.texture && to.texture && (from.textureName != to.textureName || from.remap)) {
+                to.texture->AddRef();
+                (*materials)[i] = {to.texture, [](void* texture) { static_cast<IDirect3DTexture9*>(texture)->Release(); }};
+                changed = true;
+            }
+        }
+        return changed ? materials : nullptr;
+    }
+
+    inline void update(Model& s, const Entry& e, const Mesh* stock)
     {
         scan(s, e.id);
         if (s.page != Page::Paint && !s.usesLivery()) {
@@ -113,7 +138,16 @@ namespace gt4::liveryNative
             capturedLivery = -2;
             return;
         }
+        if (!stock) { return; }
         auto& option = s.liveries[s.livery];
+        const bool materialRemap = std::any_of(stock->batches.begin(), stock->batches.end(),
+            [](const Batch& batch) { return batch.remap && batch.texture; });
+        if (option.appearanceSource != stock->serial) {
+            option.appearanceMaterials.reset();
+            option.appearanceSource = stock->serial;
+            capturedLivery = -2;
+        }
+        if (option.appearanceMaterials) { return; }
         if (materialRemap && option.texture && !option.appearanceTexture) {
             TextureSnapshots copies;
             if (auto* privateTexture = copies.get(game::device(), static_cast<IDirect3DTexture9*>(option.texture.get()))) {
@@ -148,6 +182,7 @@ namespace gt4::liveryNative
         prizeNative::preparing = nullptr;
         prizeNative::preparingPaint = nullptr;
         if (prizeNative::prepared && mesh) {
+            option.appearanceMaterials = matchMaterials(*stock, *mesh);
             preview = std::move(mesh);
             capturedModel = e.id;
             capturedLivery = displayedLivery = option.index;

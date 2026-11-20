@@ -294,7 +294,6 @@ namespace gt4
             state.ui.menu.finish(-1);
             finishSettings();
         }
-        state.clearWhitePaint(entries);
         if (state.page == Page::Prize) {
             const int previousModel = state.beforePrizeModel;
             state.leavePrize();
@@ -494,7 +493,7 @@ namespace gt4
             state.livery > 0 && state.livery < state.liveries.size() && liveryNative::preview &&
             liveryNative::capturedModel == id && liveryNative::capturedPaint == int(state.paint) &&
             liveryNative::displayedLivery == state.liveries[state.livery].index &&
-            !state.liveries[state.livery].appearanceTexture) {
+            !state.liveries[state.livery].appearanceTexture && !state.liveries[state.livery].appearanceMaterials) {
             return liveryNative::preview.get();
         }
         auto it = cache.find(id);
@@ -550,13 +549,6 @@ namespace gt4
 
     // load a little at a time while paused. the whole catalogue does not need to pile in at once
     void syncStudioExtraPreview();
-
-    bool materialLiverySupported(int id)
-    {
-        const auto it = cache.find(id);
-        return it != cache.end() && std::any_of(it->second.mesh->batches.begin(), it->second.mesh->batches.end(),
-                                               [](const Batch& batch) { return batch.remap && batch.texture; });
-    }
 
     void fillCache(UINT outputWidth, UINT outputHeight)
     {
@@ -709,7 +701,8 @@ namespace gt4
         if (state.appearanceResetPending || state.extrasResetPending) {
             syncStudioExtraPreview();
         }
-        liveryNative::update(state, selectedEntry, materialLiverySupported(selectedEntry.id));
+        const auto stockPreview = cache.find(selectedEntry.id);
+        liveryNative::update(state, selectedEntry, stockPreview == cache.end() ? nullptr : stockPreview->second.mesh.get());
         if (state.postSelectionCinematic) {
             const auto livery = selectedLivery();
             const int previousCustomizationModel = customizationNative::state.model;
@@ -1340,11 +1333,9 @@ namespace gt4
                     if (state.page == Page::Prize) {
                         state.paint = size_t(state.prize.paint);
                     }
-                    uint32_t white = 0xFFFFFF;
-                    if (state.whitePaintRequested) {
-                        gta::vehicleColor(1, white);
+                    if (state.liveryWhite && state.page == Page::Livery) {
+                        gta::vehicleColor(1, state.liveryWhiteRgb);
                     }
-                    state.syncWhitePaint(entries, white);
                     syncStudioExtraPreview();
                     if (state.fade.ready(state.clock) && state.fade.action == CloseAction::Exit) {
                         close(true);

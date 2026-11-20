@@ -60,6 +60,7 @@ namespace gt4
         unsigned addressU = 1, addressV = 1;
         int component = -1;
         bool remap = false;
+        std::array<char, 33> textureName{};
     };
 
     struct Mesh
@@ -505,22 +506,38 @@ namespace gt4
         StudioGradient studioGradient;
         StudioSurfaces studioSurfaces;
         PrologueSky prologueSky;
+        struct LiveryLayer {
+            std::shared_ptr<void> texture;
+            std::shared_ptr<const std::vector<std::shared_ptr<void>>> materials;
+
+            bool operator==(const LiveryLayer& other) const
+            {
+                return texture == other.texture && materials == other.materials;
+            }
+
+            IDirect3DTexture9* at(size_t index, const Batch& batch, IDirect3DTexture9* stock) const
+            {
+                if (materials && index < materials->size() && (*materials)[index]) {
+                    return static_cast<IDirect3DTexture9*>((*materials)[index].get());
+                }
+                return batch.remap && texture ? static_cast<IDirect3DTexture9*>(texture.get()) : stock;
+            }
+        };
         struct AppearanceBlend {
             int model = -1;
             double opened = -1, paintStarted = 0, liveryStarted = 0;
             Paint fromPaint, toPaint;
-            std::shared_ptr<void> fromLivery, toLivery;
+            LiveryLayer fromLivery, toLivery;
+            uint64_t materialSource = 0;
         } appearance;
         uint64_t appearanceMesh = 0;
         float liveryBlend = 1;
         bool liveryBlendSupported = false;
 
-        Paint appearancePaint(const Entry& entry, const Model& model, const Mesh* main,
-                              bool materialRemap)
+        Paint appearancePaint(const Entry& entry, const Model& model, const Mesh* main)
         {
             constexpr double duration = .20;
-            const Paint target = entry.paints.empty() ? Paint{} :
-                                 entry.paints[std::min(model.paint, entry.paints.size() - 1)];
+            const Paint target = model.previewPaint(entry);
             if (appearance.model != entry.id || appearance.opened != model.opened ||
                 model.ui.cinematic.active || model.viewer.active || model.page == Page::Prize) {
                 appearance = {};
@@ -543,22 +560,33 @@ namespace gt4
             }
 
             appearanceMesh = 0;
-            if (main && materialRemap && !model.ui.cinematic.active && !model.viewer.active) {
+            if (main && !model.ui.cinematic.active && !model.viewer.active) {
                 appearanceMesh = main->serial;
+                if (appearance.materialSource != main->serial) {
+                    if (appearance.fromLivery.materials) { appearance.fromLivery = {}; }
+                    if (appearance.toLivery.materials) { appearance.toLivery = {}; }
+                    appearance.materialSource = main->serial;
+                }
                 const bool wantsLivery = model.usesLivery() && model.livery > 0 && model.livery < model.liveries.size();
-                const auto incoming = wantsLivery ? model.liveries[model.livery].appearanceTexture : nullptr;
-                // Keep the displayed material while streaming and settle an in-flight blend before retargeting.
+                LiveryLayer incoming{};
+                if (wantsLivery) {
+                    const auto& option = model.liveries[model.livery];
+                    incoming.texture = option.appearanceTexture;
+                    if (option.appearanceSource == main->serial) {
+                        incoming.materials = option.appearanceMaterials;
+                    }
+                }
                 if (model.clock - appearance.liveryStarted >= duration) {
                     appearance.fromLivery = appearance.toLivery;
-                    if ((!wantsLivery || incoming) && incoming != appearance.toLivery) {
-                        appearance.toLivery = incoming;
+                    if ((!wantsLivery || incoming.texture || incoming.materials) &&
+                        !(incoming == appearance.toLivery)) {
+                        appearance.toLivery = std::move(incoming);
                         appearance.liveryStarted = model.clock;
                     }
                 }
                 liveryBlend = ease(float((model.clock - appearance.liveryStarted) / duration));
             } else {
-                appearance.fromLivery.reset();
-                appearance.toLivery.reset();
+                appearance.fromLivery = appearance.toLivery = {};
             }
             return paintAt();
         }
@@ -2383,7 +2411,7 @@ namespace gt4
                 !thumbnail && mainReflectionActive && mainReflectionQuality > 0 && !reflection ? mainEnvironment.cubeTexture() : nullptr;
             const bool remapActive = m.serial == appearanceMesh && !absolute && !thumbnail;
             const bool blendRemap = remapActive && liveryBlendSupported &&
-                                    appearance.fromLivery != appearance.toLivery;
+                                    !(appearance.fromLivery == appearance.toLivery);
             const DWORD roomStage = blendRemap ? 3 : 1;
             if (room) {
                 D3DMATRIX roomTransform = identity();
@@ -2481,18 +2509,18 @@ namespace gt4
                     d->SetTexture(0, texture);
                     d->SetTextureStageState(0, D3DTSS_COLOROP, texture ? D3DTOP_MODULATE : D3DTOP_SELECTARG2);
                     d->SetTextureStageState(0, D3DTSS_ALPHAOP, texture ? D3DTOP_MODULATE : D3DTOP_SELECTARG2);
-                    if (remapActive && b.remap && texture && appearance.toLivery) {
-                        d->SetTexture(0, static_cast<IDirect3DTexture9*>(appearance.toLivery.get()));
+                    auto* to = remapActive ? appearance.toLivery.at(i, b, texture) : texture;
+                    if (to != texture) {
+                        d->SetTexture(0, to);
                     }
                     if (blendRemap) {
-                        const bool mix = b.remap && texture;
+                        auto* from = appearance.fromLivery.at(i, b, texture);
+                        const bool mix = from && to && from != to;
                         if (mix) {
-                            auto* from = static_cast<IDirect3DTexture9*>(appearance.fromLivery.get());
-                            auto* to = static_cast<IDirect3DTexture9*>(appearance.toLivery.get());
-                            d->SetTexture(0, from ? from : texture);
+                            d->SetTexture(0, from);
                             d->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
                             d->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
-                            d->SetTexture(1, to ? to : texture);
+                            d->SetTexture(1, to);
                             d->SetTextureStageState(1, D3DTSS_TEXCOORDINDEX, 0);
                             d->SetTextureStageState(1, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
                             d->SetSamplerState(1, D3DSAMP_ADDRESSU, b.addressU);
@@ -3539,8 +3567,6 @@ namespace gt4
             liveryBlendSupported = SUCCEEDED(d->GetDeviceCaps(&materialCaps)) &&
                 materialCaps.MaxTextureBlendStages >= 4 && materialCaps.MaxSimultaneousTextures >= 3 &&
                 (materialCaps.PrimitiveMiscCaps & D3DPMISCCAPS_PERSTAGECONSTANT) != 0;
-            const bool remap = main && std::any_of(main->batches.begin(), main->batches.end(),
-                                                   [](const Batch& batch) { return batch.remap && batch.texture; });
             const bool bikePose = main && (e.kind == 9 || e.kind == 10) && !s.shop.open() &&
                 s.page != Page::Prize;
             if (bikePose) {
@@ -3600,7 +3626,7 @@ namespace gt4
                 cam.up = cross(cam.right, cam.forward);
                 const double studioTime = s.ui.cinematic.active ? s.ui.cinematic.lightTime(s.clock) : s.clock;
                 lastShadowPhase = float(studioTime) * .42f;
-                const Paint paint = appearancePaint(e, s, main, remap);
+                const Paint paint = appearancePaint(e, s, main);
                 const bool browseEntry = !s.enthusia && !s.viewer.active && !s.photo.active &&
                     !s.ui.cinematic.active && s.ui.cinematic.mix <= .001f;
                 // Keep the floor at its settled position while models load and their entry camera moves.
