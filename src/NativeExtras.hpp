@@ -373,7 +373,7 @@ namespace gt4::nativeExtras
                 return;
             }
             nextProbe = now + 16;
-            // A cached render may have been taken before this model was selected.
+            // A cached render may have been taken before this model was selected
             nativePreview::inspect(model);
             if (active && active->variants.empty()) {
                 active->stopped = true;

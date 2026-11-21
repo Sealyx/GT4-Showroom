@@ -355,7 +355,7 @@ namespace gt4::game
         }
     }
 
-    // let the plugins finish their first render, then put all four chosen colors back. no surprise respray, please.
+    // let the plugins finish their first render, then put all four chosen colors back. no surprise respray, please
     template <class Prepare, class Apply>
     bool finalizeVehicleAppearance(void* vehicle, const Entry& entry, size_t choice, Prepare prepare, Apply apply)
     {
@@ -796,7 +796,7 @@ namespace gt4::game
             error = "Return to normal gameplay on foot before spawning";
             return nullptr;
         }
-        // a reward placement uses the active world area, which can differ from the ped's area tag.
+        // a reward placement uses the active world area, which can differ from the ped's area tag
         const bool indoors = claimingReward ? at<int>(0xB72914) != 0 : field<uint8_t>(p, 0x2F) != 0;
         if (indoors) {
             error = "Go outdoors before spawning";

@@ -10,7 +10,7 @@ namespace gt4
         "Default", "Red", "Dark Gray", "Static", "Brushed Steel", "Dark Graphite", "Wooden Taupe"
     };
     inline constexpr int studioBackgroundCount = int(studioBackgroundNames.size());
-    // Even slots belong to backgrounds and odd slots to alternate styles. Append new IDs to keep saved slots stable.
+    // Even slots belong to backgrounds and odd slots to alternate styles. Append new IDs to keep saved slots stable
     inline constexpr int studioStyleCount = 2;
     inline constexpr size_t reflectionPresetCount = 2 * (studioBackgroundCount > studioStyleCount - 1
         ? studioBackgroundCount : studioStyleCount - 1);

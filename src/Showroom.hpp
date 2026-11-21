@@ -370,12 +370,24 @@ namespace gt4
         Paint previewPaint(const Entry& entry) const
         {
             Paint color = entry.paints.empty() ? Paint{} : entry.paints[std::min(paint, entry.paints.size() - 1)];
-            if (liveryWhite && usesLivery() && !postSelectionCinematic) {
+            if (liveryWhite) {
                 for (size_t channel = 0; channel < 2; ++channel) {
+                    color.ids[channel] = 1;
                     color.rgb[channel] = liveryWhiteRgb;
                 }
             }
             return color;
+        }
+
+        Entry appearanceEntry(const Entry& source) const
+        {
+            Entry entry = source;
+            if (entry.paints.empty()) {
+                entry.paints.push_back(previewPaint(source));
+            } else {
+                entry.paints[std::min(paint, entry.paints.size() - 1)] = previewPaint(source);
+            }
+            return entry;
         }
 
         float reviewReveal() const
@@ -1206,7 +1218,7 @@ namespace gt4
             if (enthusia) {
                 return 1.f;
             }
-            // the retreat starts with the reveal but settles later, like a camera dolly easing to a stop.
+            // the retreat starts with the reveal but settles later, like a camera dolly easing to a stop
             const float progress = std::clamp(float((age - .12) / 1.55), 0.f, 1.f);
             const float remaining = 1.f - progress;
             return 1.f + .95f * remaining * remaining * remaining;

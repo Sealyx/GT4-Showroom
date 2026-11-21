@@ -1084,16 +1084,59 @@ namespace gt4
         int sortMode = 5, countryFilter = -1, classFilter = -1;
         uint32_t countryMask = 0, classMask = 0;
         int backgroundSelection = 0, showroomStyle = 0;
-        int unitFormat = 0, japanBackground = 0, bikeBackground = 0, antialiasing = 2, ambientOcclusion = 2;
+        int unitFormat = 0, antialiasing = 2, ambientOcclusion = 2;
         int vehicleReflections = 3;
         bool backgroundOverridden = false;
         std::array<PresentationPreset, reflectionPresetCount> presets{};
+        std::map<uint64_t, PresentationContext> contexts;
+        bool countryPresentationPriority = false;
+
+        uint64_t presentationContext() const
+        {
+            return presentationContextKey(countryMask, countryFilter, classMask, classFilter);
+        }
+
+        uint64_t fallbackPresentationContext() const
+        {
+            return preferredPresentationContext(presentationContext(), countryPresentationPriority);
+        }
+
+        PresentationContext& editPresentationContext()
+        {
+            const auto key = presentationContext();
+            auto inserted = contexts.try_emplace(key);
+            if (inserted.second) {
+                const auto fallback = contexts.find(fallbackPresentationContext());
+                if (fallback != contexts.end() && fallback->first != key) {
+                    inserted.first->second.presets = fallback->second.presets;
+                }
+            }
+            return inserted.first->second;
+        }
+
+        const PresentationPreset& activePreset() const
+        {
+            const auto key = presentationContext();
+            const auto slot = reflectionPreset(showroomStyle, backgroundStyle());
+            if (!key) { return presets[slot]; }
+            auto found = contexts.find(key);
+            if (found == contexts.end()) { found = contexts.find(fallbackPresentationContext()); }
+            static const PresentationPreset initial;
+            return found == contexts.end() ? initial : found->second.presets[slot];
+        }
+
+        PresentationPreset& editActivePreset()
+        {
+            const auto key = presentationContext();
+            const auto slot = reflectionPreset(showroomStyle, backgroundStyle());
+            return key ? editPresentationContext().presets[slot] : presets[slot];
+        }
 
         int floorReflections() const
         {
             const int background = backgroundStyle();
-            const uint8_t saved = presets[reflectionPreset(showroomStyle, background)].floorQuality;
-            return saved == inheritedFloorQuality ? defaultFloorQuality(showroomStyle, background) : saved;
+            const uint8_t saved = activePreset().floorQuality;
+            return saved == inheritedFloorQuality ? (defaultFloorQuality(showroomStyle, background) ? activePreset().reflectionQuality : 0) : saved;
         }
 
         void syncMenuPresentation()
@@ -1106,20 +1149,30 @@ namespace gt4
 
         void chooseBackground(int selection)
         {
-            backgroundSelection = std::clamp(selection, 0, studioBackgroundCount - 1);
-            backgroundOverridden = true;
+            const int chosen = std::clamp(selection, 0, studioBackgroundCount - 1);
+            const auto key = presentationContext();
+            if (key) {
+                auto& context = editPresentationContext();
+                context.backgroundSelection = chosen;
+                context.backgroundOverridden = true;
+            } else {
+                backgroundSelection = chosen;
+                backgroundOverridden = true;
+            }
         }
 
         void chooseFloorReflections(int quality)
         {
-            presets[reflectionPreset(showroomStyle, backgroundStyle())].floorQuality = uint8_t(std::clamp(quality, 0, 4));
+            auto& preset = editActivePreset();
+            preset.floorQuality = uint8_t(std::clamp(quality, 0, 4));
+            if (preset.floorQuality) { preset.reflectionQuality = preset.floorQuality; }
         }
 
-        bool shadows() const { return presets[reflectionPreset(showroomStyle, backgroundStyle())].shadows; }
+        bool shadows() const { return activePreset().shadows; }
 
         void chooseShadows(bool enabled)
         {
-            presets[reflectionPreset(showroomStyle, backgroundStyle())].shadows = enabled;
+            editActivePreset().shadows = enabled;
         }
 
         int language = 0;
@@ -1141,8 +1194,7 @@ namespace gt4
 
         int backgroundStyle() const
         {
-            if (backgroundOverridden) { return backgroundSelection; }
-            return studioBackgroundForFilters(countryMask, countryFilter, classMask, classFilter);
+            return presentationBackground(*this, presentationContext());
         }
 
         bool accepts(Country country, int category) const
@@ -1156,7 +1208,7 @@ namespace gt4
         }
         bool carLogo = false, brandLogo = false, displayModelId = true, displayModelName = true;
         double pointerMoved = 0;
-        bool countryShortcut = false;
+        bool countryShortcut = false, shortcutPresentationPriority = false;
         int shortcutCountry = -1, shortcutOrder = 5, shortcutModel = -1;
         uint32_t shortcutMask = 0;
 
@@ -1167,6 +1219,7 @@ namespace gt4
             }
             countryFilter = shortcutCountry;
             countryMask = shortcutMask;
+            countryPresentationPriority = shortcutPresentationPriority;
             sortMode = shortcutOrder;
             countryShortcut = false;
             return shortcutModel;
@@ -1181,14 +1234,14 @@ namespace gt4
             result.antialiasing = antialiasing;
             result.ambientOcclusion = ambientOcclusion;
             result.presets = presets;
+            result.contexts = contexts;
+            result.countryPresentationPriority = countryPresentationPriority;
             result.vehicleReflections = vehicleReflections;
             result.language = language;
             result.unitFormat = unitFormat;
             result.backgroundSelection = backgroundSelection;
             result.backgroundOverridden = backgroundOverridden;
             result.showroomStyle = showroomStyle;
-            result.japanBackground = japanBackground;
-            result.bikeBackground = bikeBackground;
             result.sortMode = sortMode;
             result.countryFilter = countryFilter;
             result.classFilter = classFilter;
@@ -1198,6 +1251,7 @@ namespace gt4
             result.displayModelName = displayModelName;
             result.audio = audioLevels;
             if (countryShortcut) {
+                result.countryPresentationPriority = shortcutPresentationPriority;
                 result.countryFilter = shortcutCountry;
                 result.countryMask = shortcutMask;
                 result.sortMode = shortcutOrder;
@@ -1212,14 +1266,14 @@ namespace gt4
             antialiasing = preferences.antialiasing;
             ambientOcclusion = preferences.ambientOcclusion;
             presets = preferences.presets;
+            contexts = preferences.contexts;
+            countryPresentationPriority = preferences.countryPresentationPriority;
             vehicleReflections = preferences.vehicleReflections;
             language = preferences.language;
             unitFormat = preferences.unitFormat;
             backgroundSelection = preferences.backgroundSelection;
             backgroundOverridden = preferences.backgroundOverridden;
             showroomStyle = preferences.showroomStyle;
-            japanBackground = preferences.japanBackground;
-            bikeBackground = preferences.bikeBackground;
             sortMode = preferences.sortMode;
             countryFilter = preferences.countryFilter;
             classFilter = preferences.classFilter;

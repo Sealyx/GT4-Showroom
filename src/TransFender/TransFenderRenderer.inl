@@ -307,7 +307,7 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
     const bool wheels = page == ShopPage::Wheels;
     const bool suspension = page == ShopPage::Suspension;
     const bool wash = page == ShopPage::CarWash;
-    Paint paint = entry.paints.empty() ? Paint{} : entry.paints[std::min(model.paint, entry.paints.size() - 1)];
+    Paint paint = model.previewPaint(entry);
 
     drawShopBackdrop(device, width, height, page);
     lightPhase = lastShadowPhase = 0;
@@ -594,7 +594,7 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
     device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, band, sizeof(ScreenVertex));
     constexpr std::array<float, 5> markerStops{0, .30f, .5f, .70f, 1};
     constexpr std::array<unsigned, 5> glint{2, 16, 53, 16, 2};
-    // Preserve the black chip's original stops and retain highlight headroom on white.
+    // Preserve the black chip's original stops and retain highlight headroom on white
     const auto markerColor = [&](unsigned stop) {
         uint32_t rgb = 0;
         for (unsigned shift : {0u, 8u, 16u}) {

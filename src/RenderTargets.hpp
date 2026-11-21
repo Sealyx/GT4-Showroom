@@ -20,7 +20,7 @@ namespace gt4
         }
     };
 
-    // a shadow/reflection redraw is not a safe moment to snapshot the visible showroom car.
+    // a shadow/reflection redraw is not a safe moment to snapshot the visible showroom car
     inline bool auxiliaryGraphicsPass()
     {
         static HMODULE bound = nullptr;

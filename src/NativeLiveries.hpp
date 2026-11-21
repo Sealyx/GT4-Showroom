@@ -93,8 +93,8 @@ namespace gt4::liveryNative
                 }};
     }
 
-    // A native capture can identify remap materials on add-ons without a remap name.
-    // Transfer only textures, and only after confirming the batch layout and UVs match.
+    // A native capture can identify remap materials on add-ons without a remap name
+    // Transfer only textures, and only after confirming the batch layout and UVs match
     inline std::shared_ptr<const std::vector<std::shared_ptr<void>>> matchMaterials(const Mesh& stock, const Mesh& painted)
     {
         if (stock.batches.size() != painted.batches.size()) { return {}; }
@@ -176,7 +176,8 @@ namespace gt4::liveryNative
         plan.paintResolved = plan.kitResolved = true;
         plan.remapTxd = option.txd;
         prizeNative::preparing = &plan;
-        prizeNative::preparingPaint = e.paints.empty() ? nullptr : &e.paints[std::min(s.paint, e.paints.size() - 1)];
+        const Paint activePaint = s.previewPaint(e);
+        prizeNative::preparingPaint = &activePaint;
         prizeNative::prepared = false;
         auto mesh = nativePreview::snapshot(e.id, prizeNative::preparePreview);
         prizeNative::preparing = nullptr;

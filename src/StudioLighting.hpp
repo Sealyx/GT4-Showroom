@@ -77,7 +77,7 @@ namespace gt4::studioLighting
         const auto& start = *(next - 1);
         const auto& end = *next;
         const float position = float((elapsed - start.seconds) / (end.seconds - start.seconds));
-        // Fit the wash-to-dark envelope independently of the moving shadow and peak wall brightness.
+        // Fit the wash-to-dark envelope independently of the moving shadow and peak wall brightness
         const float t = (start.setup == 3 && end.setup == 0)
                             ? 1.f - std::pow(1.f - smooth(position), 1.22f)
                             : smooth(position);
@@ -198,7 +198,7 @@ namespace gt4::studioLighting
             const float color = interpolate(line(previous), line(row), line(row + 1), line(following),
                                             studioRows[row] - studioRows[previous], width,
                                             studioRows[following] - studioRows[row + 1], ty);
-            // The wall drops off before the distinct pool of light on the curved floor.
+            // The wall drops off before the distinct pool of light on the curved floor
             const float wallShoulder = gaussian((x - .5f) / .68f, (v - .464f) / .066f);
             if (setup == 2) {
                 const float ridge = .586f - (x - .5f) * .115f;

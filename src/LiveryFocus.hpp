@@ -10,7 +10,7 @@
 
 namespace gt4
 {
-    // Sample the native paintjob once on acquisition. Keep its original texture for drawing.
+    // Sample the native paintjob once on acquisition. Keep its original texture for drawing
     inline std::pair<float, float> liveryFocus(IDirect3DTexture9* texture)
     {
         constexpr int grid = 40;
@@ -78,7 +78,7 @@ namespace gt4
             }
         }
         texture->UnlockRect(0);
-        // Contrast within a portrait crop favors decal clusters over blank body panels.
+        // Contrast within a portrait crop favors decal clusters over blank body panels
         std::array<unsigned, 512> bins{};
         std::array<RGB, 512> sums{};
         for (const auto& p : pixels) {
@@ -115,7 +115,7 @@ namespace gt4
                                  (1.f - .6f * std::abs(j) / halfY);
                     }
                 }
-                // A mild lower-atlas preference breaks ties with embedded header labels.
+                // A mild lower-atlas preference breaks ties with embedded header labels
                 score *= .38f + .62f * (y + .5f) / grid;
                 if (score > best) {
                     best = score;

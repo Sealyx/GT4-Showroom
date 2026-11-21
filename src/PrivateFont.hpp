@@ -11,7 +11,7 @@
 
 namespace gt4
 {
-    // load the bundled face privately so another mod or windows font installation cannot replace it.
+    // load the bundled face privately so another mod or windows font installation cannot replace it
     class PrivateFont
     {
         HANDLE resource = nullptr;

@@ -76,8 +76,8 @@ namespace gt4
                 if (!library) { return false; }
                 const auto compile = reinterpret_cast<CompilePreviewShader>(GetProcAddress(library, "D3DCompile"));
                 if (compile) {
-                    // Keep sub-byte vertex colors until the final 8-bit write.
-                    // A fixed sub-LSB pattern prevents large flat bands without temporal shimmer.
+                    // Keep sub-byte vertex colors until the final 8-bit write
+                    // A fixed sub-LSB pattern prevents large flat bands without temporal shimmer
                     static constexpr char source[] = R"hlsl(
 sampler2D fromMap : register(s6);
 sampler2D toMap : register(s7);
@@ -125,7 +125,7 @@ float4 main(float3 rgb : TEXCOORD0, float2 pixel : VPOS) : COLOR0
                 return false;
             }
 
-            // Filter the packed high and low bytes together so the reconstructed luminance stays linear.
+            // Filter the packed high and low bytes together so the reconstructed luminance stays linear
             device->SetTexture(6, maps[light.from]);
             device->SetTexture(7, maps[light.to]);
             for (DWORD slot : {6u, 7u}) {

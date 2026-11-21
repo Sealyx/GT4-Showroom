@@ -320,7 +320,7 @@ namespace gt4::nativePreview
         return true;
     }
 
-    // modelextras sets its current vehicle at the scene callsite, not inside gta's setup function.
+    // modelextras sets its current vehicle at the scene callsite, not inside gta's setup function
     inline void setupMaterials(void* vehicle)
     {
         const HMODULE extras = GetModuleHandleW(L"ModelExtras.asi");
@@ -348,7 +348,7 @@ namespace gt4::nativePreview
 
     inline std::unordered_map<int, float> previewDirt;
 
-    // rebuilding a spoiler is not another trip through the mud.
+    // rebuilding a spoiler is not another trip through the mud
     inline float dirtForPreview(int model, float initial)
     {
         initial = std::isfinite(initial) ? std::clamp(initial, 0.f, 15.f) : 0.f;

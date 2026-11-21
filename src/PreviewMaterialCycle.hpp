@@ -40,7 +40,7 @@ namespace gt4
         draw(vehicle);
     }
 
-    // keep both texture passes inside the usual setup/reset pair, with no initialization repeated between them.
+    // keep both texture passes inside the usual setup/reset pair, with no initialization repeated between them
     template <class Vehicle, class Setup, class Draw, class Reset, class Clean>
     void previewMaterialPasses(Vehicle vehicle, Setup setup, Draw draw, Reset reset, Clean clean)
     {

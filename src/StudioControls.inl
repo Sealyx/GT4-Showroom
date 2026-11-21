@@ -154,6 +154,7 @@ void requestStudioAction(StudioAction action)
         auto& ui = state.ui;
         ui.countryShortcut = false;
         const bool country = action == StudioAction::FilterCountry;
+        ui.countryPresentationPriority = country;
         auto& mask = country ? ui.countryMask : ui.classMask;
         auto& legacy = country ? ui.countryFilter : ui.classFilter;
         const int choice = ui.menu.choice;
@@ -351,8 +352,7 @@ void favoriteSelection(bool add)
             c.favorite = add;
         }
     }
-    WritePrivateProfileStringW(
-        L"Favorites", std::to_wstring(e.id).c_str(), add ? L"1" : L"0", (base + L"GT4Showroom\\favorites.ini").c_str());
+    saveCurrentFavorites();
     refreshCountryMenu();
     if (!add && state.ui.favoritesOnly) {
         requestStudioAction(StudioAction::RefreshFavorites);
@@ -1107,12 +1107,14 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
             UIRect{46 * scale, 33 * scale, 34 * scale, 28 * scale}.contains(x, y)) {
             auto& ui = state.ui;
             if (!ui.countryShortcut) {
+                ui.shortcutPresentationPriority = ui.countryPresentationPriority;
                 ui.shortcutCountry = ui.countryFilter;
                 ui.shortcutMask = ui.countryMask;
                 ui.shortcutOrder = ui.sortMode;
                 ui.shortcutModel = entry.id;
             }
             ui.countryShortcut = true;
+            ui.countryPresentationPriority = true;
             ui.countryFilter = int(entry.country);
             ui.countryMask = 0;
             ui.sortMode = 4;

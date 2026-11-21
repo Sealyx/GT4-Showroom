@@ -512,7 +512,7 @@ bool viewerRoom(IDirect3DDevice9* d,
     const auto direct = [&] {
         return backdrop(camera, true) && viewerStudio(d, camera, viewer, now, true);
     };
-    // keep the animated bands above a subpixel grid on smaller displays. the foreground car stays native-sized.
+    // keep the animated bands above a subpixel grid on smaller displays. the foreground car stays native-sized
     const float scale = camera.h <= 720.f
         ? std::min(2.f, 720.f / std::max(1.f, camera.h))
         : std::min(.5f, 720.f / std::max(camera.w, camera.h));
@@ -551,7 +551,7 @@ bool viewerRoom(IDirect3DDevice9* d,
     d->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
     d->SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
     if (camera.h <= 720.f) {
-        // integrate neighbouring samples instead of sharpening subpixel bands when the layer shrinks.
+        // integrate neighbouring samples instead of sharpening subpixel bands when the layer shrinks
         constexpr std::array<std::array<float, 3>, 5> taps{{
             {{0.f, 0.f, .5f}}, {{-1.25f, 0.f, .125f}}, {{1.25f, 0.f, .125f}},
             {{0.f, -1.25f, .125f}}, {{0.f, 1.25f, .125f}}

@@ -5,7 +5,7 @@
 
 namespace gt4::studioLighting
 {
-    // RGB control points for the four neutral studio light setups. Rows concentrate around the floor sweep.
+    // RGB control points for the four neutral studio light setups. Rows concentrate around the floor sweep
     inline constexpr float studioRows[] = { 0.00f, 0.11f, 0.23f, 0.34f, 0.40f, 0.45f, 0.49f, 0.53f, 0.57f, 0.62f, 0.69f, 0.76f, 0.88f, 1.00f };
     inline constexpr uint32_t studioStops[4][14][9] = {
         {

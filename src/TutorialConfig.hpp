@@ -55,7 +55,7 @@ namespace gt4
                 }
             }
         }
-        // Write the merged value first so an interrupted migration can safely run again.
+        // Write the merged value first so an interrupted migration can safely run again
         if (migrate && saveTutorialConfig(ini, options)) {
             for (const auto* section : sections) {
                 for (const auto* key : legacyTutorialKeys) {

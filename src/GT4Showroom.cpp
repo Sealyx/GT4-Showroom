@@ -4,6 +4,7 @@
 #include "InstallLock.hpp"
 #include "VideoMemoryHook.hpp"
 #include "FilterConfig.hpp"
+#include "Favorites.hpp"
 #include "HotkeyConfig.hpp"
 #include "KeyboardInput.hpp"
 #include "StudioConfig.hpp"
@@ -170,17 +171,10 @@ namespace gt4
         nativePreview::diagnostic = diagnostics.enabled.load(std::memory_order_relaxed) ? log : nullptr;
     }
 
-    void favorites(bool save)
+    void saveCurrentFavorites()
     {
-        const std::wstring file = base + L"GT4Showroom\\favorites.ini";
-        for (auto& e : entries) {
-            const auto key = std::to_wstring(e.id);
-            if (save) {
-                WritePrivateProfileStringW(L"Favorites", key.c_str(), e.favorite ? L"1" : L"0", file.c_str());
-            } else {
-                e.favorite = GetPrivateProfileIntW(L"Favorites", key.c_str(), 0, file.c_str()) != 0;
-            }
-        }
+        const std::filesystem::path file = std::filesystem::path(base) / L"GT4Showroom/favorites.ini";
+        if (!saveFavorites(file, entries)) { log("Favorites could not be saved"); }
     }
 
     void refreshCountryMenu()
@@ -244,6 +238,10 @@ namespace gt4
 
     void reloadSettings()
     {
+        auto savedPreferences = state.ui.preferences();
+        if (loadStudioPreferences(std::filesystem::path(base) / L"GT4Showroom/settings.ini", savedPreferences)) {
+            state.ui.applyPreferences(savedPreferences);
+        }
         studioConfig = readStudioConfig(ini);
         studioConfig.sort = menuSort(state.ui.sortMode);
         diagnostics.reload(ini, L"GT4Showroom");
@@ -350,7 +348,7 @@ namespace gt4
         audio.setTransitionGain(1.f);
         pause.end();
         commitGameVolume();
-        favorites(true);
+        saveCurrentFavorites();
         pending.clear();
     }
 
@@ -484,7 +482,7 @@ namespace gt4
         if (state.postSelectionCinematic && state.ui.cinematic.active && state.selected < entries.size() &&
             entries[state.selected].id == id) {
             const auto livery = selectedLivery();
-            if (customizationNative::current(entries[state.selected], state.paint, livery.first, livery.second,
+            if (customizationNative::current(state.appearanceEntry(entries[state.selected]), state.paint, livery.first, livery.second,
                                              state.shop.washed)) {
                 return customizationNative::preview.get();
             }
@@ -675,7 +673,7 @@ namespace gt4
             prizeMesh.reset();
             prizeSerial = 0;
         }
-        const auto& selectedEntry = entries[state.selected];
+        const auto selectedEntry = state.appearanceEntry(entries[state.selected]);
         state.ui.menu.setVehicleKind(selectedEntry.kind, selectedEntry.classId);
         if (extrasModel != selectedEntry.id) {
             nativeExtras::clear();
@@ -851,7 +849,7 @@ namespace gt4
                 log(b);
             }
         }
-        // Resolve the livery against the new extra's geometry before exposing its materials to the renderer.
+        // Resolve the livery against the new extra's geometry before exposing its materials to the renderer
         if (state.page == Page::Extras) {
             const auto stockPreview = cache.find(selectedEntry.id);
             liveryNative::update(state, selectedEntry, stockPreview == cache.end() ? nullptr : stockPreview->second.mesh.get());
@@ -992,6 +990,10 @@ namespace gt4
         hotkey = keys.vk;
         ctrl = keys.ctrl;
         openKey.blockUntilRelease();
+        auto savedPreferences = state.ui.preferences();
+        if (loadStudioPreferences(std::filesystem::path(base) / L"GT4Showroom/settings.ini", savedPreferences)) {
+            state.ui.applyPreferences(savedPreferences);
+        }
         studioConfig = readStudioConfig(ini);
         studioConfig.sort = menuSort(state.ui.sortMode);
         diagnostics.reload(ini, L"GT4Showroom");
@@ -1111,7 +1113,7 @@ namespace gt4
 
     void saveStudioPreferences()
     {
-        if (!saveStudioPreferences(std::filesystem::path(base) / L"GT4Showroom/settings.dat", state.ui.preferences())) {
+        if (!saveStudioPreferences(std::filesystem::path(base) / L"GT4Showroom/settings.ini", state.ui.preferences())) {
             log("Studio preferences could not be saved; current session settings remain active");
         }
         if (diagnostics.enabled.load(std::memory_order_relaxed)) {
@@ -1362,7 +1364,7 @@ namespace gt4
                             state.status = "The reward vehicle is no longer available";
                             state.cue = Cue::Error;
                         } else {
-                            const Entry& spawnEntryModel = claimingPrize ? *reward : entries[state.selected];
+                            const Entry spawnEntryModel = claimingPrize ? *reward : state.appearanceEntry(entries[state.selected]);
                             const Mesh* m = lookup(spawnEntryModel.id);
                             float clearance = m ? sideSpawnDistance(m->low.x, m->high.x) : 2.6f;
                             void* mi = gta::modelInfo(spawnEntryModel.id);
@@ -2018,7 +2020,8 @@ namespace gt4
         ini = assetPath(directory / L"GT4Showroom.ini").wstring();
         state.ui.audioLevels = readAudioLevels(std::filesystem::path(base) / L"GT4Showroom/audio.dat");
         auto preferences = state.ui.preferences();
-        loadStudioPreferences(std::filesystem::path(base) / L"GT4Showroom/settings.dat", preferences);
+        migrateStudioPreferences(std::filesystem::path(base) / L"GT4Showroom/settings.ini",
+                                 std::filesystem::path(base) / L"GT4Showroom/settings.dat", preferences);
         state.ui.applyPreferences(preferences);
         localization.load(std::filesystem::path(base) / L"GT4Showroom/languages");
         localization.select(state.ui.language);
@@ -2036,6 +2039,10 @@ namespace gt4
         HMODULE pin;
         GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
                            reinterpret_cast<LPCWSTR>(&initialize), &pin);
+        auto savedPreferences = state.ui.preferences();
+        if (loadStudioPreferences(std::filesystem::path(base) / L"GT4Showroom/settings.ini", savedPreferences)) {
+            state.ui.applyPreferences(savedPreferences);
+        }
         studioConfig = readStudioConfig(ini);
         studioConfig.sort = menuSort(state.ui.sortMode);
         const auto keys = readHotkey(ini);
