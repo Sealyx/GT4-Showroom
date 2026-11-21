@@ -3750,12 +3750,12 @@ namespace gt4
                         const float bodyOverhang=framing->high.y-framing->low.y-bodyLength;
                         const float shortBody=std::max({1.f-ease((bodyHeight-1.23f)/.14f),
                             ease((bodyHeight/bodyLength-.48f)/.1f),ease((bodyOverhang-.3f)/.4f)});
-                        const float utilityHeight=ease((bodyHeight-.72f)/.22f)*(1.f-ease((bodyHeight/bodyLength-.74f)/.15f));
+                        const float utilityHeight=ease((bodyHeight-.42f)/.18f)*(1.f-ease((bodyHeight/bodyLength-.74f)/.15f));
                         const float wideFootprint=ease((bodyLength-2.5f)/.45f)*ease((bodyWidth/bodyLength-.55f)/.09f);
                         const float compactUtility=compactLength*shortBody*utilityHeight*(1.f-wideFootprint);
                         const float uprightFit=std::min(W*.71f/bodyScreenWidth,
                             H*(.56f+.08f*upright)/bodyScreenHeight);
-                        const float compactFit=std::min(W*.45f/bodyScreenWidth,H*.42f/bodyScreenHeight);
+                        const float compactFit=std::min(W*.48f/bodyScreenWidth,H*.46f/bodyScreenHeight);
                         float boost=standardFit+(std::max(standardFit,uprightFit)-standardFit)*utilityBody;
                         boost+=(std::min(boost,compactFit)-boost)*compactUtility;
                         // Thin protrusions may use more of the top margin once the main body
@@ -3806,7 +3806,15 @@ namespace gt4
                         const float suvHeight=ease((bodyHeight-1.7f)/.1f)*
                             (1.f-ease((bodyHeight-2.2f)/.25f));
                         const float suvMix=cargoCategory?0.f:utilityBody*shortRoof*suvHeight;
-                        const float suvAdjustment=approvedPolice?1.f:1.f-.06f*suvMix;
+                        const bool rearDoors = main->cinematic.parts[size_t(CinematicComponent::RearLeftDoor)].present ||
+                                               main->cinematic.parts[size_t(CinematicComponent::RearRightDoor)].present;
+                        // Rear doors, a tall cabin and a shorter roof identify enclosed SUVs.
+                        // Cargo vans have long roofs, and pickup beds leave a much shorter cabin.
+                        const float enclosedRoof = ease((roofCoverage-.54f)/.065f) *
+                            (1.f-ease((roofCoverage-.69f)/.025f));
+                        const float fourDoorSUV = rearDoors && !cargoCategory ?
+                            mediumBody * ease((bodyHeight-1.55f)/.10f) * (1.f-ease((bodyHeight-2.20f)/.18f)) * enclosedRoof : 0.f;
+                        const float suvAdjustment=approvedPolice?1.f:(1.f-.06f*suvMix)*(1.f-.06f*fourDoorSUV);
                         boost*=suvAdjustment;
                         mainCam.focal *= 1.f+(std::max(.2f,boost)-1.f)*browseMix;
                     }
