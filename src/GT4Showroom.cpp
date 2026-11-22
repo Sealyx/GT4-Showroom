@@ -931,15 +931,7 @@ namespace gt4
         }
         const bool extrasScanned = extrasModel == selectedEntry.id && nativeExtras::metadataReady;
         if (extrasScanned) {
-            if (state.extrasResetPending && nativeExtras::available && nativeExtras::active) {
-                if (nativeExtras::active->variants.empty()) {
-                    if (!nativePreview::inspect(selectedEntry.id) && nativeExtras::active) {
-                        nativeExtras::active->stopped = true;
-                    }
-                } else {
-                    nativeExtras::pump(tick);
-                }
-            } else if (state.selectionAdvancePending) {
+            if (state.selectionAdvancePending) {
                 nativeExtras::probeSelection(tick);
             } else if (state.ui.menu.selectionExtras && cache.count(selectedEntry.id)) {
                 nativeExtras::pump(tick);

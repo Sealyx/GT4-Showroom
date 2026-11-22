@@ -37,14 +37,14 @@ void syncStudioExtraPreview()
     }
     const bool initialize = state.extrasResetPending && nativeExtras::metadataReady;
     if (initialize) {
-        state.extrasResetPending = nativeExtras::available && nativeExtras::active && nativeExtras::active->needsSelectionProbe();
+        state.extrasResetPending = false;
         selectedExtras.erase(extrasModel);
         for (int group = 0; group < 2; ++group) {
             const auto& options = nativeExtras::labels(group);
             state.ui.menu.extraChoice[size_t(group)] =
                 options.size() > 2 ? 2 : 0;
         }
-        state.ui.menu.extraChoice[2] = nativeExtras::labels(2).size() > 1 ? 1 : 0;
+        state.ui.menu.extraChoice[2] = 0;
     }
     const auto wanted = state.ui.menu.extraChoice;
     const auto before = nativeExtras::choice;
@@ -52,9 +52,6 @@ void syncStudioExtraPreview()
         if (wanted[size_t(group)] != before[size_t(group)]) {
             nativeExtras::select(group, wanted[size_t(group)]);
         }
-    }
-    if (initialize) {
-        state.extrasResetPending = nativeExtras::available && nativeExtras::active && nativeExtras::active->needsSelectionProbe();
     }
     if (!state.skipSelectionExtras) {
         state.ui.menu.setExtras(nativeExtras::labels(0), nativeExtras::labels(1), nativeExtras::labels(2));
