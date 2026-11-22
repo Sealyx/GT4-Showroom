@@ -86,7 +86,9 @@ void __cdecl drawGallerySprite(int sprite,float x,float y,unsigned char alpha)
 
 void updateGalleryMarkers(const game::OpenState& gate, bool confirm, uint64_t tick, double dt)
 {
-    const bool pressed = galleryReturn.poll(confirm,tick);
+    void* nativePad = reinterpret_cast<void*(__cdecl*)(int)>(0x53FB70)(0);
+    const bool nativeConfirm = nativePad && reinterpret_cast<bool(__thiscall*)(void*)>(0x5400D0)(nativePad);
+    const bool pressed = galleryReturn.poll(confirm || nativeConfirm,tick);
     if (gate.gameState != 9 || gate.loadingData || !gate.alive || gate.menu || state.open || returnFade.active() ||
         game::at<int>(0xB72914) != 0) {
         approaching = Gallery::Main;
