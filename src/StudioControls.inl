@@ -514,10 +514,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         }
         if (upPress || downPress || leftPress || rightPress) { state.tutorialFocus = true; }
         if (goBack || ((accept || (click && button.w > 0)) && state.tutorialFocus)) {
-            if (state.closeTutorial(!goBack) &&
-                !completeTutorials(ini.c_str(), state.tutorialsEnabled, state.tutorialsSeen)) {
-                log("Could not save showroom tutorial acknowledgement");
-            }
+            state.closeTutorial(!goBack);
             blockActions();
         }
         return;
@@ -541,10 +538,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
             state.informationChoice = target;
         }
         if (goBack || information || ((click || accept) && state.informationChoice == 3)) {
-            if (!goBack && !information && state.tutorialsEnabled) {
-                state.tutorialsSeen |= welcomeTutorialBit;
-                if (!completeTutorials(ini.c_str(), state.tutorialsEnabled, state.tutorialsSeen)) log("Could not save tutorial completion");
-            }
+
             state.informationMotion.dismiss(state.clock);
             state.cue = Cue::Back;
             blockActions();

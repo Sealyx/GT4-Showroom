@@ -1357,7 +1357,7 @@ namespace gt4
                 }
                 state.begin(entries.size());
                 const bool enabled = loadTutorialEnabled(ini.c_str());
-                if (!enabled || !state.tutorialsEnabled) state.tutorialsSeen = 0;
+                state.tutorialsSeen = loadTutorialProgress(ini.c_str(),enabled);
                 state.tutorialsEnabled = enabled;
                 if (enabled && !(state.tutorialsSeen & welcomeTutorialBit)) {
                     state.informationOpen = true;
@@ -1857,6 +1857,23 @@ namespace gt4
                 return presented;
             })) {
             studioCompositedFrame = frameSerial;
+            const bool tutorialVisible = state.tutorialOpen()
+                ? state.tutorialMotion.reveal(state.clock) > 0.f
+                : state.informationOpen && state.informationMotion.reveal(state.clock) > 0.f;
+            const bool interfaceHidden = state.ui.footerHidden && state.page == Page::Cars &&
+                !state.viewer.active && !state.ui.cinematic.active && !state.photo.active &&
+                state.shop.page == ShopPage::Closed;
+            const unsigned displayedTopics = state.tutorialOpen() ? tutorialTopics(state.tutorial)
+                                                                 : welcomeTutorialBit;
+            if (state.tutorialsEnabled && tutorialVisible && !interfaceHidden && state.blackAlpha() < 1.f &&
+                (arrivalTime < 0 || arrivalTime > 1.5) && (displayedTopics & ~state.tutorialsSeen)) {
+                const unsigned shown = state.tutorialsSeen | displayedTopics;
+                if (saveTutorialProgress(ini.c_str(),state.tutorialsEnabled,shown)) {
+                    state.tutorialsSeen = shown;
+                } else {
+                    log("Could not save displayed tutorial progress");
+                }
+            }
             state.presented();
             if (diagnostics.enabled.load(std::memory_order_relaxed)) {
                 drawTotal += renderer.cpuMs;
