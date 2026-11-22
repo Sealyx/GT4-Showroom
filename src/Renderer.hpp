@@ -3749,6 +3749,10 @@ namespace gt4
                             ease((measuredLength/std::max(.5f,middleLength)-1.14f)/.18f);
                         const float bodyLength=measuredLength+(std::min(measuredLength,middleLength)-measuredLength)*lengthMix;
                         const float bodyHeight=std::max(.5f,framing->framingBodyHigh.z-framing->low.z);
+                        const bool monsterProfile = e.kind == 1 ||
+                            (e.kind == 0 && e.handlingDrive == '4' &&
+                             e.framingWheelDiameter/bodyLength >= .23f && bodyHeight/bodyLength > .40f);
+
                         const float radius=.5f*std::hypot(bodyWidth,bodyLength)*previewSize;
                         float left=1e9f,right=-1e9f,top=1e9f,bottom=-1e9f;
                         // A fixed full-turn envelope keeps the size steady throughout rotation
@@ -3795,6 +3799,10 @@ namespace gt4
                             H*(.46f-.04f*smallCabin)/bodyScreenHeight);
                         float boost=standardFit+(std::max(standardFit,uprightFit)-standardFit)*utilityBody;
                         boost+=(std::min(boost,compactFit)-boost)*compactUtility;
+                        if (monsterProfile && e.kind != 1) {
+                            boost = std::min(W*.69f/bodyScreenWidth,H*.57f/bodyScreenHeight);
+                        }
+
                         // Thin protrusions may use more of the top margin once the main body
                         // has been sized. The complete mesh still bounds the turning envelope
                         const float headroom=utilityBody*ease((framing->high.z-framing->framingBodyHigh.z-.30f)/.7f);
@@ -3856,7 +3864,7 @@ namespace gt4
                             (1.f-ease((roofCoverage-.69f)/.025f));
                         const float fourDoorSUV = rearDoors && !cargoCategory ?
                             mediumBody * ease((bodyHeight-1.55f)/.10f) * (1.f-ease((bodyHeight-2.20f)/.18f)) * enclosedRoof : 0.f;
-                        const float suvAdjustment=approvedPolice?1.f:(1.f-.06f*suvMix)*(1.f-.06f*fourDoorSUV);
+                        const float suvAdjustment=approvedPolice || monsterProfile ?1.f:(1.f-.06f*suvMix)*(1.f-.06f*fourDoorSUV);
                         boost*=suvAdjustment;
                         if (framing->thinUpperAccessory) {
                             const float shortCabin=1.f-ease((bodyHeight-2.15f)/.30f);

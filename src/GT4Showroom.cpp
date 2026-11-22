@@ -1355,6 +1355,10 @@ namespace gt4
                         e.paints = game::paints(mi);
                     }
                 }
+                if (gallery != Gallery::Main) {
+                    state.selected = 0;
+                    state.scroll = state.scrollTarget();
+                }
                 state.begin(entries.size());
                 const bool enabled = loadTutorialEnabled(ini.c_str());
                 state.tutorialsSeen = loadTutorialProgress(ini.c_str(),enabled);

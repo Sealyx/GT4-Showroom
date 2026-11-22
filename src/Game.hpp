@@ -312,6 +312,11 @@ namespace gt4::game
             e.modelName = countryDefaults[size_t(id - 400)].model;
         }
         e.kind = field<int>(mi, 0x3C);
+        const float frontWheel = field<float>(mi,0x40), rearWheel = field<float>(mi,0x44);
+        if (std::isfinite(frontWheel) && std::isfinite(rearWheel) &&
+            frontWheel > 0 && rearWheel > 0 && frontWheel < 5 && rearWheel < 5)
+            e.framingWheelDiameter = std::min(frontWheel,rearWheel);
+
         e.classId = field<int8_t>(mi, 0x4D);
         e.category = classLabel(e.classId);
         char key[9]{};

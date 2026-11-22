@@ -95,6 +95,7 @@ namespace gt4
         int id = 0, kind = 0, classId = 0;
         uint32_t modelKey = 0;
         int price = -1;
+        float framingWheelDiameter = 0;
         float topSpeed = -1, handlingMass = 0;
         unsigned handlingGears = 0;
         char handlingDrive = '?';
