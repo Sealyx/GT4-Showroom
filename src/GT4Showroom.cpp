@@ -1509,7 +1509,7 @@ namespace gt4
                                 if (error.empty() &&
                                     (spawned = game::spawn(spawnEntryModel, state.paint, error, clearance, claimingPrize,
                                         gallery == Gallery::Main ? nullptr : dealerShopVisited ? &galleries[int(gallery)].shopSpawn : &galleries[int(gallery)].spawn,
-                                        gallery == Gallery::Wang ? 1.5708f : gallery == Gallery::Coutt ? .785398f : 2.51327f))) {
+                                        gallery == Gallery::Wang ? (dealerShopVisited ? 1.5708f : pi) : gallery == Gallery::Coutt ? .785398f : 2.51327f))) {
                                     bool installedParts = !customized;
                                     const bool prepared = game::finalizeVehicleAppearance(
                                         spawned, spawnEntryModel, state.paint,

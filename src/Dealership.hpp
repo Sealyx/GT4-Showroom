@@ -24,7 +24,7 @@ inline constexpr unsigned basicCars = classBit(Poor) | classBit(Normal);
 inline constexpr unsigned twoWheels = classBit(Moped) | classBit(Motorbikes) | classBit(Bikes);
 inline constexpr GalleryProfile galleries[]{
     {L"GT4Showroom","San Andreas Motor Collection","", {}, {}, {}, 1, 0x7fff, true},
-    {L"WangCars","Wang Cars","Press ~k~~VEHICLE_ENTER_EXIT~ to view the Wang Cars vehicle gallery.", {-1954,293,41},{-1927,273,40},{-1937,231,34},2,basicCars|classBit(Rich)|classBit(Moped)|classBit(Motorbikes),true},
+    {L"WangCars","Wang Cars","Press ~k~~VEHICLE_ENTER_EXIT~ to view the Wang Cars vehicle gallery.", {-1954,293,41},{-1928,269,40},{-1937,231,34},2,basicCars|classBit(Rich)|classBit(Moped)|classBit(Motorbikes),true},
     {L"CouttandSchutz","Coutt and Schutz","Press ~k~~VEHICLE_ENTER_EXIT~ to view the Coutt and Schutz gallery.",{2132,-1148,24},{2132,-1128,25},{2132,-1128,25},2,basicCars,false},
     {L"VerdantBikes","Verdant Bikes","Press ~k~~VEHICLE_ENTER_EXIT~ to view the Verdant Bikes gallery.",{538,2364,30},{538,2353,31},{538,2353,31},3,twoWheels,false},
     {L"GrottiDealership","Grotti Dealership","Press ~k~~VEHICLE_ENTER_EXIT~ to view the Grotti Dealership gallery.",{543,-1292,17},{529,-1321,17},{529,-1321,17},2,0,false}
