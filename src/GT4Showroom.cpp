@@ -1345,7 +1345,7 @@ namespace gt4
             }
             reloadExclusions();
             renderer.setGalleryBrand(std::filesystem::path(base)/L"GT4Showroom",int(gallery),galleries[int(gallery)].name);
-            state.showDealerPrices = gallery == Gallery::Coutt || gallery == Gallery::Verdant;
+            state.showDealerPrices = gallery == Gallery::Coutt || gallery == Gallery::Verdant || gallery == Gallery::Grotti;
             state.galleryFavorites = galleries[int(gallery)].fullService;
             openIntent.clear();
             if (!entries.empty()) {

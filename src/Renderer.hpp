@@ -4084,7 +4084,9 @@ namespace gt4
                 d->SetRenderState(D3DRS_ZENABLE, FALSE);
                 d->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
                 d->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
-                if (!s.photo.active) {
+                const bool hideBrowseUI = s.ui.footerHidden && s.page == Page::Cars && !s.viewer.active &&
+                                          !s.ui.cinematic.active && !s.photo.active && s.shop.page == ShopPage::Closed;
+                if (!s.photo.active && !hideBrowseUI) {
                     if (!s.ui.cinematic.active) {
                         const float carStrip = (1 - s.paintMix) * (1 - s.ui.cinematic.mix),
                                     paintStrip = s.paintMix * (1 - s.ui.cinematic.mix) *
@@ -4481,11 +4483,14 @@ namespace gt4
                                              s.clock - s.ui.pointerMoved < 2.5)) {
                         cursor(d, s.pointerX * W, s.pointerY * H, scale * .85f, 1);
                     }
-                } else {
+                } else if (s.photo.active) {
                     drawViewerPhoto(d, W, H, s);
                 }
             }
-            drawInformation(d, W, H, s);
+            if (!(s.ui.footerHidden && s.page == Page::Cars && !s.viewer.active &&
+                  !s.ui.cinematic.active && !s.photo.active && s.shop.page == ShopPage::Closed)) {
+                drawInformation(d, W, H, s);
+            }
             const float blackout =
                 s.shop.page == ShopPage::Closed ? std::max(s.blackAlpha(), s.shop.fade(s.clock)) : s.blackAlpha();
             if (blackout > 0) {

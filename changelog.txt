@@ -680,3 +680,15 @@ Dealership vehicle payments - 22 November 2026
 - Added diagnostic receipts for completed and rejected or rolled-back dealership purchases, including model, vehicle price and native remaining balance. Logging continues to follow EnableLog.
 - Compiled the Win32 ASI and passed transaction and production-budget tests covering all four dealership contexts, insufficient and exact funds, failed spawning rollback, repeated transaction calls, consecutive purchases, rewards, free showroom spawning and TransFender cost reservation.
 - In-game dealership purchases, native balance/HUD updates, live spawn failures and repeated physical input still require user verification. No GTA session, screenshots or video were generated for this task.
+
+Grotti dealership price indicator - 22 November 2026
+- Included Grotti in the existing dealership price-display gate, restoring the shared price indicator and account display without changing its rendering design.
+- Verified the shared renderer formats the highlighted Entry.price and purchasing charges the same appearance entry price. Grotti Category restrictions and the payment implementation are unchanged.
+- Win32 compilation passed. Source comparison confirms a single display-gate change. Live UI verification remains for the user; no screenshots or video were generated.
+
+Main showroom Hide UI review - 22 November 2026
+- Extended the existing Hide UI state to suppress the complete shared main-browsing interface, including thumbnail vehicle renders, names, badges, logos, dealership prices, controls, pointer and overlays.
+- Main vehicle rendering, background, lighting, shadows and floor reflections remain outside the interface gate. Colors, Liveries, Extras, Customization, Cinematic, Vehicle Viewer and Photo Mode retain their existing rendering paths.
+- Preserved the existing Hide UI input, browsing actions and transient reset on showroom close/reopen.
+- Compiled the Win32 review ASI and inspected a consolidated actual-renderer preview across the normal showroom and all four dealerships, including browsing while hidden and restoring the interface.
+- User approved the consolidated Hide UI preview. The preview uses a sample catalogue outside GTA; live input and reopening behavior remain for user in-game verification.
