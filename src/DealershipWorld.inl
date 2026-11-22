@@ -84,10 +84,41 @@ void __cdecl drawGallerySprite(int sprite,float x,float y,unsigned char alpha)
     game::at<uint32_t>(0xC71A60) = color;
 }
 
+bool (__thiscall* originalGalleryEnterVehicle)(void*) = nullptr;
+bool (__thiscall* originalGalleryEnterVehicleJustDown)(void*) = nullptr;
+
+bool galleryCapturesVehicleEntry()
+{
+    const auto gate = game::openState(true);
+    if (state.open || !gate.ready() || gate.inVehicle || game::mission() ||
+        game::at<int>(0xB72914) != 0) return false;
+    const V3 player = game::position(game::player());
+    for (int i=1;i<int(std::size(galleries));++i) {
+        if (!galleryEnabled[i] || (Gallery(i)==Gallery::Wang && !wangOwned())) continue;
+        const V3 delta = player-galleries[i].entry;
+        if (dot(delta,delta)<=10.f) return true;
+    }
+    return false;
+}
+
+bool __fastcall galleryEnterVehicle(void* pad,void*)
+{
+    const bool pressed = originalGalleryEnterVehicle(pad);
+    return pressed && !(pad == reinterpret_cast<void*(__cdecl*)(int)>(0x53FB70)(0) &&
+                        galleryCapturesVehicleEntry());
+}
+
+bool __fastcall galleryEnterVehicleJustDown(void* pad,void*)
+{
+    const bool pressed = originalGalleryEnterVehicleJustDown(pad);
+    return pressed && !(pad == reinterpret_cast<void*(__cdecl*)(int)>(0x53FB70)(0) &&
+                        galleryCapturesVehicleEntry());
+}
+
 void updateGalleryMarkers(const game::OpenState& gate, bool confirm, uint64_t tick, double dt)
 {
     void* nativePad = reinterpret_cast<void*(__cdecl*)(int)>(0x53FB70)(0);
-    const bool nativeConfirm = nativePad && reinterpret_cast<bool(__thiscall*)(void*)>(0x5400D0)(nativePad);
+    const bool nativeConfirm = nativePad && originalGalleryEnterVehicle(nativePad);
     const bool pressed = galleryReturn.poll(confirm || nativeConfirm,tick);
     if (gate.gameState != 9 || gate.loadingData || !gate.alive || gate.menu || state.open || returnFade.active() ||
         game::at<int>(0xB72914) != 0) {

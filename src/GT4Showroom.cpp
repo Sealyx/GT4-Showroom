@@ -2258,7 +2258,10 @@ namespace gt4
                                      (game::at<uint8_t>(showRasterAddress) == 0xE9 ||
                                       std::memcmp(reinterpret_cast<const void*>(showRasterAddress),
                                                   showRasterEntry.data(), showRasterEntry.size()) == 0);
-        bool ok = showRasterReady && add(0x5D5860,saveRadarWithoutDealers,originalRadarSave) &&
+        bool ok = showRasterReady &&
+                  add(0x5400D0,galleryEnterVehicle,originalGalleryEnterVehicle) &&
+                  add(0x540120,galleryEnterVehicleJustDown,originalGalleryEnterVehicleJustDown) &&
+                  add(0x5D5860,saveRadarWithoutDealers,originalRadarSave) &&
                   add(0x586D60,drawGalleryCoord,originalCoordBlip) && add(0x585FF0,drawGallerySprite,originalRadarSprite) && add(showRasterAddress, showRaster, originalShowRaster) &&
                   add(0x53BEE0, process, originalProcess) && add(0x541C40, padUpdate, originalPadUpdate) &&
                   add(0x7EE180, render, originalRender) && add(0x53E230, render2D, originalRender2D) &&
