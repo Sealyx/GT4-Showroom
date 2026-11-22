@@ -1,11 +1,13 @@
 #pragma once
 
 #include "PreviewOcclusion.hpp"
+#include "RegionalSurfaces.hpp"
 
 namespace gt4
 {
     class StudioSurfaces
     {
+        RegionalSurfaces regional;
         IDirect3DPixelShader9* shader = nullptr;
         bool attempted = false;
 
@@ -17,6 +19,7 @@ namespace gt4
 
         void reset()
         {
+            regional.reset();
             if (shader) { shader->Release(); }
             shader = nullptr;
             attempted = false;
@@ -77,7 +80,7 @@ float4 main(float2 uv:TEXCOORD0,float2 pixel:VPOS):COLOR0
     float lamp=surface.z;
     [branch] if (hue < -.5)
     {
-        // Keep the wall fixed to the screen and place the cove and floor lights at ground level.
+        // Keep the wall fixed to the screen and place the cove and floor lights at ground level
         float2 wallPoint=float2(p.x,uv.y);
         float wallLight=30-5*smoothstep(.20,.86,uv.y);
         wallLight+=105*oval(wallPoint,float2(.005,-.075),float2(.425,.50));
@@ -132,7 +135,7 @@ float4 main(float2 uv:TEXCOORD0,float2 pixel:VPOS):COLOR0
         wall+=tiles*float3(1,.88,.72)*oval(p,float2(0,.30),float2(1.03,.46))*view.z;
         floorTint=float3(27,25,23)+float3(122,115,107)*oval(p,float2(-.055,.64),float2(.84,.21));
     }
-    // Stationary sub-byte ordered dither. It does not shimmer during rotation.
+    // Stationary sub-byte ordered dither. It does not shimmer during rotation
     float2 lo=frac(floor(pixel)*.5)*2;
     float2 hi=frac(floor(pixel*.5)*.5)*2;
     float index=(1-abs(lo.x-lo.y))*8+lo.y*4+(1-abs(hi.x-hi.y))*2+hi.y;
@@ -154,6 +157,7 @@ float4 main(float2 uv:TEXCOORD0,float2 pixel:VPOS):COLOR0
         bool draw(IDirect3DDevice9* device, float width, float height, int style, float floorShift,
                   double seconds, float opacity, bool wallTexture)
         {
+            if (style >= 4) { return regional.draw(device,width,height,style-4,floorShift,opacity,wallTexture); }
             if (!available(device)) { return false; }
             const float values[]{float(style), floorShift, .026f * float(std::sin(seconds * .19)), opacity,
                                  height, width / height, wallTexture ? 1.f : 0.f, 0.f};
@@ -178,4 +182,5 @@ float4 main(float2 uv:TEXCOORD0,float2 pixel:VPOS):COLOR0
         }
     };
 }
+
 

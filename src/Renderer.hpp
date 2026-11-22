@@ -315,8 +315,7 @@ namespace gt4
             if (mainBodyTop>low.z+.7f) { framingBodyHigh.z=std::min(framingBodyHigh.z,mainBodyTop); }
             // Low-area upper geometry is already excluded from the surface quantile
             // Carry that distinction into camera fitting and full-geometry clearance
-            if (framingBodyHigh.z-low.z > (framingBodyHigh.x-framingBodyLow.x)*.78f &&
-                high.z-framingBodyHigh.z > std::max(.45f,(framingBodyHigh.z-low.z)*.25f)) {
+            if (high.z-framingBodyHigh.z > std::max(.20f,(framingBodyHigh.z-low.z)*.25f)) {
                 double upperArea = 0;
                 for (const auto& batch : batches) {
                     for (size_t i=0; i+2<batch.vertices.size(); i+=3) {
@@ -678,6 +677,7 @@ namespace gt4
         std::filesystem::path collectionPath;
         VehicleLogos::Image collectionLogo;
         bool collectionTried = false;
+        std::string galleryTitle;
         bool customStudioLoadAttempted = false;
         IDirect3DSurface9* viewerTargetSurface = nullptr;
         IDirect3DSurface9* viewerDepth = nullptr;
@@ -1184,6 +1184,16 @@ namespace gt4
                                      false> studioEnvironment{false};
         float studioZoom = 1.15f;
 
+        void setGalleryBrand(const std::filesystem::path& root, int gallery, const char* title)
+        {
+            if (collectionLogo.texture) { collectionLogo.texture->Release(); collectionLogo = {}; }
+            collectionTried = false;
+            galleryTitle = gallery ? title : "";
+            collectionPath = assetPath(root / (gallery == 1 ? L"showroom/wangcars.png" : L"showroom/collection.png"));
+            if (!gallery && !std::filesystem::exists(collectionPath)) collectionPath = assetPath(root / L"collection.png");
+            if (gallery > 1) collectionTried = true;
+        }
+
         void setShopLogo(const std::filesystem::path& path)
         {
             shopLogoPath = path;
@@ -1197,7 +1207,8 @@ namespace gt4
         void setLogoRoot(const std::filesystem::path& path)
         {
             logos.setRoot(path);
-            collectionPath = assetPath(path.parent_path() / L"collection.png");
+            collectionPath = assetPath(path.parent_path() / L"showroom/collection.png");
+            if (!std::filesystem::exists(collectionPath)) { collectionPath = assetPath(path.parent_path() / L"collection.png"); }
             if (collectionLogo.texture) {
                 collectionLogo.texture->Release();
                 collectionLogo = {};
@@ -2109,7 +2120,7 @@ namespace gt4
                 for (int index = DarkGrayBackground; index < studioBackgroundCount; ++index) {
                     const float alpha = surfaceAlpha[size_t(index)];
                     if (alpha > 0.f && studioSurfaces.draw(d, cam.w, cam.h, index - StaticBackground,
-                                                           floorShift, seconds, alpha, wallTexture)) {
+                                                           index >= IndustrialGarageBackground && floorVisible ? floorY / cam.h - .56f : floorShift, seconds, alpha, wallTexture)) {
                         triangles += 2;
                         ++drawCalls;
                     }
@@ -3732,7 +3743,9 @@ namespace gt4
                         const float middleLength=framing->middleBodyLength;
                         const float bodyWidth=std::max(.5f,framing->framingBodyHigh.x-framing->framingBodyLow.x);
                         const float narrowOverhang=1.f-ease((bodyWidth/measuredLength-.39f)/.07f);
-                        const float lengthMix=.60f*ease((middleLength-6.7f)/.65f) * narrowOverhang *
+                        const float compactRack = ease((middleLength-3.5f)/.6f) *
+                            (1.f-ease((middleLength/measuredLength-.60f)/.07f)) * ease((framing->framingBodyHigh.z-framing->low.z-2.6f)/.4f);
+                        const float lengthMix=.60f*std::max(ease((middleLength-6.7f)/.65f),compactRack) * narrowOverhang *
                             ease((measuredLength/std::max(.5f,middleLength)-1.14f)/.18f);
                         const float bodyLength=measuredLength+(std::min(measuredLength,middleLength)-measuredLength)*lengthMix;
                         const float bodyHeight=std::max(.5f,framing->framingBodyHigh.z-framing->low.z);
@@ -3769,7 +3782,9 @@ namespace gt4
                             ease((bodyHeight/bodyLength-.48f)/.1f),ease((bodyOverhang-.3f)/.4f)});
                         const float utilityHeight=ease((bodyHeight-.42f)/.18f)*(1.f-ease((bodyHeight/bodyLength-.74f)/.15f));
                         const float wideFootprint=ease((bodyLength-2.5f)/.45f)*ease((bodyWidth/bodyLength-.55f)/.09f);
-                        const float compactUtility=compactLength*shortBody*utilityHeight*(1.f-wideFootprint);
+                        const float enclosedLowBody = ease((framing->roofBodyLength/bodyLength-.28f)/.16f) *
+                            (1.f-ease((bodyHeight/bodyWidth-.68f)/.15f));
+                        const float compactUtility=compactLength*shortBody*utilityHeight*(1.f-wideFootprint)*(1.f-enclosedLowBody);
                         const float uprightFit=std::min(W*.71f/bodyScreenWidth,
                             H*(.56f+.08f*upright)/bodyScreenHeight);
                         // Very short enclosed cabins need the earlier, quieter framing
@@ -3809,11 +3824,12 @@ namespace gt4
                                     if (mainCam.project({direction*radius,-radius,height*previewSize},x,y,depth,rhw)) {
                                         const float originalLimit=room/std::max(1.f,std::abs(x-centerX));
                                         float rotationLimit=originalLimit;
-                                        if ((framing->raisedAccessory || lengthMix > 0.f) &&
+                                        const bool tallNarrowBody = bodyHeight > 3.5f && bodyWidth/bodyLength < .40f;
+                                        if ((framing->raisedAccessory || lengthMix > 0.f || tallNarrowBody) &&
                                             mainCam.project({direction*tangentX,tangentY,height*previewSize},x,y,depth,rhw)) {
-                                            const float tangentRoom = framing->raisedAccessory ? room : std::min(room,W*.365f);
+                                            const float tangentRoom = framing->raisedAccessory || tallNarrowBody ? room : std::min(room,W*.365f);
                                             const float overhangLimit = tangentRoom / std::max(1.f,std::abs(x-centerX));
-                                            const float relief = framing->raisedAccessory ? 1.f : lengthMix / .60f;
+                                            const float relief = framing->raisedAccessory || tallNarrowBody ? 1.f : lengthMix / .60f;
                                             rotationLimit += (std::max(originalLimit,overhangLimit) - originalLimit) * relief;
                                         }
                                         boost=std::min(boost,rotationLimit);
@@ -3844,7 +3860,7 @@ namespace gt4
                         boost*=suvAdjustment;
                         if (framing->thinUpperAccessory) {
                             const float shortCabin=1.f-ease((bodyHeight-2.15f)/.30f);
-                            const float tallCabin=ease((bodyHeight-3.0f)/.60f);
+                            const float tallCabin=ease((bodyHeight-3.0f)/.60f) * ease((bodyWidth/bodyLength-.33f)/.06f);
                             boost*=1.f-.06f*shortCabin-.13f*tallCabin;
                         }
                         mainCam.focal *= 1.f+(std::max(.2f,boost)-1.f)*browseMix;
@@ -4223,8 +4239,8 @@ namespace gt4
                             return true;
                         };
                         const bool carLogo =
-                            s.ui.carLogo && logo(false, W * .77f, H * .065f, W * .4f, H * .13f, 1 - s.titleMix());
-                        if (!carLogo) {
+                            !s.ui.favoritesOnly && s.ui.carLogo && logo(false, W * .77f, H * .065f, W * .4f, H * .13f, 1 - s.titleMix());
+                        if (!carLogo && (!s.ui.favoritesOnly || !entries.empty())) {
                             const auto& name = e.title.empty() ? e.name : e.title;
                             const auto regular = textStyle(false);
                             const auto baseStyle = titleFont ? TextStyle{titleFont,
@@ -4270,8 +4286,8 @@ namespace gt4
                                   style);
                         }
                         const bool brandLogo =
-                            s.ui.brandLogo && logo(true, W * .80f, H * .065f, W * .30f, H * .12f, s.titleMix());
-                        if (!brandLogo) {
+                            !s.ui.favoritesOnly && galleryTitle.empty() && s.ui.brandLogo && logo(true, W * .80f, H * .065f, W * .30f, H * .12f, s.titleMix());
+                        if (!s.ui.favoritesOnly && !brandLogo) {
                             if (!collectionTried) {
                                 collectionTried = true;
                                 collectionLogo = VehicleLogos::load(d, collectionPath, 1024);
@@ -4282,6 +4298,11 @@ namespace gt4
                                 rect(d, W * .79f - collectionLogo.width * fit * .5f, H * .065f,
                                      collectionLogo.width * fit, collectionLogo.height * fit,
                                      color(0xFFFFFF, s.titleMix()), collectionLogo.texture);
+                            } else if (!galleryTitle.empty()) {
+                                fontAtlas(d, shopSerifFont, shopSerifWidths, prizeNameAsset, 48, 80, L"Times New Roman");
+                                const auto heading = shopSerifFont ? TextStyle{shopSerifFont, shopSerifWidths, 48, 80, 1.f} : textStyle(true);
+                                label(d, galleryTitle, W * .79f, H * .079f,
+                                      fitted(galleryTitle, 37 * scale, W * .38f, heading), s.titleMix(), true, 0, heading);
                             } else {
                                 label(d, e.brand, W * .80f, H * .085f, 26 * scale, s.titleMix(), true);
                                 label(d, "motor collection", W * .80f, H * .128f, 13 * scale, s.titleMix(), true);
@@ -4289,7 +4310,7 @@ namespace gt4
                         }
                         const std::string controls =
                             showroomControlHint(s.page, s.ui.controllerUsed, s.liveries.size() > 1,
-                                                s.hasExtras(), s.selectionHasColors);
+                                                s.hasExtras(), s.selectionHasColors,s.galleryFavorites);
                         std::string info = e.information;
                         if (e.handlingValid && !e.customInformation) {
                             wchar_t measure[4]{};
@@ -4338,8 +4359,24 @@ namespace gt4
                         if (heavy) {
                             message = "Heavy. Why are things so heavy in the future? Is there a problem with the Earth's gravitational pull?";
                         }
+                        if (s.showDealerPrices && !s.ui.footerHidden && !entries.empty()) {
+                            drawVehicleAccount(d, W, scale, e, paint, s.dealerBalance);
+                            if (e.price >= 0) {
+                                const float x = 63 * scale;
+                                const float y = (s.ui.classFilter >= 0 || s.ui.countryFilter >= 0 ? 112 : 91) * scale;
+                                shopPriceMark(d, x, y, scale, true);
+                                const std::string price = shopMoney(e.price);
+                                text(d, price, x + 30 * scale, y - 17 * scale, 34.667f * scale,
+                                     color(0x21150D, .8f), false, 0, true);
+                                text(d, price, x + 29 * scale, y - 19 * scale, 34.667f * scale,
+                                     color(0xFFFFFF), false, 0, true);
+                            }
+                        }
+                        const bool emptyFavorites = s.ui.favoritesOnly && entries.empty();
                         if (!s.ui.footerHidden || s.ui.menu.open) {
                             rect(d, 0, H * .907f, W, H * .093f, 0xFF000000);
+                        }
+                        if ((!s.ui.footerHidden || s.ui.menu.open) && !emptyFavorites) {
                             drawFooterText(d, W, H, message, heavy || describe || handling || !s.status.empty(),
                                            s.clock, !heavy, !handling);
                             const FooterLayout footer(H);
@@ -4351,7 +4388,7 @@ namespace gt4
                             }
                         }
                         const float cx = 63 * scale, cy = 47 * scale;
-                        if (flags) {
+                        if (flags && !emptyFavorites) {
                             const float index = float(e.country);
                             rect(d,
                                  cx - 17 * scale,
@@ -4365,16 +4402,22 @@ namespace gt4
                                  (index + 1) / float(countryCount),
                                  1);
                         }
-                        label(d, e.category, 104 * scale, 19 * scale, 26 * scale);
-                        if (s.ui.favoritesOnly || s.ui.countryFilter >= 0 || s.ui.classFilter >= 0) {
+                        if (!emptyFavorites) {
+                            label(d, e.category, 104 * scale, 19 * scale, 26 * scale);
+                        } else if (s.hasAvailableFavorites) {
+                            if (s.ui.classFilter >= 0) {
+                                label(d, classNames[size_t(s.ui.classFilter)], 104 * scale, 19 * scale, 26 * scale);
+                            } else if (s.ui.countryFilter >= 0) {
+                                label(d, countryLabel(Country(s.ui.countryFilter)), 104 * scale, 19 * scale, 26 * scale);
+                            }
+                        }
+                        if (!emptyFavorites && (s.ui.countryFilter >= 0 || s.ui.classFilter >= 0)) {
                             label(d,
-                                  (s.ui.favoritesOnly ? std::string("FAVORITES") : std::string()) +
-                                      (s.ui.favoritesOnly && s.ui.countryFilter >= 0 ? " / " : "") +
-                                      (s.ui.countryFilter >= 0
+                                  (s.ui.countryFilter >= 0
                                            ? (s.ui.countryFilter == 0 ? "UNASSIGNED"
                                                                       : countryLabel(Country(s.ui.countryFilter)))
                                            : "") +
-                                      (s.ui.classFilter >= 0 ? " / " + std::string(classNames[size_t(s.ui.classFilter)])
+                                      (s.ui.classFilter >= 0 ? (s.ui.countryFilter >= 0 ? " / " : "") + std::string(classNames[size_t(s.ui.classFilter)])
                                                              : ""),
                                   104 * scale,
                                   56 * scale,
@@ -4382,7 +4425,7 @@ namespace gt4
                         }
                         if (entries.empty()) {
                             label(d,
-                                  s.ui.favoritesOnly ? "NO FAVORITES YET - UP / SQUARE ADDS A CAR"
+                                  s.ui.favoritesOnly ? (s.hasAvailableFavorites ? "NO FAVORITES IN THIS FILTER - CHANGE FILTER IN SETTINGS" : "NO FAVORITES YET - UP / SQUARE ADDS A VEHICLE")
                                                      : "NO CARS IN THIS FILTER - RMB / SELECT CHANGES FILTER",
                                   W * .5f,
                                   H * .50f,

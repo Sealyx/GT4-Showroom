@@ -94,6 +94,7 @@ namespace gt4
         Country country = Country::Unknown;
         int id = 0, kind = 0, classId = 0;
         uint32_t modelKey = 0;
+        int price = -1;
         float topSpeed = -1, handlingMass = 0;
         unsigned handlingGears = 0;
         char handlingDrive = '?';
@@ -128,8 +129,11 @@ namespace gt4
         Prize
     };
 
-    inline const char* showroomControlHint(Page page, bool controller, bool liveries, bool extras = false, bool colors = true)
+    inline const char* showroomControlHint(Page page, bool controller, bool liveries, bool extras = false, bool colors = true, bool favorites = true)
     {
+        if (page == Page::Cars && !favorites) return controller
+            ? "CROSS Paint    SELECT Menu    L3 Search    SQUARE+TRIANGLE Info    L1+R1 Hide UI"
+            : "ENTER Paint    RMB Menu    ` Search    I Info    H Hide UI";
         if (page == Page::Extras) {
             return controller ? "D-PAD Adjust Extras    CROSS Continue    CIRCLE Back"
                               : "ARROWS Adjust Extras    ENTER Continue    BACKSPACE Back";
@@ -483,7 +487,7 @@ namespace gt4
             appearanceReady = !postSelectionCinematic;
             ui.menu.selectionExtras = false;
             const bool needsCinematic = (tutorialTopics(Tutorial::Cinematic) & ~tutorialsSeen) != 0;
-            const bool needsIntro = postSelectionCinematic &&
+            const bool needsIntro = postSelectionCinematic && galleryCustomization &&
                                     (tutorialTopics(Tutorial::CustomizationIntro) & ~tutorialsSeen) != 0;
             if (needsIntro) {
                 showTutorial(needsCinematic ? Tutorial::CinematicWithCustomization : Tutorial::CustomizationIntro);
@@ -688,6 +692,10 @@ namespace gt4
         float dragGrip = 0;
         Page page = Page::Cars;
         size_t selected = 0, paint = 0;
+        bool showDealerPrices = false;
+        int dealerBalance = 0;
+        bool allowRealBig = true;
+        bool hasAvailableFavorites = false, galleryFavorites = true, galleryCustomization = true;
         int beforeFavoritesModel = -1;
         double clock = 0, changed = 0, opened = 0, stripChanged = 0;
         double classClick = -10, heavyUntil = -1;
@@ -798,6 +806,13 @@ namespace gt4
             lastSearchById = searchById;
             searchResultId = -1;
             searchResultName.clear();
+            if (command == "realbig" && !allowRealBig) {
+                searchFailed=true;
+                searchNotice="REALBIG UNAVAILABLE AT THIS DEALERSHIP";
+                searchUntil=clock+2.8;
+                cue=Cue::Error;
+                return;
+            }
             if (command == "realbig") {
                 const auto next = rollPrize(cars, random, secretUnlocks);
                 if (!next) {
@@ -1242,6 +1257,7 @@ namespace gt4
 
         float titleMix() const
         {
+            if (ui.favoritesOnly) { return 0; }
             constexpr double hold = 5., transition = .3;
             const double phase = std::fmod(std::max(0., clock - changed), 2 * (hold + transition));
             if (phase < hold) {

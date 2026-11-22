@@ -158,6 +158,8 @@ inline std::string ContextMenu::monitorTitle(int level) const
     }
     const auto branch = level == 1 ? childBranch() : thirdBranch();
     switch (branch) {
+        case MenuBranch::Categories:
+            return "Category";
         case MenuBranch::Countries:
             return "Countries";
         case MenuBranch::Classes:
@@ -210,6 +212,7 @@ inline std::string ContextMenu::monitorValue(int level, int index) const
         if (branch == MenuBranch::ShowroomStyle) {
             return styleChoice == 1 ? "Prologue" : "Default";
         }
+        if (branch == MenuBranch::Music) { return "Music " + std::to_string(musicChoice); }
         if (branch == MenuBranch::Background) {
             return studioBackgroundNames[size_t(std::clamp(backgroundChoice, 0, studioBackgroundCount - 1))];
         }
@@ -375,11 +378,17 @@ inline std::string ContextMenu::help() const
     if (branch == MenuBranch::Antialiasing || item.action == StudioAction::Antialiasing) {
         return "Smooth rendered edges with capability-tested multisampling and bounded render-target memory";
     }
+    if (branch == MenuBranch::Music || item.action == StudioAction::Music) {
+        return "Choose the music for this showroom";
+    }
     if (branch == MenuBranch::Background || item.action == StudioAction::Background) {
-        return "Default follows country and category; Red and Dark Gray override it for every vehicle";
+        return "Choose a background for the current showroom, country or class";
     }
     if (branch == MenuBranch::UnitFormat || item.action == StudioAction::UnitFormat) {
         return "Choose Windows measurement units, metric units or imperial units";
+    }
+    if (branch == MenuBranch::Categories) {
+        return "Filter the vehicle list by class and country";
     }
     if (branch == MenuBranch::Sort) {
         return "Choose the order of the vehicle list";
@@ -467,7 +476,7 @@ inline bool ContextMenu::fieldOpensWindow(int level, int index) const
         return false;
     }
     const auto b = rows[size_t(index)].child;
-    return b == MenuBranch::Display || b == MenuBranch::Logos || b == MenuBranch::Extras || b == MenuBranch::Volume || b == MenuBranch::Reflections ||
+    return b == MenuBranch::Display || b == MenuBranch::Logos || b == MenuBranch::Extras || b == MenuBranch::Volume || b == MenuBranch::Reflections || b == MenuBranch::Categories ||
            rows[size_t(index)].action == StudioAction::EnterTransFender ||
            rows[size_t(index)].action == StudioAction::EnterPhoto ||
            rows[size_t(index)].action == StudioAction::ViewerEnter ||

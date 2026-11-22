@@ -135,6 +135,7 @@ namespace gt4
         IDirectSound8* ds = nullptr;
         IDirectSoundBuffer* bed = nullptr;
         IDirectSoundBuffer* shopBed = nullptr;
+        int musicTrack = 1;
         bool shopMusic = false, shopBedTried = false;
         IDirectSoundBuffer* prize = nullptr;
         bool prizeActive = false, prizePlaying = false, prizeResume = false;
@@ -384,11 +385,13 @@ namespace gt4
             if (studio) {
                 if (!bed) {
                     constexpr size_t limit = 64 * 1024 * 1024;
+                    const auto track = folder + L"music-" + std::to_wstring(musicTrack) + L".wav";
                     const auto mp3 = folder + L"music.mp3";
-                    if (GetFileAttributesW(assetPath(mp3).c_str()) != INVALID_FILE_ATTRIBUTES) {
+                    if (GetFileAttributesW(assetPath(track).c_str()) != INVALID_FILE_ATTRIBUTES) { bed = load(track, limit, true); }
+                    if (!bed && musicTrack == 1 && GetFileAttributesW(assetPath(mp3).c_str()) != INVALID_FILE_ATTRIBUTES) {
                         bed = load(mp3, limit, true);
                     }
-                    if (!bed) {
+                    if (!bed && musicTrack == 1) {
                         bed = load(folder + L"music.wav", limit, true);
                     }
                 }
@@ -456,6 +459,17 @@ namespace gt4
         bool failureReady() const
         {
             return failure != nullptr;
+        }
+
+        void chooseMusic(int track, HWND window, const std::wstring& folder)
+        {
+            if (musicTrack == track && bed) { return; }
+            if (bed) { bed->Stop(); bed->Release(); bed = nullptr; }
+            musicTrack = track;
+            musicStarted = false;
+            if (!shopMusic) { bedPlaying = false; musicGain = 0; }
+            init(window, folder);
+            if (running && focused && !shopMusic && !prizeActive && !failureActive) { playBed(); }
         }
 
         void start()

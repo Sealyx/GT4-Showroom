@@ -70,7 +70,9 @@ namespace gt4
         FloorReflections,
         VehicleReflections,
         Reflections,
-        Language
+        Language,
+        Categories,
+        Music
     };
 
     inline int extraActionGroup(StudioAction action)
@@ -196,7 +198,9 @@ namespace gt4
         FloorReflections,
         VehicleReflections,
         Reflections,
-        Language
+        Language,
+        Categories,
+        Music
     };
 
     inline int extraBranchGroup(MenuBranch branch)
@@ -275,6 +279,7 @@ namespace gt4
         ViewerSettings viewerSettings;
         SettingsView settingsView = SettingsView::Showroom;
         bool viewerPaused = false, cinematicPaused = false, cinematicAnimated = true;
+        bool categoriesEnabled = true;
         bool customizationEnabled = false;
         int customizationModel = -1;
         uint64_t customizationGeneration = 0, customizationRevision = 0;
@@ -291,9 +296,10 @@ namespace gt4
         bool selectionExtras = false;
         std::array<int, 3> extraChoice{{0, 0, 0}};
         bool shadows = true, carLogo = false, brandLogo = false,
-             displayModelId = true, displayModelName = true;
+             displayModelId = false, displayModelName = false;
         int order = 0, countryFilter = -1, classFilter = -1;
         uint32_t countryMask = 0, classMask = 0;
+        int musicChoice = 1;
         int unitFormat = 0, backgroundChoice = 0, styleChoice = 0;
         bool japaneseCategory = false, bikeCategory = false;
         int antialiasing = 2, ambientOcclusion = 2;
@@ -498,7 +504,8 @@ namespace gt4
                 rows.push_back({"Photo Mode", StudioAction::EnterPhoto});
                 return rows;
             }
-            std::vector<MenuItem> rows{{"Sort by", StudioAction::None, -1, MenuBranch::Sort},
+            std::vector<MenuItem> rows{{"Sort By", StudioAction::None, -1, MenuBranch::Sort},
+                                       {"Category", StudioAction::None, -1, MenuBranch::Categories},
                                        {"Format", StudioAction::None, -1, MenuBranch::UnitFormat},
                                        {"Language", StudioAction::None, -1, MenuBranch::Language},
                                        {"Display", StudioAction::None, -1, MenuBranch::Display},
@@ -508,9 +515,13 @@ namespace gt4
                                        {"Ambient Occlusion", StudioAction::None, -1, MenuBranch::AmbientOcclusion},
                                        {"Reflections", StudioAction::None, -1, MenuBranch::Reflections}};
             {
+                rows.insert(rows.begin(), {"Music", StudioAction::None, -1, MenuBranch::Music});
                 if (styleChoice == 0) { rows.insert(rows.begin(), {"Background", StudioAction::None, -1, MenuBranch::Background}); }
                 rows.insert(rows.begin(), {"Style", StudioAction::None, -1, MenuBranch::ShowroomStyle});
             }
+            if (!categoriesEnabled) rows.erase(std::remove_if(rows.begin(),rows.end(),[](const MenuItem& row) {
+                return row.child == MenuBranch::Categories;
+            }),rows.end());
             rows.push_back({"Cinematic", StudioAction::Cinematic});
             rows.push_back({"Volume", StudioAction::None, -1, MenuBranch::Volume});
             return rows;
@@ -563,12 +574,18 @@ namespace gt4
                 case MenuBranch::ShowroomStyle:
                     return {{"Default", StudioAction::ShowroomStyle, 0, MenuBranch::None, styleChoice == 0},
                             {"Prologue", StudioAction::ShowroomStyle, 1, MenuBranch::None, styleChoice == 1}};
+                case MenuBranch::Music:
+                    return {{"Music 1",StudioAction::Music,1,MenuBranch::None,musicChoice==1},
+                            {"Music 2",StudioAction::Music,2,MenuBranch::None,musicChoice==2},
+                            {"Music 3",StudioAction::Music,3,MenuBranch::None,musicChoice==3}};
                 case MenuBranch::Background:
                     if (styleChoice != 0) { return {}; }
                     {
                         std::vector<MenuItem> rows;
                         for (int index : {DefaultBackground, StaticBackground, RedBackground, DarkGrayBackground,
-                                          BrushedSteelBackground, DarkGraphiteBackground, WarmBackground}) {
+                                          BrushedSteelBackground, DarkGraphiteBackground, WarmBackground, AgedConcreteBackground,
+                                          WeatheredSlateBackground, HorizontalBrushedBackground, CrackedPlasterBackground,
+                                          VerticalBrushedBackground, MidnightSlateBackground, SmokySteelBackground, BlueMistBackground}) {
                             rows.push_back({studioBackgroundNames[size_t(index)], StudioAction::Background, index,
                                             MenuBranch::None, backgroundChoice == index});
                         }
@@ -584,9 +601,10 @@ namespace gt4
                     return {{"Model ID", StudioAction::SortModelId, 5, MenuBranch::None, order == 5},
                             {"Ascending", StudioAction::SortAscending, 0, MenuBranch::None, order == 0},
                             {"Descending", StudioAction::SortDescending, 1, MenuBranch::None, order == 1},
-                            {"Class", StudioAction::None, -1, MenuBranch::Classes, classFilter >= 0 || classMask != 0},
-                            {"Countries", StudioAction::None, -1, MenuBranch::Countries, countryFilter >= 0 || countryMask != 0},
                             {"Top Speed", StudioAction::SortSpeed, 3, MenuBranch::None, order == 3}};
+                case MenuBranch::Categories:
+                    return {{"Class", StudioAction::None, -1, MenuBranch::Classes, classFilter >= 0 || classMask != 0},
+                            {"Country", StudioAction::None, -1, MenuBranch::Countries, countryFilter >= 0 || countryMask != 0}};
                 case MenuBranch::Countries: {
                     std::vector<MenuItem> r;
                     for (int c : available) {
@@ -730,7 +748,7 @@ namespace gt4
             }
             const auto branch = childBranch();
             if ((branch == MenuBranch::Logos || branch == MenuBranch::Extras || branch == MenuBranch::Display ||
-                 branch == MenuBranch::Reflections) &&
+                 branch == MenuBranch::Reflections || branch == MenuBranch::Categories) &&
                 focus() == 0) {
                 return MenuBranch::None;
             }
@@ -830,7 +848,7 @@ namespace gt4
         bool monitorSubWindow() const
         {
             const auto b = childBranch();
-            return b == MenuBranch::Logos || b == MenuBranch::Extras || b == MenuBranch::Display || b == MenuBranch::Volume || b == MenuBranch::Reflections;
+            return b == MenuBranch::Logos || b == MenuBranch::Extras || b == MenuBranch::Display || b == MenuBranch::Volume || b == MenuBranch::Reflections || b == MenuBranch::Categories;
         }
 
         bool monitorSelectorWindow() const
@@ -1083,6 +1101,9 @@ namespace gt4
         bool favoritesOnly = false, controllerUsed = false, footerHidden = false;
         int sortMode = 5, countryFilter = -1, classFilter = -1;
         uint32_t countryMask = 0, classMask = 0;
+        std::wstring menuDealerRaw;
+        bool dealerBackgroundWritten = false;
+        int dealerBackground = -1, menuDealerBackground = -1;
         int backgroundSelection = 0, showroomStyle = 0;
         int unitFormat = 0, antialiasing = 2, ambientOcclusion = 2;
         int vehicleReflections = 3;
@@ -1093,7 +1114,7 @@ namespace gt4
 
         uint64_t presentationContext() const
         {
-            return presentationContextKey(countryMask, countryFilter, classMask, classFilter);
+            return favoritesOnly ? favoritesPresentationContext : dealerBackground >= 0 ? 0 : presentationContextKey(countryMask, countryFilter, classMask, classFilter);
         }
 
         uint64_t fallbackPresentationContext() const
@@ -1150,6 +1171,10 @@ namespace gt4
         void chooseBackground(int selection)
         {
             const int chosen = std::clamp(selection, 0, studioBackgroundCount - 1);
+            if (!favoritesOnly && dealerBackground >= 0) {
+                if (chosen != IndustrialGarageBackground) dealerBackground = chosen;
+                return;
+            }
             const auto key = presentationContext();
             if (key) {
                 auto& context = editPresentationContext();
@@ -1194,7 +1219,7 @@ namespace gt4
 
         int backgroundStyle() const
         {
-            return presentationBackground(*this, presentationContext());
+            return dealerBackground >= 0 && !favoritesOnly ? dealerBackground : presentationBackground(*this, presentationContext());
         }
 
         bool accepts(Country country, int category) const
@@ -1206,11 +1231,26 @@ namespace gt4
                                            : classFilter < 0 || classFilter == index;
             return hasCountry && hasClass;
         }
-        bool carLogo = false, brandLogo = false, displayModelId = true, displayModelName = true;
+        bool carLogo = false, brandLogo = false, displayModelId = false, displayModelName = false;
         double pointerMoved = 0;
         bool countryShortcut = false, shortcutPresentationPriority = false;
         int shortcutCountry = -1, shortcutOrder = 5, shortcutModel = -1;
         uint32_t shortcutMask = 0;
+
+        void beginCountryShortcut(Country country, int model)
+        {
+            if (!countryShortcut) {
+                shortcutPresentationPriority = countryPresentationPriority;
+                shortcutCountry = countryFilter;
+                shortcutMask = countryMask;
+                shortcutOrder = sortMode;
+                shortcutModel = model;
+            }
+            countryShortcut = true;
+            countryPresentationPriority = true;
+            countryFilter = int(country);
+            countryMask = 0;
+        }
 
         int endCountryShortcut()
         {
@@ -1250,12 +1290,6 @@ namespace gt4
             result.displayModelId = displayModelId;
             result.displayModelName = displayModelName;
             result.audio = audioLevels;
-            if (countryShortcut) {
-                result.countryPresentationPriority = shortcutPresentationPriority;
-                result.countryFilter = shortcutCountry;
-                result.countryMask = shortcutMask;
-                result.sortMode = shortcutOrder;
-            }
             return result;
         }
 

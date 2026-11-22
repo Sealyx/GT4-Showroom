@@ -1,4 +1,6 @@
 #include "Game.hpp"
+#include "Dealership.hpp"
+#include "VehiclePayment.hpp"
 #include "DiagnosticLog.hpp"
 #include "Audio.hpp"
 #include "InstallLock.hpp"
@@ -109,6 +111,19 @@ namespace gt4
     bool suspended = true;
     uint64_t frameSerial = 0, updatedFrame = UINT64_MAX;
     StudioConfig studioConfig;
+    Gallery gallery = Gallery::Main;
+    GalleryOptions galleryOptions;
+    bool dealerShopVisited = false;
+    bool allowedHere(const Entry& entry)
+    {
+        return !excluded.count(entry.id) && (gallery == Gallery::Main ||
+            (gallery == Gallery::Grotti ? std::find(galleryOptions.models.begin(),galleryOptions.models.end(),entry.id)!=galleryOptions.models.end() :
+             (entry.kind != 6 && (galleryOptions.allowed & classBit(galleryClass(entry))) != 0)));
+    }
+    bool canCustomizeSelected()
+    {
+        return state.selected < entries.size() && galleryCustomizes(gallery,entries[state.selected]);
+    }
     TypedReload typedReload;
     Key reloadChord;
     MoveCueGate moveCue;
@@ -158,6 +173,7 @@ namespace gt4
     bool secretSchoolMusicPlayed = false;
     SecretFeaturesChoice secretSchoolPending = SecretFeaturesChoice::None;
     double secretSchoolClosing = 0;
+#include "DealershipWorld.inl"
     void blockOpenInput();
     void finishSettings();
 
@@ -182,17 +198,21 @@ namespace gt4
         std::array<int, countryCount> counts{};
         std::array<int, classCount> classTotals{};
         for (const auto& e : catalog) {
-            if (!excluded.count(e.id) && (!state.ui.favoritesOnly || e.favorite)) {
+            if (allowedHere(e) && (!state.ui.favoritesOnly || e.favorite)) {
                 ++counts[size_t(e.country)];
                 ++classTotals[size_t(classIndex(e.classId))];
             }
         }
+        state.hasAvailableFavorites = std::any_of(catalog.begin(), catalog.end(), [&](const Entry& e) {
+            return e.favorite && allowedHere(e);
+        });
         state.ui.menu.setCountries(counts);
         state.ui.menu.setClasses(classTotals);
     }
 
     void rebuildCatalogueView(int preferredModel = -1)
     {
+        const int retainedModel = preferredModel >= 0 ? preferredModel : entries.empty() ? -1 : entries[std::min(state.selected,entries.size()-1)].id;
         localization.protectedNames.clear();
         for (const auto& entry : catalog) {
             localization.protectedNames.insert(entry.name);
@@ -202,12 +222,28 @@ namespace gt4
         buildCatalogueView(
             state, entries, catalog, studioConfig.sort,
             [&](const Entry& e) {
-                return excluded.count(e.id) != 0;
+                return !allowedHere(e);
             },
             [](const Entry& e) {
                 return e.favorite;
             },
             preferredModel);
+        if (gallery == Gallery::Grotti) {
+            std::stable_sort(entries.begin(),entries.end(),[](const Entry& a,const Entry& b) {
+                return std::find(galleryOptions.models.begin(),galleryOptions.models.end(),a.id) <
+                       std::find(galleryOptions.models.begin(),galleryOptions.models.end(),b.id);
+            });
+            state.selected=0;
+            for (size_t i=0;i<entries.size();++i) if(entries[i].id==retainedModel) state.selected=i;
+            state.scroll=state.scrollTarget();
+            for (int id:galleryOptions.models) {
+                if (std::none_of(catalog.begin(),catalog.end(),[id](const Entry& e){return e.id==id;})) {
+                    char message[100]{};
+                    snprintf(message,sizeof(message),"Grotti configured model %d is unavailable in the vehicle catalogue",id);
+                    log(message);
+                }
+            }
+        }
         pending.clear();
         refreshCountryMenu();
     }
@@ -242,6 +278,12 @@ namespace gt4
         if (loadStudioPreferences(std::filesystem::path(base) / L"GT4Showroom/settings.ini", savedPreferences)) {
             state.ui.applyPreferences(savedPreferences);
         }
+        readGalleryAccess();
+        galleryOptions = readGallery(ini.c_str(), gallery);
+        state.allowRealBig = gallery == Gallery::Main || gallery == Gallery::Wang;
+        state.ui.menu.categoriesEnabled = gallery != Gallery::Grotti;
+        state.ui.dealerBackground = gallery == Gallery::Main ? -1 : galleryBackground(ini.c_str(), gallery);
+        state.ui.menu.musicChoice = galleryOptions.music;
         studioConfig = readStudioConfig(ini);
         studioConfig.sort = menuSort(state.ui.sortMode);
         diagnostics.reload(ini, L"GT4Showroom");
@@ -349,6 +391,24 @@ namespace gt4
         pause.end();
         commitGameVolume();
         saveCurrentFavorites();
+        if (gallery != Gallery::Main) {
+            gallery = Gallery::Main;
+            state.showDealerPrices = false;
+            state.galleryFavorites = true;
+            state.ui.dealerBackground = -1;
+            state.ui.applyPreferences(mainPreferences);
+            studioConfig.sort = menuSort(state.ui.sortMode);
+            galleryOptions = readGallery(ini.c_str(), gallery);
+            state.allowRealBig = gallery == Gallery::Main || gallery == Gallery::Wang;
+            state.ui.menu.categoriesEnabled = gallery != Gallery::Grotti;
+            state.ui.menu.musicChoice = galleryOptions.music;
+            rebuildCatalogueView(mainVehicle);
+            selectedExtras.clear();
+            dealerShopVisited = false;
+            renderer.setGalleryBrand(std::filesystem::path(base)/L"GT4Showroom",0,"");
+        }
+        arrivalTime = -1;
+        approaching = Gallery::Main;
         pending.clear();
     }
 
@@ -439,7 +499,8 @@ namespace gt4
             catalog.push_back(e);
             if (exclusionConfig.hides(e)) {
                 excluded.insert(e.id);
-            } else if ((!state.ui.favoritesOnly || e.favorite) &&
+            }
+            if (allowedHere(e) && (!state.ui.favoritesOnly || e.favorite) &&
                        state.ui.accepts(e.country, e.classId)) {
                 entries.push_back(std::move(e));
             }
@@ -505,6 +566,7 @@ namespace gt4
         }
         auto& e = entries[state.selected];
         state.twoWheelerSelected = twoWheelerPreview(e);
+        state.galleryCustomization = galleryCustomizes(gallery,e);
         state.extrasResolved = extrasModel == e.id && nativeExtras::metadataReady && !nativeExtras::selectionPending();
         if (extrasFramingModel != e.id) {
             extrasFramingModel = -1;
@@ -523,6 +585,7 @@ namespace gt4
         const auto h = handling(game::field<uint16_t>(mi, 0x4A));
         e.topSpeed = h.valid ? h.limit : -1;
         e.information = stats(h);
+        e.price = h.price;
         e.handlingMass = h.mass;
         e.handlingGears = h.gears;
         e.handlingDrive = h.drive;
@@ -539,7 +602,7 @@ namespace gt4
             return false;
         }
         const bool selected = customizationNative::select(size_t(row), option);
-        state.ui.menu.setCustomization(customizationNative::state, true);
+        state.ui.menu.setCustomization(customizationNative::state, canCustomizeSelected());
         return selected;
     }
 
@@ -691,6 +754,9 @@ namespace gt4
                     }
                 }
             }
+            if (selectedExtras.find(selectedEntry.id) == selectedExtras.end()) {
+                state.extrasResetPending = true;
+            }
             extrasModel = selectedEntry.id;
             if (nativeExtras::available) {
                 cache.erase(selectedEntry.id);
@@ -724,7 +790,7 @@ namespace gt4
             }
             const bool customized = customizationNative::state.hasSelection();
             state.appearanceReady = ready || !customized;
-            state.ui.menu.setCustomization(customizationNative::state, true);
+            state.ui.menu.setCustomization(customizationNative::state, canCustomizeSelected());
             if (!ready && customized) {
                 state.status = customizationNative::captureRetry.exhausted()
                                    ? "Customization preview unavailable Change the part or choose Stock"
@@ -865,14 +931,22 @@ namespace gt4
         }
         const bool extrasScanned = extrasModel == selectedEntry.id && nativeExtras::metadataReady;
         if (extrasScanned) {
-            if (state.selectionAdvancePending) {
+            if (state.extrasResetPending && nativeExtras::available && nativeExtras::active) {
+                if (nativeExtras::active->variants.empty()) {
+                    if (!nativePreview::inspect(selectedEntry.id) && nativeExtras::active) {
+                        nativeExtras::active->stopped = true;
+                    }
+                } else {
+                    nativeExtras::pump(tick);
+                }
+            } else if (state.selectionAdvancePending) {
                 nativeExtras::probeSelection(tick);
             } else if (state.ui.menu.selectionExtras && cache.count(selectedEntry.id)) {
                 nativeExtras::pump(tick);
             }
             state.ui.menu.setExtras(nativeExtras::labels(0), nativeExtras::labels(1), nativeExtras::labels(2));
         }
-        state.extrasResolved = extrasScanned ? !nativeExtras::selectionPending()
+        state.extrasResolved = extrasScanned ? !nativeExtras::selectionPending() && !state.extrasResetPending
             : std::find(failed.begin(), failed.end(), selectedEntry.id) != failed.end();
         if (state.selectionAdvancePending && state.extrasResolved) {
             state.reviewSelectedAppearance();
@@ -994,6 +1068,12 @@ namespace gt4
         if (loadStudioPreferences(std::filesystem::path(base) / L"GT4Showroom/settings.ini", savedPreferences)) {
             state.ui.applyPreferences(savedPreferences);
         }
+        readGalleryAccess();
+        galleryOptions = readGallery(ini.c_str(), gallery);
+        state.allowRealBig = gallery == Gallery::Main || gallery == Gallery::Wang;
+        state.ui.menu.categoriesEnabled = gallery != Gallery::Grotti;
+        state.ui.dealerBackground = gallery == Gallery::Main ? -1 : galleryBackground(ini.c_str(), gallery);
+        state.ui.menu.musicChoice = galleryOptions.music;
         studioConfig = readStudioConfig(ini);
         studioConfig.sort = menuSort(state.ui.sortMode);
         diagnostics.reload(ini, L"GT4Showroom");
@@ -1113,6 +1193,7 @@ namespace gt4
 
     void saveStudioPreferences()
     {
+        if (gallery != Gallery::Main) return;
         if (!saveStudioPreferences(std::filesystem::path(base) / L"GT4Showroom/settings.ini", state.ui.preferences())) {
             log("Studio preferences could not be saved; current session settings remain active");
         }
@@ -1213,6 +1294,11 @@ namespace gt4
             state.status.clear();
             statusUntil = 0;
         }
+        if (!state.open) updateGalleryMarkers(gate,key(VK_RETURN) || pad.accept,tick,dt);
+        else if (arrivalTime >= 0 && focus && !game::menu()) {
+            arrivalTime += dt;
+            if (arrivalTime >= 3.) arrivalTime=-1;
+        }
         const bool physicalOpen = studioOpenInput(key(hotkey), state.open, pad);
         const bool pressed =
             openKey.poll(physicalOpen && (!state.searching || (hotkey >= VK_F1 && hotkey <= VK_F24)), tick);
@@ -1237,7 +1323,7 @@ namespace gt4
             readyLogged = true;
             logOpenState("Opening input ready", focus);
         }
-        if (pressed) {
+        if (pressed && arrivalTime < 0) {
             logOpenState(blocked ? "Open key rejected while suspended" : "Open key detected", focus);
             if (!blocked) {
                 if (state.open) {
@@ -1249,7 +1335,18 @@ namespace gt4
         }
         if (!state.open && !returnFade.active() && openIntent.pending(tick) && gate.ready() && !catalog.empty()) {
             reloadSettings();
+            if (gallery != Gallery::Main) {
+                state.ui.countryMask = state.ui.classMask = 0;
+                state.ui.countryFilter = state.ui.classFilter = -1;
+                state.ui.countryShortcut = false;
+                state.ui.favoritesOnly = false;
+                dealerShopVisited = false;
+                selectedExtras.clear();
+            }
             reloadExclusions();
+            renderer.setGalleryBrand(std::filesystem::path(base)/L"GT4Showroom",int(gallery),galleries[int(gallery)].name);
+            state.showDealerPrices = gallery == Gallery::Coutt || gallery == Gallery::Verdant;
+            state.galleryFavorites = galleries[int(gallery)].fullService;
             openIntent.clear();
             if (!entries.empty()) {
                 for (auto& e : entries) {
@@ -1259,17 +1356,13 @@ namespace gt4
                     }
                 }
                 state.begin(entries.size());
-                const auto tutorialOptions = loadTutorialConfig(ini.c_str());
-                state.tutorialsEnabled = tutorialOptions.enabled;
-                state.tutorialsSeen |= tutorialOptions.seen;
-                if (state.tutorialsEnabled && !(state.tutorialsSeen & welcomeTutorialBit)) {
+                const bool enabled = loadTutorialEnabled(ini.c_str());
+                if (!enabled || !state.tutorialsEnabled) state.tutorialsSeen = 0;
+                state.tutorialsEnabled = enabled;
+                if (enabled && !(state.tutorialsSeen & welcomeTutorialBit)) {
                     state.informationOpen = true;
                     state.informationMotion = {state.clock};
                     state.informationChoice = 3;
-                    state.tutorialsSeen |= welcomeTutorialBit;
-                    if (!saveTutorialConfig(ini.c_str(), {state.tutorialsEnabled, state.tutorialsSeen})) {
-                        log("Could not save Welcome tutorial acknowledgement");
-                    }
                 }
                 refreshSelected();
                 failed.clear();
@@ -1280,7 +1373,7 @@ namespace gt4
                 pause.begin();
                 suspended = true;
                 blockActions();
-                audio.init(gameWindow(), base + L"GT4Showroom/audio/");
+                audio.chooseMusic(galleryOptions.music, gameWindow(), base + L"GT4Showroom/audio/");
                 audio.start();
                 logAudioFaults();
                 if (diagnostics.enabled.load(std::memory_order_relaxed)) {
@@ -1301,6 +1394,7 @@ namespace gt4
                     static_cast<unsigned long>(scan));
                 log(b);
             } else {
+                if (gallery != Gallery::Main) close();
                 log("No visible vehicle models; check [ExcludedModels] in GT4Showroom.ini");
             }
         }
@@ -1402,12 +1496,24 @@ namespace gt4
                             } else {
                                 void* spawned = nullptr;
                                 const int due = claimingPrize ? 0 : state.shop.pendingCost();
-                                const int* wallet = due > 0 ? shopWallet() : nullptr;
-                                if (due > 0 && (!wallet || *wallet < due)) {
-                                    error = "Insufficient funds for selected TransFender work";
+                                const bool dealershipPurchase = gallery != Gallery::Main && !claimingPrize;
+                                const int vehiclePrice = dealershipPurchase ? spawnEntryModel.price : 0;
+                                int* wallet = (dealershipPurchase || due > 0) ? shopWallet() : nullptr;
+                                VehiclePayment payment;
+                                if (vehiclePrice < 0) {
+                                    error = "Vehicle purchase price is unavailable";
+                                } else if (dealershipPurchase && !wallet) {
+                                    error = "Player money is unavailable Please try again";
+                                } else if (!allowedHere(spawnEntryModel)) {
+                                    error = "Spawn unavailable for this model";
+                                } else if (!payment.reserve(wallet,vehiclePrice,due)) {
+                                    error = dealershipPurchase ? "Insufficient funds to purchase this vehicle and selected work"
+                                                               : "Insufficient funds for selected TransFender work";
                                 }
-                                if (error.empty() && !excluded.count(spawnEntryModel.id) &&
-                                    (spawned = game::spawn(spawnEntryModel, state.paint, error, clearance, claimingPrize))) {
+                                if (error.empty() &&
+                                    (spawned = game::spawn(spawnEntryModel, state.paint, error, clearance, claimingPrize,
+                                        gallery == Gallery::Main ? nullptr : dealerShopVisited ? &galleries[int(gallery)].shopSpawn : &galleries[int(gallery)].spawn,
+                                        gallery == Gallery::Wang ? 1.5708f : gallery == Gallery::Coutt ? .785398f : 2.51327f))) {
                                     bool installedParts = !customized;
                                     const bool prepared = game::finalizeVehicleAppearance(
                                         spawned, spawnEntryModel, state.paint,
@@ -1477,7 +1583,8 @@ namespace gt4
                                             static_cast<unsigned long>(gta::vehiclePalette()));
                                         log(paint);
                                     }
-                                    if (studioConfig.spawn != SpawnMode::InFront) {
+                                    if (gallery != Gallery::Main || studioConfig.spawn != SpawnMode::InFront) {
+                                        dealerSeatPending = gallery != Gallery::Main;
                                         V3 low = m ? m->low : V3{-1, -2.3f, -.5f}, high = m ? m->high : V3{1, 2.3f, 1.1f};
                                         if (col) {
                                             low = game::field<V3>(col, 0);
@@ -1487,12 +1594,28 @@ namespace gt4
                                         pendingEntryLow = low;
                                         pendingEntryHigh = high;
                                     }
+                                    payment.commit();
+                                    if (dealershipPurchase) {
+                                        char receipt[240]{};
+                                        std::snprintf(receipt,sizeof(receipt),
+                                                      "Dealership purchase completed: dealership=%s model=%d vehiclePrice=%d balance=%d",
+                                                      galleries[int(gallery)].name,spawnEntryModel.id,vehiclePrice,*wallet);
+                                        log(receipt);
+                                    }
                                     log("Vehicle spawned; leaving studio");
                                     if (!error.empty()) {
                                         log(error.c_str());
                                     }
                                     state.open = false;
                                 } else {
+                                    payment.cancel();
+                                    if (dealershipPurchase) {
+                                        char receipt[240]{};
+                                        std::snprintf(receipt,sizeof(receipt),
+                                                      "Dealership purchase rejected or rolled back: dealership=%s model=%d price=%d balance=%d",
+                                                      galleries[int(gallery)].name,spawnEntryModel.id,vehiclePrice,wallet ? *wallet : -1);
+                                        log(receipt);
+                                    }
                                     if (error.empty()) {
                                         error = "Spawn unavailable for this model";
                                     }
@@ -1528,7 +1651,8 @@ namespace gt4
                     if (pendingEntry) {
                         void* v = pendingEntry;
                         pendingEntry = nullptr;
-                        if (studioConfig.spawn == SpawnMode::DriverSeat) {
+                        if (dealerSeatPending || studioConfig.spawn == SpawnMode::DriverSeat) {
+                            dealerSeatPending = false;
                             void* ped = entryNative::function<void*(__cdecl*)(int)>(0x56E210)(-1);
                             log(seatPlayerAsDriver(ped, v) ? "Spawn: player seated directly as driver"
                                                            : "Spawn: driver seat unavailable; vehicle left nearby");
@@ -1676,6 +1800,10 @@ namespace gt4
         studioPreparing = true;
         fillCache(output.Width, output.Height);
         if (game::renderCamera() == camera) {
+            if (state.showDealerPrices) {
+                const int* wallet = shopWallet();
+                state.dealerBalance = wallet ? *wallet : 0;
+            }
             updateShopGeometry();
         }
         if (game::renderCamera() == camera &&
@@ -1724,7 +1852,9 @@ namespace gt4
         constexpr uintptr_t nativeSceneActive = 0xC97C54;
         const bool sceneActive = game::at<int>(nativeSceneActive) != 0;
         if (drawToBackBuffer(d, swapChain, sceneActive, [&](UINT, UINT) {
-                return renderer.presentStudio(d, state);
+                const bool presented = renderer.presentStudio(d, state);
+                if (presented && arrivalTime >= 0) renderer.veil(d,1.f-ease(float(std::clamp((arrivalTime-1.5)/1.5,0.,1.))));
+                return presented;
             })) {
             studioCompositedFrame = frameSerial;
             state.presented();
@@ -1818,6 +1948,9 @@ namespace gt4
                 }
             }
         }
+        if (!state.open && arrivalTime >= 0 && !game::menu() && focused() && camera == game::at<void*>(0xC1703C)) {
+            if (auto* d = game::device()) renderer.veil(d,ease(float(std::clamp(arrivalTime/1.5,0.,1.))));
+        }
         if (!state.open && returnFade.active() && !game::menu() && !game::codePaused() && focused() &&
             camera == game::at<void*>(0xC1703C)) {
             if (auto* d = game::device()) {
@@ -1835,6 +1968,7 @@ namespace gt4
 
     void __cdecl reset()
     {
+        removeGalleryBlips();
         studioPreparedFrame = studioCompositedFrame = UINT64_MAX;
         pendingEntry = nullptr;
         spawnEntry.stop(true);
@@ -1916,6 +2050,7 @@ namespace gt4
     void clearBeforeNativeShutdown()
     {
         try {
+            removeGalleryBlips();
             close();
         } catch (...) {
             log("Preview cleanup failed before engine shutdown");
@@ -2043,6 +2178,12 @@ namespace gt4
         if (loadStudioPreferences(std::filesystem::path(base) / L"GT4Showroom/settings.ini", savedPreferences)) {
             state.ui.applyPreferences(savedPreferences);
         }
+        readGalleryAccess();
+        galleryOptions = readGallery(ini.c_str(), gallery);
+        state.allowRealBig = gallery == Gallery::Main || gallery == Gallery::Wang;
+        state.ui.menu.categoriesEnabled = gallery != Gallery::Grotti;
+        state.ui.dealerBackground = gallery == Gallery::Main ? -1 : galleryBackground(ini.c_str(), gallery);
+        state.ui.menu.musicChoice = galleryOptions.music;
         studioConfig = readStudioConfig(ini);
         studioConfig.sort = menuSort(state.ui.sortMode);
         const auto keys = readHotkey(ini);
@@ -2096,7 +2237,8 @@ namespace gt4
                                      (game::at<uint8_t>(showRasterAddress) == 0xE9 ||
                                       std::memcmp(reinterpret_cast<const void*>(showRasterAddress),
                                                   showRasterEntry.data(), showRasterEntry.size()) == 0);
-        bool ok = showRasterReady && add(showRasterAddress, showRaster, originalShowRaster) &&
+        bool ok = showRasterReady && add(0x5D5860,saveRadarWithoutDealers,originalRadarSave) &&
+                  add(0x586D60,drawGalleryCoord,originalCoordBlip) && add(0x585FF0,drawGallerySprite,originalRadarSprite) && add(showRasterAddress, showRaster, originalShowRaster) &&
                   add(0x53BEE0, process, originalProcess) && add(0x541C40, padUpdate, originalPadUpdate) &&
                   add(0x7EE180, render, originalRender) && add(0x53E230, render2D, originalRender2D) &&
                   add(0x53E170, worldEffects, originalWorldEffects) && add(0x57B440, frontend, originalFrontend) &&

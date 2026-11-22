@@ -10,6 +10,7 @@ namespace gt4
     struct Handling
     {
         bool valid = false;
+        int price = -1;
         char drive = '?', engine = '?';
         uint8_t gears = 0;
         float mass = 0, limit = 0, acceleration = 0;
@@ -38,6 +39,8 @@ namespace gt4
         }
         h.limit = velocity / (.277778f / 50);
         h.acceleration = accel * 2500 * (h.drive == '4' ? 4 : 2);
+        int value = -1;
+        if (gta::read(p + 0xD8, value) && value >= 0) h.price = value;
         h.valid = true;
         return h;
     }

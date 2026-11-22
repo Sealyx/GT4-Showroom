@@ -6,6 +6,21 @@ void finishSettings()
     if (!ui.menuSnapshot || ui.menu.open) {
         return;
     }
+    if (ui.menu.closeResult < 0 && ui.dealerBackgroundWritten && gallery != Gallery::Main) {
+        const wchar_t* original = ui.menuDealerRaw.empty() ? nullptr : ui.menuDealerRaw.c_str();
+        if (!WritePrivateProfileStringW(galleries[int(gallery)].section, L"Background", original, ini.c_str())) {
+            log("Could not restore dealership background after Cancel");
+        }
+        ui.dealerBackground = ui.menuDealerBackground;
+    }
+    if (ui.menu.closeResult < 0 && ui.menu.musicChoice != galleryOptions.music) {
+        ui.menu.musicChoice = galleryOptions.music;
+        audio.chooseMusic(galleryOptions.music,gameWindow(),base + L"GT4Showroom/audio/");
+    } else if (ui.menu.closeResult >= 0 && ui.menu.musicChoice != galleryOptions.music) {
+        if (WritePrivateProfileStringW(galleries[int(gallery)].section,L"Music",std::to_wstring(ui.menu.musicChoice).c_str(),ini.c_str())) {
+            galleryOptions.music = ui.menu.musicChoice;
+        }
+    }
     if (ui.menu.closeResult < 0) {
         ui.cinematic = ui.menuCinematic;
         ui.vehicle = ui.menuVehicle;
@@ -26,6 +41,15 @@ void finishSettings()
     } else if (ui.preferences() != ui.menuPreferences) {
         saveStudioPreferences();
     }
+    if (gallery != Gallery::Main && ui.menu.closeResult >= 0 && ui.presets != ui.menuPreferences.presets) {
+        auto saved = mainPreferences;
+        const auto path = std::filesystem::path(base) / L"GT4Showroom/settings.ini";
+        loadStudioPreferences(path, saved);
+        for (size_t i = 0; i < ui.presets.size(); ++i) {
+            if (!(ui.presets[i] == ui.menuPreferences.presets[i])) saved.presets[i] = ui.presets[i];
+        }
+        if (saveStudioPreferences(path, saved)) mainPreferences.presets = saved.presets;
+    }
     ui.menuSnapshot = false;
 }
 
@@ -34,6 +58,7 @@ void finishSettings()
 void openStudioSettings(float x, float y, bool keyboard)
 {
     auto& ui = state.ui;
+    if (ui.favoritesOnly && !state.hasAvailableFavorites) { return; }
     if (state.selected < entries.size()) {
         const auto& entry = entries[state.selected];
         ui.menu.setVehicleKind(entry.kind, entry.classId);
@@ -41,6 +66,13 @@ void openStudioSettings(float x, float y, bool keyboard)
     state.menuViewer = state.viewer;
     ui.menuCinematic = ui.cinematic;
     ui.menuVehicle = ui.vehicle;
+    ui.dealerBackgroundWritten = false;
+    ui.menuDealerBackground = ui.dealerBackground;
+    if (gallery != Gallery::Main) {
+        wchar_t original[512]{};
+        GetPrivateProfileStringW(galleries[int(gallery)].section, L"Background", L"", original, 512, ini.c_str());
+        ui.menuDealerRaw = original;
+    }
     ui.menuPreferences = ui.preferences();
     readGameVolume(ui.menu.volume);
     ui.menuVolume = ui.menu.volume;
@@ -72,7 +104,18 @@ void closeStudioPhoto(float width, float height)
 
 void requestStudioAction(StudioAction action)
 {
-    if (action == StudioAction::None || state.busy()) {
+    if (action == StudioAction::None || state.busy() ||
+        (action == StudioAction::Favorites && !galleries[int(gallery)].fullService)) {
+        return;
+    }
+    if (action == StudioAction::Music) {
+        const int choice = std::clamp(state.ui.menu.choice,1,3);
+        state.ui.menu.musicChoice = choice;
+        audio.chooseMusic(choice,gameWindow(),base + L"GT4Showroom/audio/");
+        state.ui.menu.open = true;
+        state.ui.menu.selectedAction();
+        state.cue = Cue::Accept;
+        blockActions();
         return;
     }
     if (action == StudioAction::Language) {
@@ -120,6 +163,10 @@ void requestStudioAction(StudioAction action)
     }
     if (action == StudioAction::Background && state.ui.showroomStyle != 0) { return; }
     if (action == StudioAction::Background) {
+        if (gallery != Gallery::Main && !state.ui.favoritesOnly) {
+            if (saveGalleryBackground(ini.c_str(), gallery, state.ui.menu.choice)) state.ui.dealerBackgroundWritten = true;
+            else log("Could not save dealership background");
+        }
         state.ui.chooseBackground(state.ui.menu.choice);
         state.ui.syncMenuPresentation();
         state.ui.menu.open = true;
@@ -201,6 +248,8 @@ void requestStudioAction(StudioAction action)
         return;
     }
     if (action == StudioAction::EnterTransFender) {
+        if (!canCustomizeSelected()) { return; }
+        dealerShopVisited = gallery != Gallery::Main;
         state.ui.menu.finish(1);
         finishSettings();
         state.shopExitArmed = state.shopReturnNavigation = false;
@@ -339,7 +388,7 @@ void applyViewTransition()
 
 void favoriteSelection(bool add)
 {
-    if (entries.empty() || state.selected >= entries.size() || state.page != Page::Cars || state.busy()) {
+    if (!galleries[int(gallery)].fullService || entries.empty() || state.selected >= entries.size() || state.page != Page::Cars || state.busy()) {
         return;
     }
     auto& e = entries[state.selected];
@@ -466,7 +515,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         if (upPress || downPress || leftPress || rightPress) { state.tutorialFocus = true; }
         if (goBack || ((accept || (click && button.w > 0)) && state.tutorialFocus)) {
             if (state.closeTutorial(!goBack) &&
-                !saveTutorialConfig(ini.c_str(), {state.tutorialsEnabled, state.tutorialsSeen})) {
+                !completeTutorials(ini.c_str(), state.tutorialsEnabled, state.tutorialsSeen)) {
                 log("Could not save showroom tutorial acknowledgement");
             }
             blockActions();
@@ -492,6 +541,10 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
             state.informationChoice = target;
         }
         if (goBack || information || ((click || accept) && state.informationChoice == 3)) {
+            if (!goBack && !information && state.tutorialsEnabled) {
+                state.tutorialsSeen |= welcomeTutorialBit;
+                if (!completeTutorials(ini.c_str(), state.tutorialsEnabled, state.tutorialsSeen)) log("Could not save tutorial completion");
+            }
             state.informationMotion.dismiss(state.clock);
             state.cue = Cue::Back;
             blockActions();
@@ -867,6 +920,10 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         return;
     }
 
+    if (context && state.ui.favoritesOnly && !state.hasAvailableFavorites && !state.ui.menu.open) {
+        blockActions();
+        return;
+    }
     if (context && state.page != Page::Prize) {
         auto& ui = state.ui;
         const bool opened = !ui.menu.open;
@@ -1106,19 +1163,8 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         if (click && entry.country != Country::Unknown &&
             UIRect{46 * scale, 33 * scale, 34 * scale, 28 * scale}.contains(x, y)) {
             auto& ui = state.ui;
-            if (!ui.countryShortcut) {
-                ui.shortcutPresentationPriority = ui.countryPresentationPriority;
-                ui.shortcutCountry = ui.countryFilter;
-                ui.shortcutMask = ui.countryMask;
-                ui.shortcutOrder = ui.sortMode;
-                ui.shortcutModel = entry.id;
-            }
-            ui.countryShortcut = true;
-            ui.countryPresentationPriority = true;
-            ui.countryFilter = int(entry.country);
-            ui.countryMask = 0;
-            ui.sortMode = 4;
-            studioConfig.sort = menuSort(4);
+            ui.beginCountryShortcut(entry.country, entry.id);
+            studioConfig.sort = menuSort(ui.sortMode);
             rebuildCatalogueView(entry.id);
             refreshSelected();
             state.cue = Cue::Accept;
@@ -1158,7 +1204,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
     if (goBack) {
         state.back();
     }
-    if (favoritesPress && state.page != Page::Prize) {
+    if (favoritesPress && galleries[int(gallery)].fullService && state.page != Page::Prize) {
         requestStudioAction(state.ui.favoritesOnly ? StudioAction::AllCars : StudioAction::Favorites);
     }
     if (upPress || add) {

@@ -98,21 +98,21 @@ void shopMirror(IDirect3DDevice9* device, const Mesh& car, const Camera& camera,
     device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
 }
 
-void shopPriceMark(IDirect3DDevice9* device, float x, float y, float scale)
+void shopPriceMark(IDirect3DDevice9* device, float x, float y, float scale, bool dealership = false)
 {
     d3dShopOverlay(device);
-    if (!shopStrokeTried) {
+    if (!dealership && !shopStrokeTried) {
         shopStroke = VehicleLogos::load(device, assetPath(shopLogoPath.parent_path() / L"stroke.png"), 1024);
         shopStrokeTried = true;
     }
-    if (shopStroke.texture && shopStroke.width) {
+    if (!dealership && shopStroke.texture && shopStroke.width) {
         const float width = 105 * scale;
         const float height = width * shopStroke.height / shopStroke.width;
         rect(device, x - width * .50f, y - height * .52f, width, height, color(0xFFFFFF), shopStroke.texture);
     }
     d3dShopOverlay(device);
     constexpr size_t sides = 64;
-    constexpr float tilt = -.14f;
+    const float tilt = dealership ? 0.f : -.14f;
     const float sine = std::sin(tilt), cosine = std::cos(tilt);
     const auto disc = [&](float expand, float offset, DWORD center, DWORD edge) {
         std::array<ScreenVertex, sides + 2> vertices{};
@@ -289,6 +289,72 @@ void drawShopBackdrop(IDirect3DDevice9* device, float width, float height, ShopP
         edge[2 * i + 1] = {px + width * .018f, y * height * .92f, 0, 1, color(0xD5792E, 0), 0, 0};
     }
     device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 40, edge.data(), sizeof(ScreenVertex));
+}
+
+void drawVehicleAccount(IDirect3DDevice9* device, float width, float scale, const Entry& entry,
+                        const Paint& paint, int cash)
+{
+    const auto balance = shopMoney(cash);
+    SYSTEMTIME date{};
+    GetLocalTime(&date);
+    constexpr std::array<const char*, 12> months{"JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+                                                 "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
+    const float size = 20 * scale, top = 4 * scale, barHeight = 28 * scale;
+    const float right = width - 33 * scale;
+    const std::string day = std::to_string(date.wDay);
+    const float monthWidth = 61 * scale;
+    const float dayWidth = std::max(25 * scale, textWidth(day, size, true) + 12 * scale);
+    const float dateX = right - monthWidth - dayWidth;
+    const float moneyX = dateX - 24 * scale - textWidth(balance, size, true);
+    const float coinX = moneyX - 24 * scale;
+    const float nameSize = fitted(entry.name, size, width * .32f, true);
+    const float nameX = coinX - 20 * scale - textWidth(entry.name, nameSize, true);
+    const float markerX = nameX - 25 * scale, barX = markerX - 20 * scale;
+    ScreenVertex band[] = {
+        {barX, 0, 0, 1, color(0x5C5C5C, 0), 0, 0},
+        {width, 0, 0, 1, color(0, .97f), 0, 0},
+        {barX, top + barHeight + 4 * scale, 0, 1, color(0x5C5C5C, 0), 0, 0},
+        {width, top + barHeight + 4 * scale, 0, 1, color(0, .97f), 0, 0},
+    };
+    d3dShopOverlay(device);
+    device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, band, sizeof(ScreenVertex));
+    constexpr std::array<float, 5> markerStops{0, .30f, .5f, .70f, 1};
+    constexpr std::array<unsigned, 5> glint{2, 16, 53, 16, 2};
+    // Preserve the black chip's original stops and retain highlight headroom on white
+    const auto markerColor = [&](unsigned stop) {
+        uint32_t rgb = 0;
+        for (unsigned shift : {0u, 8u, 16u}) {
+            const float base = float((paint.rgb[0] >> shift) & 255);
+            const float ink = base * (.90f + .10f * stop / 53.f) + stop * (1.f - base / 255.f);
+            rgb |= uint32_t(std::lround(ink)) << shift;
+        }
+        return color(rgb);
+    };
+    std::array<ScreenVertex, 10> marker{};
+    for (size_t i = 0; i < markerStops.size(); ++i) {
+        const float y = top + barHeight * markerStops[i];
+        marker[2 * i] = {markerX, y, 0, 1, markerColor(glint[i]), 0, 0};
+        marker[2 * i + 1] = {markerX + 12 * scale, y, 0, 1, markerColor(glint[i]), 0, 0};
+    }
+    device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 8, marker.data(), sizeof(ScreenVertex));
+    text(device, entry.name, nameX + scale, top + 4 * scale, nameSize, color(0, .9f), false, 0, true);
+    text(device, entry.name, nameX, top + 3 * scale, nameSize, color(0xFFFFFF), false, 0, true);
+    shopDollar(device, coinX, top + barHeight * .5f, 10 * scale);
+    text(device, balance, moneyX + scale, top + 4 * scale, size, color(0, .9f), false, 0, true);
+    text(device, balance, moneyX, top + 3 * scale, size, color(0xFFFFFF), false, 0, true);
+    rect(device, dateX, top, dayWidth, barHeight, color(0xFFBD00));
+    rect(device, dateX + dayWidth, top, monthWidth, barHeight, color(0xF4F4F4));
+    ScreenVertex shade[] = {
+        {dateX, top, 0, 1, color(0, .16f), 0, 0},
+        {right, top, 0, 1, color(0, .16f), 0, 0},
+        {dateX, top + barHeight * .5f, 0, 1, color(0, 0), 0, 0},
+        {right, top + barHeight * .5f, 0, 1, color(0, 0), 0, 0},
+    };
+    d3dShopOverlay(device);
+    device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, shade, sizeof(ScreenVertex));
+    text(device, day, dateX + dayWidth * .5f, top + 2.5f * scale, size, color(0), true, 0, true);
+    text(device, months[size_t(std::clamp(int(date.wMonth), 1, 12) - 1)], dateX + dayWidth + monthWidth * .5f,
+         top + 2.5f * scale, size, color(0), true, 0, true);
 }
 
 template <class Parts>
@@ -568,67 +634,7 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
             y += 20 * scale;
         }
     }
-    const auto balance = shopMoney(shop.balance - shop.pendingCost());
-    SYSTEMTIME date{};
-    GetLocalTime(&date);
-    constexpr std::array<const char*, 12> months{"JAN", "FEB", "MAR", "APR", "MAY", "JUN",
-                                                 "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
-    const float size = 20 * scale, top = 4 * scale, barHeight = 28 * scale;
-    const float right = width - 33 * scale;
-    const std::string day = std::to_string(date.wDay);
-    const float monthWidth = 61 * scale;
-    const float dayWidth = std::max(25 * scale, textWidth(day, size, true) + 12 * scale);
-    const float dateX = right - monthWidth - dayWidth;
-    const float moneyX = dateX - 24 * scale - textWidth(balance, size, true);
-    const float coinX = moneyX - 24 * scale;
-    const float nameSize = fitted(entry.name, size, width * .32f, true);
-    const float nameX = coinX - 20 * scale - textWidth(entry.name, nameSize, true);
-    const float markerX = nameX - 25 * scale, barX = markerX - 20 * scale;
-    ScreenVertex band[] = {
-        {barX, 0, 0, 1, color(0x5C5C5C, 0), 0, 0},
-        {width, 0, 0, 1, color(0, .97f), 0, 0},
-        {barX, top + barHeight + 4 * scale, 0, 1, color(0x5C5C5C, 0), 0, 0},
-        {width, top + barHeight + 4 * scale, 0, 1, color(0, .97f), 0, 0},
-    };
-    d3dShopOverlay(device);
-    device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, band, sizeof(ScreenVertex));
-    constexpr std::array<float, 5> markerStops{0, .30f, .5f, .70f, 1};
-    constexpr std::array<unsigned, 5> glint{2, 16, 53, 16, 2};
-    // Preserve the black chip's original stops and retain highlight headroom on white
-    const auto markerColor = [&](unsigned stop) {
-        uint32_t rgb = 0;
-        for (unsigned shift : {0u, 8u, 16u}) {
-            const float base = float((paint.rgb[0] >> shift) & 255);
-            const float ink = base * (.90f + .10f * stop / 53.f) + stop * (1.f - base / 255.f);
-            rgb |= uint32_t(std::lround(ink)) << shift;
-        }
-        return color(rgb);
-    };
-    std::array<ScreenVertex, 10> marker{};
-    for (size_t i = 0; i < markerStops.size(); ++i) {
-        const float y = top + barHeight * markerStops[i];
-        marker[2 * i] = {markerX, y, 0, 1, markerColor(glint[i]), 0, 0};
-        marker[2 * i + 1] = {markerX + 12 * scale, y, 0, 1, markerColor(glint[i]), 0, 0};
-    }
-    device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 8, marker.data(), sizeof(ScreenVertex));
-    text(device, entry.name, nameX + scale, top + 4 * scale, nameSize, color(0, .9f), false, 0, true);
-    text(device, entry.name, nameX, top + 3 * scale, nameSize, color(0xFFFFFF), false, 0, true);
-    shopDollar(device, coinX, top + barHeight * .5f, 10 * scale);
-    text(device, balance, moneyX + scale, top + 4 * scale, size, color(0, .9f), false, 0, true);
-    text(device, balance, moneyX, top + 3 * scale, size, color(0xFFFFFF), false, 0, true);
-    rect(device, dateX, top, dayWidth, barHeight, color(0xFFBD00));
-    rect(device, dateX + dayWidth, top, monthWidth, barHeight, color(0xF4F4F4));
-    ScreenVertex shade[] = {
-        {dateX, top, 0, 1, color(0, .16f), 0, 0},
-        {right, top, 0, 1, color(0, .16f), 0, 0},
-        {dateX, top + barHeight * .5f, 0, 1, color(0, 0), 0, 0},
-        {right, top + barHeight * .5f, 0, 1, color(0, 0), 0, 0},
-    };
-    d3dShopOverlay(device);
-    device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, shade, sizeof(ScreenVertex));
-    text(device, day, dateX + dayWidth * .5f, top + 2.5f * scale, size, color(0), true, 0, true);
-    text(device, months[size_t(std::clamp(int(date.wMonth), 1, 12) - 1)], dateX + dayWidth + monthWidth * .5f,
-         top + 2.5f * scale, size, color(0), true, 0, true);
+    drawVehicleAccount(device, width, scale, entry, paint, shop.balance - shop.pendingCost());
     if (price > 0) {
         const float markScale = scale * (wash ? 1.f : 1.5f);
         const float x = wash ? width * .09f : width * .025f + 71.25f * scale;

@@ -331,6 +331,7 @@ namespace gt4::game
         e.paints = paints(mi);
         const auto h = handling(field<uint16_t>(mi, 0x4A));
         e.topSpeed = h.valid ? h.limit : -1;
+        e.price = h.price;
         e.handlingMass = h.mass;
         e.handlingGears = h.gears;
         e.handlingDrive = h.drive;
@@ -784,7 +785,7 @@ namespace gt4::game
     };
 
     inline void* spawn(const Entry& e, size_t choice, std::string& error, float clearance = 2.6f,
-                       bool claimingReward = false)
+                       bool claimingReward = false, const V3* fixedPosition = nullptr, float fixedHeading = 0)
     {
         void* p = player();
         if (!vehicleInfo(gta::modelInfo(e.id))) {
@@ -817,16 +818,17 @@ namespace gt4::game
             error = "Vehicle streaming failed";
             return nullptr;
         }
-        const V3 base = position(p);
+        const V3 base = fixedPosition ? *fixedPosition : position(p);
         const float heading = field<float>(p, 0x558);
         V3 pos{};
         bool found = false;
-        for (int r = 0; r < 4 && !found; ++r) {
-            for (int a = 0; a < 8 && !found; ++a) {
+        for (int r = 0; r < (fixedPosition ? 1 : 4) && !found; ++r) {
+            for (int a = 0; a < (fixedPosition ? 1 : 8) && !found; ++a) {
                 const float angle = heading + a * pi / 4;
                 pos = {base.x - std::sin(angle) * (clearance + r * 3),
                        base.y + std::cos(angle) * (clearance + r * 3),
                        base.z + 6};
+                if (fixedPosition) pos = base + V3{0,0,6};
                 bool hit = false;
                 float z = 0;
                 if (e.kind == 5) {
@@ -892,7 +894,7 @@ namespace gt4::game
             return nullptr;
         }
         seedVehicle(v, e.id);
-        reinterpret_cast<void(__thiscall*)(void*, float)>(0x43E0C0)(v, sideOnHeading(base, pos));
+        reinterpret_cast<void(__thiscall*)(void*, float)>(0x43E0C0)(v, fixedPosition ? fixedHeading : sideOnHeading(base, pos));
         field<uint32_t>(v, 0x4F8) = 1;
         if (!e.paints.empty()) {
             const auto& paint = e.paints[std::min(choice, e.paints.size() - 1)];

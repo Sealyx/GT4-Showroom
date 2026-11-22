@@ -5,9 +5,12 @@
 namespace gt4
 {
     enum StudioBackground { DefaultBackground, RedBackground, DarkGrayBackground,
-                            StaticBackground, BrushedSteelBackground, DarkGraphiteBackground, WarmBackground };
-    inline constexpr std::array<const char*,7> studioBackgroundNames{
-        "Default", "Red", "Dark Gray", "Static", "Brushed Steel", "Dark Graphite", "Wooden Taupe"
+                            StaticBackground, BrushedSteelBackground, DarkGraphiteBackground, WarmBackground, IndustrialGarageBackground, AgedConcreteBackground, WeatheredSlateBackground,
+                            HorizontalBrushedBackground, CrackedPlasterBackground, VerticalBrushedBackground,
+                            MidnightSlateBackground, SmokySteelBackground, BlueMistBackground };
+    inline constexpr std::array<const char*,16> studioBackgroundNames{
+        "Default", "Red", "Dark Gray", "Static", "Brushed Steel", "Dark Graphite", "Wooden Taupe", "Industrial Garage", "Aged Concrete", "Weathered Slate", "Horizontal Brushed",
+        "Cracked Plaster", "Vertical Brushed", "Midnight Slate", "Smoky Steel", "Blue Mist"
     };
     inline constexpr int studioBackgroundCount = int(studioBackgroundNames.size());
     // Even slots belong to backgrounds and odd slots to alternate styles. Append new IDs to keep saved slots stable
@@ -22,7 +25,7 @@ namespace gt4
 
     inline int defaultFloorQuality(int style, int background)
     {
-        return style == 0 && (background == DefaultBackground || background == DarkGrayBackground) ? 0 : 3;
+        return style == 0 && (background == DefaultBackground || background == DarkGrayBackground || background == IndustrialGarageBackground) ? 0 : 3;
     }
 
     inline bool studioCountrySelected(uint32_t mask, int filter, Country country)
@@ -43,6 +46,17 @@ namespace gt4
         if (studioCountrySelected(countryMask, countryFilter, Country::Germany)) { return BrushedSteelBackground; }
         if (studioCountrySelected(countryMask, countryFilter, Country::SouthKorea)) { return DarkGraphiteBackground; }
         if (studioCountrySelected(countryMask, countryFilter, Country::UK)) { return WarmBackground; }
+        if (studioCountrySelected(countryMask, countryFilter, Country::Australia)) { return AgedConcreteBackground; }
+        if (studioCountrySelected(countryMask, countryFilter, Country::Russia)) { return WeatheredSlateBackground; }
+        if (studioCountrySelected(countryMask, countryFilter, Country::France)) { return HorizontalBrushedBackground; }
+        if (studioCountrySelected(countryMask, countryFilter, Country::Italy)) { return CrackedPlasterBackground; }
+        if (studioCountrySelected(countryMask, countryFilter, Country::China)) { return VerticalBrushedBackground; }
+        if (studioCountrySelected(countryMask, countryFilter, Country::Brazil)) { return VerticalBrushedBackground; }
+        if (studioCountrySelected(countryMask, countryFilter, Country::Sweden)) { return MidnightSlateBackground; }
+        if (studioCountrySelected(countryMask, countryFilter, Country::USA)) { return SmokySteelBackground; }
+        if (studioCountrySelected(countryMask, countryFilter, Country::Denmark)) { return SmokySteelBackground; }
+        if (studioCountrySelected(countryMask, countryFilter, Country::Malaysia)) { return BlueMistBackground; }
+        if (studioCountrySelected(countryMask, countryFilter, Country::Indonesia)) { return BlueMistBackground; }
         return DefaultBackground;
     }
 }
