@@ -783,6 +783,9 @@ namespace gt4
         {
             if (shop.open() || ui.cinematic.active || viewer.active) {
                 returnToCarSelection(destination);
+            } else {
+                setSelectionPage(destination);
+                if (destination == Page::Paint) { colorsReturned = clock; }
             }
             footerBegan = clock;
         }
