@@ -56,12 +56,12 @@ void shopMirror(IDirect3DDevice9* device, const Mesh& car, const Camera& camera,
     const float scale = std::min(requested, 1440.f / std::max(camera.w, camera.h));
     const UINT width = UINT(std::max(1.f, std::round(camera.w * scale)));
     const UINT height = UINT(std::max(1.f, std::round(camera.h * scale)));
-    if (!allocateViewerTarget(device, width, height)) {
+    if (!allocateStudioViewTarget(device, width, height)) {
         return;
     }
     RenderTargets layers(device);
     const D3DVIEWPORT9 viewport{0, 0, width, height, 0, 1};
-    const bool ready = layers.select(viewerTargetSurface, viewerDepth, viewport) &&
+    const bool ready = layers.select(studioViewTargetSurface, studioViewDepth, viewport) &&
                        SUCCEEDED(device->Clear(0, nullptr, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, 0, 1, 0));
     if (ready) {
         Camera reduced = camera;
@@ -91,7 +91,7 @@ void shopMirror(IDirect3DDevice9* device, const Mesh& car, const Camera& camera,
         {0, camera.h, 0, 1, 0, 0, 1},
         {camera.w, camera.h, 0, 1, 0, 1, 1},
     };
-    device->SetTexture(0, viewerTarget);
+    device->SetTexture(0, studioViewTarget);
     device->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
     device->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
     device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, floor, sizeof(ScreenVertex));
@@ -279,7 +279,7 @@ void drawShopBackdrop(IDirect3DDevice9* device, float width, float height, ShopP
                            y * panelHeight,
                            0,
                            1,
-                           color(viewerBlend(tint, 0xFFFFFF, .2f), .65f),
+                           color(studioViewBlend(tint, 0xFFFFFF, .2f), .65f),
                            uStart + edgeX / panelWidth * uRange,
                            v};
     }
@@ -292,7 +292,7 @@ void drawShopBackdrop(IDirect3DDevice9* device, float width, float height, ShopP
         const float y = float(i) / 20;
         const float px = boundary(y);
         const float spread = width * (.065f - .038f * y);
-        edge[2 * i] = {px - spread, y * height * .92f, 0, 1, color(viewerBlend(tint, 0xE4E8E0, .18f), .48f), 0, 0};
+        edge[2 * i] = {px - spread, y * height * .92f, 0, 1, color(studioViewBlend(tint, 0xE4E8E0, .18f), .48f), 0, 0};
         edge[2 * i + 1] = {px, y * height * .92f, 0, 1, color(tint, .94f), 0, 0};
     }
     device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 40, edge.data(), sizeof(ScreenVertex));

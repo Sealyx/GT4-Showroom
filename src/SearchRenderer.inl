@@ -110,8 +110,8 @@ void drawSearchNotice(IDirect3DDevice9* device, float width, float height, const
         return;
     }
     const float scale = SearchPanel(width, height, false).scale;
-    const float entry = VehicleViewer::ease(float((model.clock - model.searchUntil + 2.8) / .16));
-    const float leave = 1 - VehicleViewer::ease(float((model.searchUntil - model.clock) / .16));
+    const float entry = CinematicStudio::ease(float((model.clock - model.searchUntil + 2.8) / .16));
+    const float leave = 1 - CinematicStudio::ease(float((model.searchUntil - model.clock) / .16));
     const float boxWidth = std::min(width - 30 * scale, 450 * scale);
     const SearchPanel searchPanel(width, height, model.ui.keyboard.open,
                                   model.searchOffset(scale));

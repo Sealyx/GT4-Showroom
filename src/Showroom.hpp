@@ -10,9 +10,9 @@
 #include "PreviewMotion.hpp"
 #include "Countries.hpp"
 #include "StudioUI.hpp"
-#include "VehicleViewer.hpp"
+#include "CinematicStudio.hpp"
 #include "TransFender.hpp"
-#include "ViewerPhoto.hpp"
+#include "StudioViewPhoto.hpp"
 #include "SearchPanel.hpp"
 #include "LicensePlate.hpp"
 #include "InformationPanel.hpp"
@@ -164,7 +164,6 @@ namespace gt4
         None,
         Initial,
         Cinematic,
-        Viewer,
         LiveryWarning,
         ExtrasWarning,
         ShopExit,
@@ -197,7 +196,7 @@ namespace gt4
         return {left, panel.y + 114 * scale, buttonWidth, 25 * scale};
     }
 
-    enum class Tutorial { None, Cinematic, CinematicWithCustomization, CustomizationIntro, Viewer, Customization, Photo };
+    enum class Tutorial { None, Cinematic, CinematicWithCustomization, CustomizationIntro, Customization, Photo };
 
     inline unsigned tutorialTopics(Tutorial tutorial)
     {
@@ -205,7 +204,6 @@ namespace gt4
         case Tutorial::Cinematic: return 1u << 0;
         case Tutorial::CinematicWithCustomization: return (1u << 0) | (1u << 1);
         case Tutorial::CustomizationIntro: return 1u << 1;
-        case Tutorial::Viewer: return 1u << 2;
         case Tutorial::Customization: return 1u << 3;
         default: return 0;
         }
@@ -214,11 +212,78 @@ namespace gt4
     struct Model
     {
         StudioUI ui;
-        VehicleViewer viewer;
-        CinematicView beforeViewer;
-        VehicleViewer menuViewer;
+        CinematicStudio studioView;
+        CinematicView beforeStudioView;
+        CinematicStudio menuStudioView;
         TransFender shop;
-        ViewerPhoto photo;
+        StudioViewPhoto photo;
+        struct InspectionVisuals { int background=-1,style=-1,floor=-1,vehicle=-1,shadows=-1; } inspection,menuInspection;
+        void resetInspectionVisuals() { inspection={};inspection.background=ui.backgroundStyle();inspection.style=ui.showroomStyle; }
+        int inspectionStyle() const { return ui.cinematic.active && inspection.style>=0 ? inspection.style : ui.showroomStyle; }
+        int inspectionBackground() const { return ui.cinematic.active && inspection.background>=0 ? inspection.background : ui.backgroundStyle(); }
+        int studioViewFloorQuality() const {
+            const auto& v=studioView.settings;
+            return v.inheritStudio ? (v.inheritedFloorQuality>=0?v.inheritedFloorQuality:ui.floorFor(activeStyle(),activeBackground())) : v.floorReflectionQuality();
+        }
+        int renderFloorQuality() const {
+            if(studioView.active) return studioViewFloorQuality();
+            const int local=photo.active?photo.floorQuality:ui.cinematic.active?inspection.floor:-1;
+            return local>=0?local:ui.floorFor(activeStyle(),activeBackground());
+        }
+        int renderVehicleQuality() const {
+            if(studioView.active) return studioView.settings.vehicleReflectionQuality();
+            const int local=photo.active?photo.vehicleQuality:ui.cinematic.active?inspection.vehicle:-1;
+            return local>=0?local:ui.vehicleReflections;
+        }
+        bool renderShadows() const {
+            if(studioView.active) return studioView.settings.shadows;
+            const int local=photo.active?photo.shadowChoice:ui.cinematic.active?inspection.shadows:-1;
+            return local>=0?local!=0:ui.presetFor(activeStyle(),activeBackground()).shadows;
+        }
+        void beginPhoto(bool resume=true) {
+            const int background=activeBackground(),style=activeStyle();
+            const int floor=renderFloorQuality(),vehicle=renderVehicleQuality();
+            const bool shadows=renderShadows();
+            const auto cinematic=ui.cinematic;
+            if(studioView.active)photo.begin(studioView,clock,resume);else photo.beginCinematic(clock,resume);
+            photo.originalStudioView=studioView;photo.originalCinematic=cinematic;photo.originalBegan=clock;
+            photo.background=background;photo.style=style;
+            syncPhotoVisualRows();
+            if(!photo.studioViewContext){photo.floorQuality=floor;photo.vehicleQuality=vehicle;photo.shadowChoice=shadows;}
+        }
+        void resetPhotoCamera() {
+            const auto retained=photo;
+            if(studioView.active)photo.begin(studioView,clock,false);else photo.beginCinematic(clock,false);
+            photo.originalStudioView=retained.originalStudioView;photo.originalCinematic=retained.originalCinematic;photo.originalBegan=retained.originalBegan;
+            photo.style=retained.style;photo.background=retained.background;
+            photo.floorQuality=retained.floorQuality;photo.vehicleQuality=retained.vehicleQuality;photo.shadowChoice=retained.shadowChoice;
+            photo.panelX=retained.panelX;photo.panelY=retained.panelY;
+            syncPhotoVisualRows();
+        }
+        float renderStudioViewLightPhase() const {
+            if(studioView.settings.inheritStudio) return float(ui.cinematic.lightTime(clock)-backdropPause)*.42f;
+            const float target=studioView.shadowPhase(clock);
+            if(!photo.returning)return target;
+            const float from=photo.returnStudioView.shadowPhase(clock);
+            return from+(target-from)*photo.returnAlpha(clock);
+        }
+        void closePhoto() {
+            photo.returnStudioView=studioView;
+            const double elapsed=std::max(0.,clock-(photo.originalBegan>=0?photo.originalBegan:photo.began));
+            photo.end(studioView,clock);
+            if(photo.studioViewContext) {
+                studioView=photo.originalStudioView;
+                studioView.motionBegan+=elapsed;studioView.backgroundBegan+=elapsed;studioView.began+=elapsed;
+                studioView.lastClock=studioView.lastActivity=clock;
+                studioView.heldMotion=studioView.elapsed(clock);
+                studioView.motionBegan=clock;
+                studioView.paused=false;
+                photo.entryYaw=studioView.yaw(clock);
+            }
+            ui.cinematic=photo.originalCinematic;
+            ui.cinematic.began+=elapsed;ui.cinematic.lightBegan+=elapsed;
+            photo.returning=true;photo.returnBegan=clock;
+        }
         bool informationOpen = false;
         bool tutorialsEnabled = false;
         unsigned tutorialsSeen = 0;
@@ -364,8 +429,8 @@ namespace gt4
         int informationChoice = 3;
         ReviewMotion informationMotion;
         bool shopExitArmed = false, shopReturnNavigation = false;
-        bool viewerSnapshot = false, postSelectionCinematic = false, appearanceReady = true;
-        double viewerBegan = 0;
+        bool studioViewSnapshot = false, postSelectionCinematic = false, appearanceReady = true;
+        double studioViewBegan = 0;
         SpawnReview spawnReview = SpawnReview::None;
         ReviewMotion review;
         bool purchasePlate = false, plateOpen = false, plateEditing = false;
@@ -447,7 +512,7 @@ namespace gt4
 
         bool busy() const
         {
-            return fade.action != CloseAction::None || ui.transition.active() || viewer.transitioning() ||
+            return fade.action != CloseAction::None || ui.transition.active() || studioView.transitioning() ||
                    (page == Page::Paint && clock - colorsReturned < .20);
         }
 
@@ -463,21 +528,12 @@ namespace gt4
         {
             fade.presented(clock);
             ui.transition.presented(clock);
-            viewer.presented(clock);
-        }
-
-        void rememberViewerCamera()
-        {
-            if (!viewerSnapshot && (viewer.active || viewer.targetActive)) {
-                beforeViewer = ui.cinematic;
-                viewerBegan = clock;
-                viewerSnapshot = true;
-            }
+            studioView.presented(clock);
         }
 
         bool hotspotsEnabled() const
         {
-            return ui.menu.allowHotspots && (viewer.active ? viewer.hotspots : ui.vehicle.hotspots);
+            return ui.menu.allowHotspots && (studioView.active ? studioView.hotspots : ui.vehicle.hotspots);
         }
 
         float entryAudioGain() const
@@ -490,8 +546,10 @@ namespace gt4
             if (!open || !count || busy() || ui.cinematic.active || page == Page::Prize) {
                 return false;
             }
+            resetInspectionVisuals();
             ui.cinematic.enter(clock, enthusia ? enthusiaPose(clock - motionBegan).yaw : heading() + pi);
-            appearanceReady = !postSelectionCinematic;
+            appearanceReady = true;
+            if (!startStudioView()) { ui.cinematic.leave(); return false; }
             ui.menu.selectionExtras = false;
             const bool needsCinematic = (tutorialTopics(Tutorial::Cinematic) & ~tutorialsSeen) != 0;
             const bool needsIntro = postSelectionCinematic && galleryCustomization &&
@@ -501,77 +559,113 @@ namespace gt4
             } else if (needsCinematic) {
                 showTutorial(Tutorial::Cinematic);
             }
-            viewer.lastActivity = clock;
+            studioView.lastActivity = clock;
             return true;
         }
 
-        bool startViewer(bool automatic = false)
+        bool startStudioView(bool automatic = false)
         {
             if (!open || !count || busy() || spawnReview != SpawnReview::None || page == Page::Prize ||
                 (automatic && !ui.cinematic.active) || (postSelectionCinematic && !appearanceReady)) {
                 return false;
             }
-            if (!viewer.request(true, automatic, clock)) {
+            if (!studioView.request(true, automatic, clock)) {
                 return false;
             }
-            if (ui.cinematic.active) {
-                rememberViewerCamera();
-            }
+            studioView.settings.inheritStudio = true;
+            studioView.settings.showroomBackground = studioView.settings.showroomStyle = -1;
+            studioView.settings.inheritedFloorQuality = -1;
             return true;
         }
 
-        int activeStyle() const { return photo.active && !photo.viewerContext ? photo.style : ui.showroomStyle; }
-        int activeBackground() const { return photo.active && !photo.viewerContext ? photo.background : ui.backgroundStyle(); }
+        int activeStyle() const { return photo.active?photo.style:studioView.active&&studioView.settings.inheritStudio&&studioView.settings.showroomStyle>=0?studioView.settings.showroomStyle:inspectionStyle(); }
+        int activeBackground() const { return photo.active?photo.background:studioView.active&&studioView.settings.inheritStudio&&studioView.settings.showroomBackground>=0?studioView.settings.showroomBackground:inspectionBackground(); }
+        void chooseStudioViewBackground(int value) {
+            auto& v=studioView.settings;v.inheritedFloorQuality=-1;
+            v.inheritStudio=value<0||value>=100;
+            if(value>=100) {v.showroomStyle=value==200?1:0;v.showroomBackground=value==200?0:std::clamp(value-100,0,studioBackgroundCount-1);}
+            else if(value<0) {v.showroomStyle=v.showroomBackground=-1;}
+            else studioView.changeScene(StudioViewScene(value),clock);
+            if(photo.active && v.inheritStudio) {
+                photo.background=v.showroomBackground<0?inspectionBackground():v.showroomBackground;
+                photo.style=v.showroomStyle<0?inspectionStyle():v.showroomStyle;
+            }
+            if(photo.active)syncPhotoVisualRows();
+        }
 
+        void syncPhotoVisualRows() {
+            if(!photo.studioViewContext)return;
+            const int code=studioBackdropCode(studioView.settings,activeStyle(),activeBackground());
+            photo.visualRows={9,0};
+            if(customizableStudioBackdrop(code)){photo.visualRows.push_back(1);photo.visualRows.push_back(2);if(code!=0)photo.visualRows.push_back(3);}
+            if(animatedStudioBackdrop(code))photo.visualRows.push_back(4);
+            photo.visualRows.insert(photo.visualRows.end(),{5,6,7,8});
+            photo.row=std::clamp(photo.row,0,photo.visualCount()-1);
+        }
         const char* photoVisualName(int index) const {
-            static constexpr const char* studio[]{"Preset","Background","Style","Animation","Rotation"};
-            static constexpr const char* room[]{"Preset","Background","Color","Floor","Lighting","Animation","Rotation"};
-            return photo.viewerContext ? room[index] : studio[index];
+            if(photo.studioViewContext){index=photo.visualRows[size_t(index)];if(index==9)return "Type";}
+            static constexpr const char* studio[]{"Background","Style","Animation","Rotation","Shadows","Floor Reflections","Vehicle Reflections"};
+            static constexpr const char* room[]{"Background","Color","Floor","Lighting","Animation","Rotation","Shadows","Floor Reflections","Vehicle Reflections"};
+            return photo.studioViewContext?room[index]:studio[index];
         }
         std::string photoVisualValue(int index) const {
-            if (!index) return std::to_string(photo.preset+1);
-            if (!photo.viewerContext) {
-                if (index==1) return photo.style ? "Prologue" : studioBackgroundNames[size_t(photo.background)];
-                if (index==2) return photo.style ? "Prologue":"Default";
-                if (index==3) return ui.cinematic.animate ? "On":"Off";
-                return ui.cinematic.paused ? "Paused":"On";
+            if(photo.studioViewContext){index=photo.visualRows[size_t(index)];if(index==9)return animatedStudioBackdrop(studioBackdropCode(studioView.settings,activeStyle(),activeBackground()))?"Animated":"Static";}
+            static constexpr const char* quality[]{"Off","Low","Medium","High","Ultra"};
+            const bool room=photo.studioViewContext;
+            if(index==(room?6:4))return renderShadows()?"On":"Off";
+            if(index==(room?7:5))return quality[std::clamp(renderFloorQuality(),0,4)];
+            if(index==(room?8:6))return quality[std::clamp(renderVehicleQuality(),0,4)];
+            if(!room) {
+                if(index==0)return photo.style?"Prologue":studioBackgroundNames[size_t(photo.background)];
+                if(index==1)return photo.style?"Prologue":"Default";
+                if(index==2)return ui.cinematic.animate?"On":"Off";
+                return ui.cinematic.paused?"Paused":"On";
             }
-            const auto& v=viewer.settings;
+            const auto& v=studioView.settings;
             switch(index) {
-            case 1: return v.inheritStudio ? "Showroom" : viewerSceneNames[size_t(v.scene)];
-            case 2: return viewerSurfaceName(v.wallColor);
-            case 3: return viewerSurfaceName(v.floorColor);
-            case 4: return viewerPalettes[size_t(v.palette)].name;
-            case 5: return v.animate ? "On":"Off";
-            default: return viewer.paused ? "Paused":"On";
+            case 0:return v.inheritStudio?(photo.style?"Prologue":studioBackgroundNames[size_t(photo.background)]):studioViewSceneNames[size_t(v.scene)];
+            case 1:return studioViewSurfaceName(v.wallColor);
+            case 2:return studioViewSurfaceName(v.floorColor);
+            case 3:return studioViewPalettes[size_t(v.palette)].name;
+            case 4:return v.animate?"On":"Off";
+            default:return studioView.paused?"Paused":"On";
             }
         }
         void adjustPhotoVisual(int index,int dir) {
-            const auto wrap=[dir](int value,int count){ return (value+dir+count)%count; };
-            if (!index) { photo.preset=wrap(photo.preset,3); return; }
-            if (!photo.viewerContext) {
-                if(index==1 && !photo.style) photo.background=wrap(photo.background,studioBackgroundCount);
-                if(index==2) photo.style=1-photo.style;
-                if(index==3) ui.cinematic.setAnimation(!ui.cinematic.animate,clock);
-                if(index==4) ui.cinematic.toggle(clock);
+            if(!dir || index<0 || index>=photo.visualCount())return;
+            photo.side=dir<0?-1:1;
+            if(photo.studioViewContext){index=photo.visualRows[size_t(index)];if(index==9){const int code=studioBackdropCode(studioView.settings,activeStyle(),activeBackground());chooseStudioViewBackground(studioBackdropChoices(!animatedStudioBackdrop(code)).front());return;}}
+            const auto wrap=[dir](int value,int count){return (value+dir+count)%count;};
+            const bool room=photo.studioViewContext;
+            if(index==(room?6:4)) { if(room)studioView.settings.shadows=!studioView.settings.shadows;else photo.shadowChoice=!renderShadows();return; }
+            if(index==(room?7:5)) {
+                const int q=wrap(renderFloorQuality(),5);
+                if(room){if(studioView.settings.inheritStudio)studioView.settings.inheritedFloorQuality=q;else studioView.settings.floorQuality=q;}
+                else photo.floorQuality=q;return;
+            }
+            if(index==(room?8:6)) {const int q=wrap(renderVehicleQuality(),5);if(room)studioView.settings.vehicleQuality=q;else photo.vehicleQuality=q;return;}
+            if(!room) {
+                if(index==0&&!photo.style){photo.background=wrap(photo.background,studioBackgroundCount);photo.floorQuality=photo.shadowChoice=-1;}
+                if(index==1){photo.style=1-photo.style;photo.floorQuality=photo.shadowChoice=-1;}
+                if(index==2)ui.cinematic.setAnimation(!ui.cinematic.animate,clock);
+                if(index==3)ui.cinematic.toggle(clock);
                 return;
             }
-            auto& v=viewer.settings;
-            if(index==1) {
-                constexpr int scenes[]{-1,0,1,2,4};
-                int current=v.inheritStudio ? -1 : int(v.scene);
-                int next=scenes[wrap(int(std::find(std::begin(scenes),std::end(scenes),current)-std::begin(scenes)),5)];
-                v.inheritStudio=next<0;
-                if(next>=0) viewer.changeScene(ViewerScene(next),clock);
-            } else if(index<=4) {
+            auto& v=studioView.settings;
+            if(index==0) {
+                const int current=studioBackdropCode(v,activeStyle(),activeBackground());
+                const auto scenes=studioBackdropChoices(animatedStudioBackdrop(current));
+                const auto found=std::find(scenes.begin(),scenes.end(),current);
+                const int position=found==scenes.end()?0:int(found-scenes.begin());
+                chooseStudioViewBackground(scenes[size_t(wrap(position,int(scenes.size())))]);
+            } else if(index<=3) {
                 v.inheritStudio=false;
-                if(v.scene==ViewerScene::Custom || (index==4 && v.scene==ViewerScene::Softbox))
-                    viewer.changeScene(ViewerScene::Wave,clock);
-                if(index==2) v.wallColor=wrap(v.wallColor+1,viewerWhite+2)-1;
-                if(index==3) v.floorColor=wrap(v.floorColor+1,viewerWhite+2)-1;
-                if(index==4) v.palette=wrap(v.palette,int(viewerPalettes.size()));
-            } else if(index==5) { v.animate=!v.animate; viewer.syncBackground(clock); }
-            else viewer.toggle(clock);
+                if(v.scene==StudioViewScene::Custom||(index==3&&v.scene==StudioViewScene::Softbox))studioView.changeScene(StudioViewScene::Wave,clock);
+                if(index==1)v.wallColor=wrap(v.wallColor+1,studioViewWhite+2)-1;
+                if(index==2)v.floorColor=wrap(v.floorColor+1,studioViewWhite+2)-1;
+                if(index==3)v.palette=wrap(v.palette,int(studioViewPalettes.size()));
+            } else if(index==4){v.animate=!v.animate;studioView.syncBackground(clock);ui.cinematic.setAnimation(v.animate,clock);}
+            else studioView.toggle(clock);
         }
 
         void requestSpawn()
@@ -650,20 +744,23 @@ namespace gt4
             shopExitArmed = shopReturnNavigation = false;
             photo = {};
             shopResetGroup = -1;
-            viewer.reset(clock);
-            viewerSnapshot = false;
+            studioView.reset(clock);
+            studioViewSnapshot = false;
             postSelectionCinematic = false;
             appearanceReady = true;
             ui.cinematic.leave();
+            ui.cinematic.mix = 0;
             ui.vehicle.doorTargets.fill(0);
             ui.vehicle.doors.fill(0);
             ui.vehicle.focus = -1;
             ui.vehicle.centerWheels();
+            selectionPanels={};
+            ui.menu.open=false;
             setSelectionPage(destination);
             if (destination == Page::Paint) { colorsReturned = clock; }
             selectionAdvancePending = skipSelectionExtras = false;
             tutorial = Tutorial::None;
-            paintMix = 0;
+            paintMix = destination==Page::Cars?0.f:1.f;
             dragging = false;
             status.clear();
             stripChanged = clock;
@@ -673,7 +770,7 @@ namespace gt4
         {
             shop.request(ShopPage::Closed, clock);
             shopExitArmed = false;
-            shopReturnNavigation = true;
+            shopReturnNavigation = !ui.cinematic.active;
         }
 
         int reviewButtons() const
@@ -734,7 +831,8 @@ namespace gt4
                     cue = Cue::Accept;
                 } else if (choice == ReviewChoice::Spawn) {
                     skipSelectionExtras = true;
-                    beginPlate(review);
+                    openReview(SpawnReview::Initial);
+                    cue = Cue::Accept;
                 } else {
                     cue = Cue::Back;
                 }
@@ -761,9 +859,7 @@ namespace gt4
                 beginPlate(review);
                 return;
             }
-            if (review == SpawnReview::Viewer) {
-                viewer.request(false, false, clock);
-            } else if (review == SpawnReview::Initial) {
+            if (review == SpawnReview::Initial) {
                 postSelectionCinematic = true;
                 startCinematic();
             }
@@ -781,7 +877,7 @@ namespace gt4
 
         void returnToCarSelectionStage(Page destination)
         {
-            if (shop.open() || ui.cinematic.active || viewer.active) {
+            if (shop.open() || ui.cinematic.active || studioView.active) {
                 returnToCarSelection(destination);
             } else {
                 setSelectionPage(destination);
@@ -862,14 +958,14 @@ namespace gt4
                 return (1 - searchOpacity()) * 14 * scale;
             }
             const float start = (1 - searchCloseAlpha) * 14 * scale;
-            const float amount = VehicleViewer::ease(float((clock - searchClosed) / .16));
+            const float amount = CinematicStudio::ease(float((clock - searchClosed) / .16));
             return start - amount * (start + 14 * scale);
         }
 
         float searchNoticeOpacity() const
         {
-            const float entry = VehicleViewer::ease(float((clock - searchUntil + 2.8) / .16));
-            const float leave = VehicleViewer::ease(float((searchUntil - clock) / .16));
+            const float entry = CinematicStudio::ease(float((clock - searchUntil + 2.8) / .16));
+            const float leave = CinematicStudio::ease(float((searchUntil - clock) / .16));
             return std::min(entry, leave);
         }
 
@@ -879,7 +975,7 @@ namespace gt4
             if (elapsed < 0 || (!searching && searchClosed < 0)) {
                 return 0;
             }
-            const float phase = VehicleViewer::ease(float(elapsed / .16));
+            const float phase = CinematicStudio::ease(float(elapsed / .16));
             return searching ? phase : searchCloseAlpha * (1 - phase);
         }
 
@@ -899,8 +995,8 @@ namespace gt4
         bool canBeginSearch() const
         {
             return open && page == Page::Cars && !busy() && !ui.modal() &&
-                   !ui.cinematic.active && ui.cinematic.mix <= .001f && !viewer.active &&
-                   !viewer.targetActive && !shop.open() && !photo.active && !informationOpen && !tutorialOpen() &&
+                   !ui.cinematic.active && ui.cinematic.mix <= .001f && !studioView.active &&
+                   !studioView.targetActive && !shop.open() && !photo.active && !informationOpen && !tutorialOpen() &&
                    !plateOpen && spawnReview == SpawnReview::None && !searching;
         }
 
@@ -1029,8 +1125,8 @@ namespace gt4
             backgroundBlend.fill(0.f);
             backgroundBlend[size_t(ui.backgroundStyle())] = 1.f;
             prologueMix = float(activeStyle() == 1);
-            viewer.reset(clock);
-            viewerSnapshot = postSelectionCinematic = false;
+            studioView.reset(clock);
+            studioViewSnapshot = postSelectionCinematic = false;
             spawnReview = SpawnReview::None;
             appearanceReady = true;
             ui.pointerMoved = clock;
@@ -1077,6 +1173,7 @@ namespace gt4
         {
             seconds = std::isfinite(seconds) ? std::clamp(seconds, 0., 1.) : 0;
             clock += seconds;
+            if(photo.returning && clock-photo.returnBegan>=.3)photo.returning=false;
             if(purchase.blackView() || (purchasePlate && plateOpen)) backdropPause+=seconds;
             if(purchase.leaving>=0 && clock-purchase.leaving>=.55) advancePurchase(true);
             const auto previousPurchaseStep=purchase.step;
@@ -1087,7 +1184,7 @@ namespace gt4
             interfaceReveal = std::clamp(interfaceReveal + (hidden ? -step : step),0.f,1.f);
             if (tutorialOpen() && tutorialMotion.finished(clock)) {
                 tutorial = Tutorial::None;
-                viewer.lastActivity = clock;
+                studioView.lastActivity = clock;
             }
             if (informationOpen && informationMotion.finished(clock)) {
                 informationOpen = false;
@@ -1138,25 +1235,19 @@ namespace gt4
             }
             ui.vehicle.step(seconds);
             ui.transition.step(clock);
-            const bool viewerWasReady = viewer.active && !viewer.transitioning();
-            viewer.step(clock,
+            const bool studioViewWasReady = studioView.active && !studioView.transitioning();
+            studioView.step(clock,
                         open && ui.cinematic.active && !ui.modal() && !shop.open() && !photo.active && !purchase.active() && !searching && !tutorialOpen() &&
                             spawnReview == SpawnReview::None && !plateOpen && fade.action == CloseAction::None &&
                             !ui.transition.active() && (!postSelectionCinematic || appearanceReady));
-            if (!viewerWasReady && viewer.active && viewer.targetActive && !viewer.transitioning()) {
-                showTutorial(Tutorial::Viewer);
+            if (!studioViewWasReady && studioView.active && studioView.targetActive && !studioView.transitioning()) {
+                // Entry tutorials are selected by startCinematic
             }
-            if (viewer.active && !ui.cinematic.active) {
+            if (studioView.active && !ui.cinematic.active) {
                 ui.cinematic.enter(clock, enthusia ? enthusiaPose(clock - motionBegan).yaw : heading() + pi);
             }
             if (ui.cinematic.active) {
-                rememberViewerCamera();
-            }
-            if (!viewer.active && !viewer.targetActive && viewerSnapshot && viewer.phase == ViewerPhase::FadeIn) {
-                ui.cinematic = beforeViewer;
-                ui.cinematic.began += clock - viewerBegan;
-                ui.cinematic.lightBegan += clock - viewerBegan;
-                viewerSnapshot = false;
+                // The unified Cinematic owns the inspection camera directly
             }
             scroll += (scrollTarget() - scroll) * float(1 - std::exp(-seconds * 22));
             const float target = (page == Page::Paint || page == Page::Livery || page == Page::Extras) ? 1.f : 0.f;
@@ -1177,8 +1268,8 @@ namespace gt4
             shopExitArmed = shopReturnNavigation = false;
             photo = {};
             shopResetGroup = -1;
-            viewer.reset(clock);
-            viewerSnapshot = postSelectionCinematic = false;
+            studioView.reset(clock);
+            studioViewSnapshot = postSelectionCinematic = false;
             spawnReview = SpawnReview::None;
             appearanceReady = true;
             resetVehicleAppearance();
@@ -1312,13 +1403,13 @@ namespace gt4
                 ui.menu.open = false;
                 return;
             }
-            if (shopReturnNavigation && !shop.open()) {
+            if (shopReturnNavigation && !shop.open() && !ui.cinematic.active) {
                 returnToCarSelection();
                 cue = Cue::Back;
                 return;
             }
             if (ui.cinematic.active) {
-                spawnReview = viewer.active ? SpawnReview::Viewer : SpawnReview::Cinematic;
+                spawnReview = SpawnReview::Cinematic;
                 review = {clock};
                 pendingReviewChoice = -1;
                 reviewChoice = 0;
@@ -1428,7 +1519,7 @@ namespace gt4
         {
             return std::max({fade.action != CloseAction::None ? fade.opacity(clock) : 1 - opening(),
                              ui.transition.alpha(clock),
-                             viewer.opacity(clock)});
+                             studioView.opacity(clock)});
         }
     };
 

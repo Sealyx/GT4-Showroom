@@ -102,10 +102,10 @@ void drawInformation(IDirect3DDevice9* device, float width, float height, const 
     constexpr Topic overview[]{
         {"Cinematic", "Hold the left mouse button on the vehicle and drag to rotate it. Scroll to zoom. Use the right stick to rotate with a controller."},
         {"Hotspots", "Click a hotspot to open or close the supported door, bonnet, boot or other part. Use Tab or the controller to cycle through hotspots."},
-        {"Vehicle Viewer", "Open Vehicle Viewer from Cinematic Settings to inspect the vehicle from more angles and change its studio, lighting or reflections."},
+        {"Studio settings", "Open Settings to change the background, lighting, shadows and independent floor or vehicle reflection quality. Open Photo Lab to frame and save a photograph."},
         {"Customization", "Open Customization from Settings to wash the vehicle, adjust suspension, and preview wheels and components."}
     };
-    constexpr Topic viewer[]{
+    constexpr Topic studioView[]{
         {"Inspect the vehicle", "Drag with the left mouse button or use the right stick to rotate. Scroll to zoom in on details."},
         {"Set up the studio", "Open Settings to change the scene, floor, palette, reflections or shadows. Set Rotation to Paused to hold your angle."},
         {"Photo Lab", "Open Photo Lab from Settings to frame a shot. Use the controls in the footer to hide the interface or save a photo."}
@@ -132,14 +132,14 @@ void drawInformation(IDirect3DDevice9* device, float width, float height, const 
     };
     const bool combined = model.tutorial == Tutorial::CinematicWithCustomization;
     const bool intro = model.tutorial == Tutorial::CustomizationIntro;
-    const bool inViewer = model.tutorial == Tutorial::Viewer;
+    const bool inStudioView = false;
     const bool inShop = model.tutorial == Tutorial::Customization;
-    const bool legacy = model.tutorial == Tutorial::Cinematic;
-    const size_t mainDemo = inViewer ? 1 : (inShop || intro ? 2 : 0);
+    const bool legacy = false;
+    const size_t mainDemo = inShop || intro ? 2 : 1;
     const bool mainAnimated = tutorial && model.tutorial != Tutorial::Photo && loadDemo(mainDemo);
     const bool secondAnimated = combined && loadDemo(2);
     const bool animated = mainAnimated || secondAnimated;
-    const Topic* topics = model.tutorial == Tutorial::Photo ? photo : intro ? overview + 3 : (inViewer ? viewer : (inShop ? customization : overview));
+    const Topic* topics = model.tutorial == Tutorial::Photo ? photo : intro ? overview + 3 : (inStudioView ? studioView : (inShop ? customization : overview));
     const size_t rows = intro ? 1 : (combined ? 4 : 3);
     const float panelWidth = intro ? 680.f : 760.f;
     const float demoWidth = intro ? 280.f : 327.f;

@@ -9,7 +9,7 @@
 #include "StudioPreferences.hpp"
 #include "Localization.hpp"
 #include "Cinematic.hpp"
-#include "VehicleViewer.hpp"
+#include "CinematicStudio.hpp"
 #include "CustomizationState.hpp"
 #include "InputState.hpp"
 
@@ -48,15 +48,17 @@ namespace gt4
         DisplayModelId,
         DisplayModelName,
         Hotspots,
-        ViewerEnter,
-        ViewerAnimate,
-        ViewerScene,
-        ViewerColor,
-        ViewerFloor,
-        ViewerPalette,
-        ViewerReflections,
-        ViewerShadows,
-        ViewerPause,
+        StudioViewAnimate,
+        StudioViewScene,
+        StudioViewType,
+        StudioViewColor,
+        StudioViewFloor,
+        StudioViewPalette,
+        StudioViewReflections,
+        StudioViewFloorReflections,
+        StudioViewVehicleReflections,
+        StudioViewShadows,
+        StudioViewPause,
         EnterTransFender,
         EnterPhoto,
         UnitFormat,
@@ -179,14 +181,16 @@ namespace gt4
         DisplayModelId,
         DisplayModelName,
         Hotspots,
-        ViewerAnimate,
-        ViewerScene,
-        ViewerColor,
-        ViewerFloor,
-        ViewerPalette,
-        ViewerReflections,
-        ViewerShadows,
-        ViewerPause,
+        StudioViewAnimate,
+        StudioViewScene,
+        StudioViewColor,
+        StudioViewFloor,
+        StudioViewPalette,
+        StudioViewReflections,
+        StudioViewFloorReflections,
+        StudioViewVehicleReflections,
+        StudioViewShadows,
+        StudioViewPause,
         UnitFormat,
         CinematicAnimation,
         CinematicRotation,
@@ -257,8 +261,7 @@ namespace gt4
     enum class SettingsView
     {
         Showroom,
-        Cinematic,
-        VehicleViewer
+        Cinematic
     };
 
     struct ContextMenu
@@ -271,14 +274,15 @@ namespace gt4
         std::array<bool, 3> monitorPlaced{};
         double monitorChanged = 0;
         int closeResult = 0, sliderDrag = -1;
-        bool sliderChanged = false;
+        bool sliderChanged = false, typeChanged=false;
+        int typeSide=1;
         std::array<int, 2> volume{{64, 64}};
         bool hotspots = true;
         bool allowHotspots = true;
 
-        ViewerSettings viewerSettings;
+        StudioViewSettings studioViewSettings;
         SettingsView settingsView = SettingsView::Showroom;
-        bool viewerPaused = false, cinematicPaused = false, cinematicAnimated = true;
+        bool studioViewPaused = false, cinematicPaused = false, cinematicAnimated = true;
         bool categoriesEnabled = true;
         bool customizationEnabled = false;
         int customizationModel = -1;
@@ -458,47 +462,30 @@ namespace gt4
 
         std::vector<MenuItem> rootItems() const
         {
-            if (settingsView == SettingsView::VehicleViewer) {
-                std::vector<MenuItem> rows{{"Background", StudioAction::None, -1, MenuBranch::ViewerScene}};
-                if (viewerSettings.scene != ViewerScene::Custom) {
-                    rows.push_back({"Color", StudioAction::None, -1, MenuBranch::ViewerColor});
-                    rows.push_back({"Floor", StudioAction::None, -1, MenuBranch::ViewerFloor});
-                    if (viewerSettings.scene != ViewerScene::Softbox) {
-                        rows.push_back({"Lighting", StudioAction::None, -1, MenuBranch::ViewerPalette});
+            if (settingsView == SettingsView::Cinematic) {
+                const int code=studioBackdropCode(studioViewSettings,styleChoice,backgroundChoice);
+                std::vector<MenuItem> rows{{"Type",StudioAction::StudioViewType},{"Background", StudioAction::None, -1, MenuBranch::StudioViewScene}};
+                if (customizableStudioBackdrop(code)) {
+                    rows.push_back({"Color", StudioAction::None, -1, MenuBranch::StudioViewColor});
+                    rows.push_back({"Floor", StudioAction::None, -1, MenuBranch::StudioViewFloor});
+                    if (studioViewSettings.scene != StudioViewScene::Softbox) {
+                        rows.push_back({"Lighting", StudioAction::None, -1, MenuBranch::StudioViewPalette});
                     }
                 }
                 rows.push_back({"Anti-Aliasing", StudioAction::None, -1, MenuBranch::Antialiasing});
                 rows.push_back({"Ambient Occlusion", StudioAction::None, -1, MenuBranch::AmbientOcclusion});
-                rows.push_back({"Reflections", StudioAction::None, -1, MenuBranch::ViewerReflections});
-                rows.push_back({"Shadows", StudioAction::None, -1, MenuBranch::ViewerShadows});
-                if (viewerSettings.scene != ViewerScene::Custom) {
-                    rows.push_back({"Animation", StudioAction::None, -1, MenuBranch::ViewerAnimate});
+                rows.push_back({"Reflections", StudioAction::None, -1, MenuBranch::StudioViewReflections});
+                rows.push_back({"Shadows", StudioAction::None, -1, MenuBranch::StudioViewShadows});
+                if (animatedStudioBackdrop(code)) {
+                    rows.push_back({"Animation", StudioAction::None, -1, MenuBranch::StudioViewAnimate});
                 }
-                rows.push_back({"Rotation", StudioAction::None, -1, MenuBranch::ViewerPause});
+                rows.push_back({"Rotation", StudioAction::None, -1, MenuBranch::StudioViewPause});
                 if (allowHotspots) {
                     rows.push_back({"Hotspots", StudioAction::None, -1, MenuBranch::Hotspots});
                 }
                 if (customizationEnabled) {
                     rows.push_back({"Customization", StudioAction::EnterTransFender});
                 }
-                rows.push_back({"Photo Lab", StudioAction::EnterPhoto});
-                return rows;
-            }
-            if (settingsView == SettingsView::Cinematic) {
-                std::vector<MenuItem> rows{{"Hotspots", StudioAction::None, -1, MenuBranch::Hotspots},
-                                           {"Shadows", StudioAction::None, -1, MenuBranch::Shadows},
-                                           {"Anti-Aliasing", StudioAction::None, -1, MenuBranch::Antialiasing},
-                                           {"Ambient Occlusion", StudioAction::None, -1, MenuBranch::AmbientOcclusion},
-                                           {"Reflections", StudioAction::None, -1, MenuBranch::Reflections},
-                                           {"Animation", StudioAction::None, -1, MenuBranch::CinematicAnimation},
-                                           {"Rotation", StudioAction::None, -1, MenuBranch::CinematicRotation}};
-                if (!allowHotspots) {
-                    rows.erase(rows.begin());
-                }
-                if (customizationEnabled) {
-                    rows.push_back({"Customization", StudioAction::EnterTransFender});
-                }
-                rows.push_back({"Vehicle Viewer", StudioAction::ViewerEnter});
                 rows.push_back({"Photo Lab", StudioAction::EnterPhoto});
                 return rows;
             }
@@ -628,63 +615,61 @@ namespace gt4
                 case MenuBranch::Hotspots:
                     return {{"On", StudioAction::Hotspots, 1, MenuBranch::None, hotspots},
                             {"Off", StudioAction::Hotspots, 0, MenuBranch::None, !hotspots}};
-                case MenuBranch::ViewerAnimate:
-                    return {{"On", StudioAction::ViewerAnimate, 1, MenuBranch::None, viewerSettings.animate},
-                            {"Off", StudioAction::ViewerAnimate, 0, MenuBranch::None, !viewerSettings.animate}};
-                case MenuBranch::ViewerScene: {
-                    std::vector<MenuItem> rows{{"Showroom",StudioAction::ViewerScene,-1,MenuBranch::None,viewerSettings.inheritStudio}};
-                    for (size_t i = 0; i < viewerSceneNames.size(); ++i) {
-                        if (!viewerSceneNames[i]) {
-                            continue;
-                        }
-                        rows.push_back({viewerSceneNames[i], StudioAction::ViewerScene, int(i), MenuBranch::None,
-                                        !viewerSettings.inheritStudio && int(viewerSettings.scene) == int(i)});
-                    }
+                case MenuBranch::StudioViewAnimate:
+                    return {{"On", StudioAction::StudioViewAnimate, 1, MenuBranch::None, studioViewSettings.animate},
+                            {"Off", StudioAction::StudioViewAnimate, 0, MenuBranch::None, !studioViewSettings.animate}};
+                case MenuBranch::StudioViewScene: {
+                    const int code=studioBackdropCode(studioViewSettings,styleChoice,backgroundChoice);
+                    std::vector<MenuItem> rows;
+                    for(int value:studioBackdropChoices(animatedStudioBackdrop(code)))rows.push_back({studioBackdropName(value),StudioAction::StudioViewScene,value,MenuBranch::None,value==code});
                     return rows;
                 }
-                case MenuBranch::ViewerColor:
-                case MenuBranch::ViewerFloor: {
-                    const bool wall = branch == MenuBranch::ViewerColor;
-                    const auto action = wall ? StudioAction::ViewerColor : StudioAction::ViewerFloor;
-                    const int selection = wall ? viewerSettings.wallColor : viewerSettings.floorColor;
+                case MenuBranch::StudioViewColor:
+                case MenuBranch::StudioViewFloor: {
+                    const bool wall = branch == MenuBranch::StudioViewColor;
+                    const auto action = wall ? StudioAction::StudioViewColor : StudioAction::StudioViewFloor;
+                    const int selection = wall ? studioViewSettings.wallColor : studioViewSettings.floorColor;
                     std::vector<MenuItem> rows;
-                    rows.reserve(size_t(viewerWhite + 2));
+                    rows.reserve(size_t(studioViewWhite + 2));
                     const auto addColor = [&](int id) {
-                        rows.push_back({viewerSurfaceName(id), action, id, MenuBranch::None, selection == id});
+                        rows.push_back({studioViewSurfaceName(id), action, id, MenuBranch::None, selection == id});
                     };
                     addColor(-1);
-                    addColor(viewerBlack);
-                    for (int i = 0; i < viewerBlack; ++i) {
+                    addColor(studioViewBlack);
+                    for (int i = 0; i < studioViewBlack; ++i) {
                         addColor(i);
-                        if (std::string_view(viewerPalettes[size_t(i)].name) == "White") {
-                            addColor(viewerWhite);
+                        if (std::string_view(studioViewPalettes[size_t(i)].name) == "White") {
+                            addColor(studioViewWhite);
                         }
                     }
                     return rows;
                 }
-                case MenuBranch::ViewerPalette: {
+                case MenuBranch::StudioViewPalette: {
                     std::vector<MenuItem> rows;
-                    for (size_t i = 0; i < viewerPalettes.size(); ++i) {
-                        rows.push_back({viewerPalettes[i].name, StudioAction::ViewerPalette, int(i), MenuBranch::None,
-                                        viewerSettings.palette == int(i)});
+                    for (size_t i = 0; i < studioViewPalettes.size(); ++i) {
+                        rows.push_back({studioViewPalettes[i].name, StudioAction::StudioViewPalette, int(i), MenuBranch::None,
+                                        studioViewSettings.palette == int(i)});
                     }
                     return rows;
                 }
-                case MenuBranch::ViewerReflections:
-                    return {{"Floor On",StudioAction::ViewerReflections,1,MenuBranch::None,viewerSettings.reflections},
-                            {"Floor Off",StudioAction::ViewerReflections,0,MenuBranch::None,!viewerSettings.reflections},
-                            {"Vehicle On",StudioAction::ViewerReflections,3,MenuBranch::None,viewerSettings.vehicleReflections},
-                            {"Vehicle Off",StudioAction::ViewerReflections,2,MenuBranch::None,!viewerSettings.vehicleReflections},
-                            {"Low",StudioAction::ViewerReflections,4,MenuBranch::None,viewerSettings.reflectionQuality==1},
-                            {"Medium",StudioAction::ViewerReflections,5,MenuBranch::None,viewerSettings.reflectionQuality==2},
-                            {"High",StudioAction::ViewerReflections,6,MenuBranch::None,viewerSettings.reflectionQuality==3},
-                            {"Ultra",StudioAction::ViewerReflections,7,MenuBranch::None,viewerSettings.reflectionQuality==4}};
-                case MenuBranch::ViewerShadows:
-                    return {{"On", StudioAction::ViewerShadows, 1, MenuBranch::None, viewerSettings.shadows},
-                            {"Off", StudioAction::ViewerShadows, 0, MenuBranch::None, !viewerSettings.shadows}};
-                case MenuBranch::ViewerPause:
-                    return {{"Playing", StudioAction::ViewerPause, 0, MenuBranch::None, !viewerPaused},
-                            {"Paused", StudioAction::ViewerPause, 1, MenuBranch::None, viewerPaused}};
+                case MenuBranch::StudioViewReflections:
+                    return {{"Floor",StudioAction::None,-1,MenuBranch::StudioViewFloorReflections},
+                            {"Vehicle",StudioAction::None,-1,MenuBranch::StudioViewVehicleReflections}};
+                case MenuBranch::StudioViewFloorReflections:
+                case MenuBranch::StudioViewVehicleReflections: {
+                    constexpr const char* names[]{"Off","Low","Medium","High","Ultra"};
+                    const bool floor=branch==MenuBranch::StudioViewFloorReflections;
+                    const int quality=floor?studioViewSettings.floorReflectionQuality():studioViewSettings.vehicleReflectionQuality();
+                    std::vector<MenuItem> rows;
+                    for(int i=0;i<5;++i) rows.push_back({names[i],floor?StudioAction::StudioViewFloorReflections:StudioAction::StudioViewVehicleReflections,i,MenuBranch::None,quality==i});
+                    return rows;
+                }
+                case MenuBranch::StudioViewShadows:
+                    return {{"On", StudioAction::StudioViewShadows, 1, MenuBranch::None, studioViewSettings.shadows},
+                            {"Off", StudioAction::StudioViewShadows, 0, MenuBranch::None, !studioViewSettings.shadows}};
+                case MenuBranch::StudioViewPause:
+                    return {{"Playing", StudioAction::StudioViewPause, 0, MenuBranch::None, !studioViewPaused},
+                            {"Paused", StudioAction::StudioViewPause, 1, MenuBranch::None, studioViewPaused}};
                 case MenuBranch::Shadows:
                     return {{"On", StudioAction::Shadows, 1, MenuBranch::None, shadows},
                             {"Off", StudioAction::Shadows, 0, MenuBranch::None, !shadows}};
@@ -752,7 +737,7 @@ namespace gt4
             }
             const auto branch = childBranch();
             if ((branch == MenuBranch::Logos || branch == MenuBranch::Extras || branch == MenuBranch::Display ||
-                 branch == MenuBranch::Reflections || branch == MenuBranch::Categories) &&
+                 branch == MenuBranch::Reflections || branch == MenuBranch::StudioViewReflections || branch == MenuBranch::Categories) &&
                 focus() == 0) {
                 return MenuBranch::None;
             }
@@ -852,7 +837,7 @@ namespace gt4
         bool monitorSubWindow() const
         {
             const auto b = childBranch();
-            return b == MenuBranch::Logos || b == MenuBranch::Extras || b == MenuBranch::Display || b == MenuBranch::Volume || b == MenuBranch::Reflections || b == MenuBranch::Categories;
+            return b == MenuBranch::Logos || b == MenuBranch::Extras || b == MenuBranch::Display || b == MenuBranch::Volume || b == MenuBranch::Reflections || b == MenuBranch::StudioViewReflections || b == MenuBranch::Categories;
         }
 
         bool monitorSelectorWindow() const
@@ -1140,10 +1125,10 @@ namespace gt4
             return inserted.first->second;
         }
 
-        const PresentationPreset& activePreset() const
+        const PresentationPreset& presetFor(int style,int background) const
         {
             const auto key = presentationContext();
-            const auto slot = reflectionPreset(showroomStyle, backgroundStyle());
+            const auto slot = reflectionPreset(style, background);
             if (!key) { return presets[slot]; }
             auto found = contexts.find(key);
             if (found == contexts.end()) { found = contexts.find(fallbackPresentationContext()); }
@@ -1151,6 +1136,11 @@ namespace gt4
             return found == contexts.end() ? initial : found->second.presets[slot];
         }
 
+        const PresentationPreset& activePreset() const { return presetFor(showroomStyle,backgroundStyle()); }
+        int floorFor(int style,int background) const {
+            const auto& preset=presetFor(style,background);
+            return preset.floorQuality==inheritedFloorQuality?(defaultFloorQuality(style,background)?preset.reflectionQuality:0):preset.floorQuality;
+        }
         PresentationPreset& editActivePreset()
         {
             const auto key = presentationContext();
@@ -1357,3 +1347,4 @@ namespace gt4
         }
     };
 }
+

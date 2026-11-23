@@ -1,53 +1,53 @@
-std::vector<ScreenVertex> viewerSurfaceVertices, viewerPatternVertices;
-std::vector<uint16_t> viewerSurfaceIndices;
-std::array<ScreenVertex, 65 * 37> viewerSurfaceGrid{};
-std::array<float, 18> viewerSurfaceCamera{};
-double viewerSurfaceTime = -1;
-ViewerScene viewerSurfaceScene = ViewerScene::Softbox;
-uint64_t viewerSurfaceStyle = 0;
+std::vector<ScreenVertex> studioViewSurfaceVertices, studioViewPatternVertices;
+std::vector<uint16_t> studioViewSurfaceIndices;
+std::array<ScreenVertex, 65 * 37> studioViewSurfaceGrid{};
+std::array<float, 18> studioViewSurfaceCamera{};
+double studioViewSurfaceTime = -1;
+StudioViewScene studioViewSurfaceScene = StudioViewScene::Softbox;
+uint64_t studioViewSurfaceStyle = 0;
 
-struct ViewerPatternLine
+struct StudioViewPatternLine
 {
     V3 first, second;
     uint32_t firstColor, secondColor;
     float alpha, width;
 };
 
-std::vector<std::array<ViewerWaveVertex, 3>> viewerWaveMesh;
-struct ViewerWaveBounds
+std::vector<std::array<StudioViewWaveVertex, 3>> studioViewWaveMesh;
+struct StudioViewWaveBounds
 {
     V3 low, high;
 };
 
-static constexpr size_t viewerWaveTrianglesPerSegment = 24;
-std::vector<ViewerWaveBounds> viewerWaveBounds;
-std::vector<ViewerPatternLine> viewerPatternMesh;
-double viewerPatternTime = -1;
-ViewerScene viewerPatternScene = ViewerScene::Softbox;
-int viewerPatternPalette = -1;
+static constexpr size_t studioViewWaveTrianglesPerSegment = 24;
+std::vector<StudioViewWaveBounds> studioViewWaveBounds;
+std::vector<StudioViewPatternLine> studioViewPatternMesh;
+double studioViewPatternTime = -1;
+StudioViewScene studioViewPatternScene = StudioViewScene::Softbox;
+int studioViewPatternPalette = -1;
 
-void updateViewerPatternMesh(const VehicleViewer& viewer, double now)
+void updateStudioViewPatternMesh(const CinematicStudio& studioView, double now)
 {
-    const double time = viewer.backgroundElapsed(now);
-    const auto scene = viewer.settings.scene;
-    const int palette = viewer.settings.palette;
-    if (time == viewerPatternTime && scene == viewerPatternScene && palette == viewerPatternPalette) {
+    const double time = studioView.backgroundElapsed(now);
+    const auto scene = studioView.settings.scene;
+    const int palette = studioView.settings.palette;
+    if (time == studioViewPatternTime && scene == studioViewPatternScene && palette == studioViewPatternPalette) {
         return;
     }
 
-    viewerWaveMesh.clear();
-    viewerWaveBounds.clear();
-    viewerPatternMesh.clear();
-    if (viewerWaveScene(scene)) {
-        viewerWaveMesh.reserve(720 * viewerWaveTrianglesPerSegment);
-        viewerWaveBounds.reserve(720);
+    studioViewWaveMesh.clear();
+    studioViewWaveBounds.clear();
+    studioViewPatternMesh.clear();
+    if (studioViewWaveScene(scene)) {
+        studioViewWaveMesh.reserve(720 * studioViewWaveTrianglesPerSegment);
+        studioViewWaveBounds.reserve(720);
     }
-    viewerPatternMesh.reserve(scene == ViewerScene::Ribbons ? 20 * viewerRibbonSegmentCount : 720);
-    viewerWaveTriangles(viewer, now, [&](ViewerWaveVertex a, ViewerWaveVertex b, ViewerWaveVertex c) {
-        if (viewerWaveMesh.size() % viewerWaveTrianglesPerSegment == 0) {
-            viewerWaveBounds.push_back({a.point, a.point});
+    studioViewPatternMesh.reserve(scene == StudioViewScene::Ribbons ? 20 * studioViewRibbonSegmentCount : 720);
+    studioViewWaveTriangles(studioView, now, [&](StudioViewWaveVertex a, StudioViewWaveVertex b, StudioViewWaveVertex c) {
+        if (studioViewWaveMesh.size() % studioViewWaveTrianglesPerSegment == 0) {
+            studioViewWaveBounds.push_back({a.point, a.point});
         }
-        auto& bounds = viewerWaveBounds.back();
+        auto& bounds = studioViewWaveBounds.back();
         for (V3 point : {a.point, b.point, c.point}) {
             bounds.low = {std::min(bounds.low.x, point.x),
                           std::min(bounds.low.y, point.y),
@@ -56,20 +56,20 @@ void updateViewerPatternMesh(const VehicleViewer& viewer, double now)
                            std::max(bounds.high.y, point.y),
                            std::max(bounds.high.z, point.z)};
         }
-        viewerWaveMesh.push_back({a, b, c});
+        studioViewWaveMesh.push_back({a, b, c});
     });
-    viewerPatternLines(viewer, now, [&](V3 a, V3 b, uint32_t first, uint32_t second, float alpha, float width) {
-        viewerPatternMesh.push_back({a, b, first, second, alpha, width});
+    studioViewPatternLines(studioView, now, [&](V3 a, V3 b, uint32_t first, uint32_t second, float alpha, float width) {
+        studioViewPatternMesh.push_back({a, b, first, second, alpha, width});
     });
-    viewerPatternTime = time;
-    viewerPatternScene = scene;
-    viewerPatternPalette = palette;
+    studioViewPatternTime = time;
+    studioViewPatternScene = scene;
+    studioViewPatternPalette = palette;
 }
 
-uint64_t viewerStudioStyle(const ViewerSettings& settings)
+uint64_t studioViewStudioStyle(const StudioViewSettings& settings)
 {
-    constexpr uint64_t surfaceChoices = viewerWhite + 2;
-    const uint64_t lightAndScene = uint64_t(settings.scene) * viewerPalettes.size() + settings.palette;
+    constexpr uint64_t surfaceChoices = studioViewWhite + 2;
+    const uint64_t lightAndScene = uint64_t(settings.scene) * studioViewPalettes.size() + settings.palette;
     const uint64_t wallAndFloor = uint64_t(settings.wallColor + 1) * surfaceChoices + settings.floorColor + 1;
     return 1 + lightAndScene * surfaceChoices * surfaceChoices + wallAndFloor;
 }
@@ -107,8 +107,8 @@ bool drawCustomStudio(IDirect3DDevice9* device, const Camera& camera)
                                 camera.right * ((x - camera.w * .5f) / camera.focal) +
                                 camera.up * ((camera.cy - y) / camera.focal));
             const float longitude = std::atan2(ray.y, ray.x);
-            const float u = .5f + (center + std::remainder(longitude - center, VehicleViewer::fullTurn)) /
-                                      VehicleViewer::fullTurn;
+            const float u = .5f + (center + std::remainder(longitude - center, CinematicStudio::fullTurn)) /
+                                      CinematicStudio::fullTurn;
             const float v = .5f - std::asin(std::clamp(ray.z, -1.f, 1.f)) / pi;
             vertices[size_t(row * (columns + 1) + column)] = {x, y, .999f, 1, 0xFFFFFFFF, u, v};
         }
@@ -123,8 +123,8 @@ bool drawCustomStudio(IDirect3DDevice9* device, const Camera& camera)
     const bool drawn = SUCCEEDED(device->DrawIndexedPrimitiveUP(D3DPT_TRIANGLELIST,
                                                                0,
                                                                UINT(vertices.size()),
-                                                               UINT(viewerSurfaceIndices.size() / 3),
-                                                               viewerSurfaceIndices.data(),
+                                                               UINT(studioViewSurfaceIndices.size() / 3),
+                                                               studioViewSurfaceIndices.data(),
                                                                D3DFMT_INDEX16,
                                                                vertices.data(),
                                                                sizeof(ScreenVertex)));
@@ -133,31 +133,31 @@ bool drawCustomStudio(IDirect3DDevice9* device, const Camera& camera)
     return drawn;
 }
 
-bool viewerStudio(IDirect3DDevice9* d,
+bool studioViewStudio(IDirect3DDevice9* d,
                   const Camera& camera,
-                  const VehicleViewer& viewer,
+                  const CinematicStudio& studioView,
                   double now,
                   bool glaze = false,
                   float outputScaleX = 1,
                   float outputScaleY = 1)
 {
     screen(d);
-    viewerSurfaceVertices.clear();
+    studioViewSurfaceVertices.clear();
     constexpr size_t gridIndexCount = 64 * 36 * 6;
-    if (viewerSurfaceIndices.empty()) {
-        viewerSurfaceVertices.reserve(viewerSurfaceGrid.size() + 624);
-        viewerSurfaceIndices.reserve(gridIndexCount + 624);
+    if (studioViewSurfaceIndices.empty()) {
+        studioViewSurfaceVertices.reserve(studioViewSurfaceGrid.size() + 624);
+        studioViewSurfaceIndices.reserve(gridIndexCount + 624);
         for (uint16_t row = 0; row < 36; ++row) {
             for (uint16_t column = 0; column < 64; ++column) {
                 const auto a = uint16_t(row * 65 + column);
                 const auto b = uint16_t(a + 1);
                 const auto c = uint16_t(a + 66);
                 const auto e = uint16_t(a + 65);
-                viewerSurfaceIndices.insert(viewerSurfaceIndices.end(), {a, b, c, a, c, e});
+                studioViewSurfaceIndices.insert(studioViewSurfaceIndices.end(), {a, b, c, a, c, e});
             }
         }
     }
-    viewerSurfaceIndices.resize(gridIndexCount);
+    studioViewSurfaceIndices.resize(gridIndexCount);
     const std::array<float, 18> view{camera.eye.x,
                                      camera.eye.y,
                                      camera.eye.z,
@@ -176,39 +176,39 @@ bool viewerStudio(IDirect3DDevice9* d,
                                      camera.cy,
                                      camera.offsetX,
                                      camera.offsetY};
-    const auto scene = viewer.settings.scene;
-    const uint64_t style = viewerStudioStyle(viewer.settings);
-    const double time = viewerWaveScene(scene) ? viewer.backgroundElapsed(now) : 0;
-    if (view != viewerSurfaceCamera || time != viewerSurfaceTime || scene != viewerSurfaceScene ||
-        style != viewerSurfaceStyle) {
+    const auto scene = studioView.settings.scene;
+    const uint64_t style = studioViewStudioStyle(studioView.settings);
+    const double time = studioViewWaveScene(scene) ? studioView.backgroundElapsed(now) : 0;
+    if (view != studioViewSurfaceCamera || time != studioViewSurfaceTime || scene != studioViewSurfaceScene ||
+        style != studioViewSurfaceStyle) {
         for (int row = 0; row <= 36; ++row) {
             for (int column = 0; column <= 64; ++column) {
                 const float x = camera.w * column / 64, y = camera.h * row / 36;
-                const auto sample = viewerSurface(camera, x, y, viewer, now);
-                auto& vertex = viewerSurfaceGrid[size_t(row * 65 + column)];
+                const auto sample = studioViewSurface(camera, x, y, studioView, now);
+                auto& vertex = studioViewSurfaceGrid[size_t(row * 65 + column)];
                 vertex = {};
                 camera.project(sample.point, vertex.x, vertex.y, vertex.z, vertex.rhw);
                 vertex.color = color(sample.rgb, sample.floorCoverage * .42f);
             }
         }
-        viewerSurfaceCamera = view;
-        viewerSurfaceTime = time;
-        viewerSurfaceScene = scene;
-        viewerSurfaceStyle = style;
+        studioViewSurfaceCamera = view;
+        studioViewSurfaceTime = time;
+        studioViewSurfaceScene = scene;
+        studioViewSurfaceStyle = style;
     }
-    if (!glaze && scene == ViewerScene::Custom && drawCustomStudio(d, camera)) {
+    if (!glaze && scene == StudioViewScene::Custom && drawCustomStudio(d, camera)) {
         return true;
     }
-    viewerSurfaceVertices.assign(viewerSurfaceGrid.begin(), viewerSurfaceGrid.end());
+    studioViewSurfaceVertices.assign(studioViewSurfaceGrid.begin(), studioViewSurfaceGrid.end());
     if (glaze) {
         if (outputScaleX != 1 || outputScaleY != 1) {
-            for (auto& vertex : viewerSurfaceVertices) {
+            for (auto& vertex : studioViewSurfaceVertices) {
                 vertex.x *= outputScaleX;
                 vertex.y *= outputScaleY;
             }
         }
     } else {
-        for (auto& vertex : viewerSurfaceVertices) {
+        for (auto& vertex : studioViewSurfaceVertices) {
             vertex.color |= 0xFF000000;
         }
     }
@@ -220,29 +220,29 @@ bool viewerStudio(IDirect3DDevice9* d,
     d->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
     const bool drawn = SUCCEEDED(d->DrawIndexedPrimitiveUP(D3DPT_TRIANGLELIST,
                                                            0,
-                                                           UINT(viewerSurfaceVertices.size()),
-                                                           UINT(viewerSurfaceIndices.size() / 3),
-                                                           viewerSurfaceIndices.data(),
+                                                           UINT(studioViewSurfaceVertices.size()),
+                                                           UINT(studioViewSurfaceIndices.size() / 3),
+                                                           studioViewSurfaceIndices.data(),
                                                            D3DFMT_INDEX16,
-                                                           viewerSurfaceVertices.data(),
+                                                           studioViewSurfaceVertices.data(),
                                                            sizeof(ScreenVertex)));
-    triangles += viewerSurfaceIndices.size() / 3;
+    triangles += studioViewSurfaceIndices.size() / 3;
     ++drawCalls;
     return drawn;
 }
 
-bool viewerPatterns(IDirect3DDevice9* d, const Camera& camera, const VehicleViewer& viewer, double now, bool reflected)
+bool studioViewPatterns(IDirect3DDevice9* d, const Camera& camera, const CinematicStudio& studioView, double now, bool reflected)
 {
-    const auto scene = viewer.settings.scene;
-    if (scene != ViewerScene::Ribbons && !viewerWaveScene(scene)) {
+    const auto scene = studioView.settings.scene;
+    if (scene != StudioViewScene::Ribbons && !studioViewWaveScene(scene)) {
         return true;
     }
-    updateViewerPatternMesh(viewer, now);
+    updateStudioViewPatternMesh(studioView, now);
     screen(d);
-    viewerPatternVertices.clear();
+    studioViewPatternVertices.clear();
     constexpr size_t capacity = 720 * 12 * 2 * 6;
-    if (viewerPatternVertices.capacity() < capacity) {
-        viewerPatternVertices.reserve(capacity);
+    if (studioViewPatternVertices.capacity() < capacity) {
+        studioViewPatternVertices.reserve(capacity);
     }
     const float scale = camera.focal / 1008.f;
     const float margin = 2 * std::max(1.f, scale);
@@ -269,8 +269,8 @@ bool viewerPatterns(IDirect3DDevice9* d, const Camera& camera, const VehicleView
         }
         return mask;
     };
-    for (size_t segment = 0; segment < viewerWaveBounds.size(); ++segment) {
-        const auto& bounds = viewerWaveBounds[segment];
+    for (size_t segment = 0; segment < studioViewWaveBounds.size(); ++segment) {
+        const auto& bounds = studioViewWaveBounds[segment];
         if (bounds.high.z < 0) {
             continue;
         }
@@ -285,36 +285,36 @@ bool viewerPatterns(IDirect3DDevice9* d, const Camera& camera, const VehicleView
         if (mask) {
             continue;
         }
-        const size_t start = segment * viewerWaveTrianglesPerSegment;
-        const size_t end = std::min(start + viewerWaveTrianglesPerSegment, viewerWaveMesh.size());
+        const size_t start = segment * studioViewWaveTrianglesPerSegment;
+        const size_t end = std::min(start + studioViewWaveTrianglesPerSegment, studioViewWaveMesh.size());
         for (size_t index = start; index < end; ++index) {
-            const auto& triangle = viewerWaveMesh[index];
-            viewerClipWaveTriangle(
+            const auto& triangle = studioViewWaveMesh[index];
+            studioViewClipWaveTriangle(
                 camera,
                 triangle[0],
                 triangle[1],
                 triangle[2],
                 reflected,
-                [&](const ViewerWaveVertex& first, const ViewerWaveVertex& second, const ViewerWaveVertex& third) {
+                [&](const StudioViewWaveVertex& first, const StudioViewWaveVertex& second, const StudioViewWaveVertex& third) {
                     for (const auto* source : {&first, &second, &third}) {
                         ScreenVertex vertex{};
                         camera.project(source->point, vertex.x, vertex.y, vertex.z, vertex.rhw);
                         vertex.color = color(source->rgb, source->alpha);
-                        viewerPatternVertices.push_back(vertex);
+                        studioViewPatternVertices.push_back(vertex);
                     }
                 });
         }
     }
-    if (scene == ViewerScene::Ribbons) {
-        constexpr size_t segments = viewerRibbonSegmentCount;
+    if (scene == StudioViewScene::Ribbons) {
+        constexpr size_t segments = studioViewRibbonSegmentCount;
         constexpr std::array<float, 5> offsets{-1.f, -.45f, 0.f, .45f, 1.f};
         constexpr std::array<float, 5> falloff{0.f, .48f, 1.f, .48f, 0.f};
-        for (size_t band = 0; band + segments <= viewerPatternMesh.size(); band += segments) {
+        for (size_t band = 0; band + segments <= studioViewPatternMesh.size(); band += segments) {
             std::array<ScreenVertex, segments> projected{};
             std::array<bool, segments> visible{};
             std::array<std::array<ScreenVertex, offsets.size()>, segments> edges{};
             for (size_t i = 0; i < segments; ++i) {
-                V3 point = viewerPatternMesh[band + i].first;
+                V3 point = studioViewPatternMesh[band + i].first;
                 if (point.z < 0) {
                     continue;
                 }
@@ -328,7 +328,7 @@ bool viewerPatterns(IDirect3DDevice9* d, const Camera& camera, const VehicleView
                 if (!visible[i]) {
                     continue;
                 }
-                const auto& source = viewerPatternMesh[band + i];
+                const auto& source = studioViewPatternMesh[band + i];
                 const auto& center = projected[i];
                 const size_t before = (i + segments - 1) % segments;
                 const size_t after = (i + 1) % segments;
@@ -357,22 +357,22 @@ bool viewerPatterns(IDirect3DDevice9* d, const Camera& camera, const VehicleView
             for (size_t i = 0; i < segments; ++i) {
                 const size_t next = (i + 1) % segments;
                 if (!visible[i] || !visible[next] ||
-                    (outside(viewerPatternMesh[band + i].first) & outside(viewerPatternMesh[band + next].first))) {
+                    (outside(studioViewPatternMesh[band + i].first) & outside(studioViewPatternMesh[band + next].first))) {
                     continue;
                 }
                 for (size_t edge = 0; edge + 1 < offsets.size(); ++edge) {
                     const auto& a = edges[i];
                     const auto& b = edges[next];
-                    viewerPatternVertices.insert(viewerPatternVertices.end(),
+                    studioViewPatternVertices.insert(studioViewPatternVertices.end(),
                                                  {a[edge], b[edge], b[edge + 1], a[edge], b[edge + 1], a[edge + 1]});
                 }
             }
         }
     } else {
-        for (const auto& source : viewerPatternMesh) {
+        for (const auto& source : studioViewPatternMesh) {
             V3 first = source.first;
             V3 second = source.second;
-            if ((outside(first) & outside(second)) || !viewerClipFloor(first, second)) {
+            if ((outside(first) & outside(second)) || !studioViewClipFloor(first, second)) {
                 continue;
             }
             float alpha = source.alpha;
@@ -407,7 +407,7 @@ bool viewerPatterns(IDirect3DDevice9* d, const Camera& camera, const VehicleView
             b0.y -= ny;
             b1.x += nx;
             b1.y += ny;
-            viewerPatternVertices.insert(viewerPatternVertices.end(), {a0, b0, b1, a0, b1, a1});
+            studioViewPatternVertices.insert(studioViewPatternVertices.end(), {a0, b0, b1, a0, b1, a1});
         }
     }
     d->SetTexture(0, nullptr);
@@ -416,27 +416,27 @@ bool viewerPatterns(IDirect3DDevice9* d, const Camera& camera, const VehicleView
     d->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
     d->SetRenderState(D3DRS_ZENABLE, FALSE);
     d->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
-    if (!viewerPatternVertices.empty()) {
+    if (!studioViewPatternVertices.empty()) {
         const bool drawn = SUCCEEDED(d->DrawPrimitiveUP(D3DPT_TRIANGLELIST,
-                                                        UINT(viewerPatternVertices.size() / 3),
-                                                        viewerPatternVertices.data(),
+                                                        UINT(studioViewPatternVertices.size() / 3),
+                                                        studioViewPatternVertices.data(),
                                                         sizeof(ScreenVertex)));
-        triangles += viewerPatternVertices.size() / 3;
+        triangles += studioViewPatternVertices.size() / 3;
         ++drawCalls;
         return drawn;
     }
     return true;
 }
 
-void updateStudioEnvironment(IDirect3DDevice9* d, const VehicleViewer& viewer, double clock)
+void updateStudioEnvironment(IDirect3DDevice9* d, const CinematicStudio& studioView, double clock)
 {
     if (!studioEnvironmentAvailable) {
         return;
     }
-    const auto scene = viewer.settings.scene;
-    const bool animated = scene == ViewerScene::Ribbons || viewerWaveScene(scene);
-    const double time = animated ? viewer.backgroundElapsed(clock) : 0.;
-    const uint64_t revision = viewerStudioStyle(viewer.settings);
+    const auto scene = studioView.settings.scene;
+    const bool animated = scene == StudioViewScene::Ribbons || studioViewWaveScene(scene);
+    const double time = animated ? studioView.backgroundElapsed(clock) : 0.;
+    const uint64_t revision = studioViewStudioStyle(studioView.settings);
     constexpr double captureInterval = 1. / 8.;
     studioEnvironmentAvailable = studioEnvironment.update(
         d,
@@ -445,51 +445,51 @@ void updateStudioEnvironment(IDirect3DDevice9* d, const VehicleViewer& viewer, d
         {0, 0, .8f},
         [&](const Camera& view) {
             ownedState(d);
-            return viewerStudio(d, view, viewer, clock) && viewerPatterns(d, view, viewer, clock, false);
+            return studioViewStudio(d, view, studioView, clock) && studioViewPatterns(d, view, studioView, clock, false);
         },
         captureInterval);
 }
 
-void releaseViewerTarget()
+void releaseStudioViewTarget()
 {
-    if (viewerDepth) {
-        viewerDepth->Release();
-        viewerDepth = nullptr;
+    if (studioViewDepth) {
+        studioViewDepth->Release();
+        studioViewDepth = nullptr;
     }
-    if (viewerTargetSurface) {
-        viewerTargetSurface->Release();
-        viewerTargetSurface = nullptr;
+    if (studioViewTargetSurface) {
+        studioViewTargetSurface->Release();
+        studioViewTargetSurface = nullptr;
     }
-    if (viewerTarget) {
-        viewerTarget->Release();
-        viewerTarget = nullptr;
+    if (studioViewTarget) {
+        studioViewTarget->Release();
+        studioViewTarget = nullptr;
     }
-    viewerTargetWidth = 0;
-    viewerTargetHeight = 0;
+    studioViewTargetWidth = 0;
+    studioViewTargetHeight = 0;
 }
 
-bool allocateViewerTarget(IDirect3DDevice9* d, UINT width, UINT height)
+bool allocateStudioViewTarget(IDirect3DDevice9* d, UINT width, UINT height)
 {
-    if (viewerTargetWidth == width && viewerTargetHeight == height) {
-        return viewerTarget && viewerTargetSurface && viewerDepth;
+    if (studioViewTargetWidth == width && studioViewTargetHeight == height) {
+        return studioViewTarget && studioViewTargetSurface && studioViewDepth;
     }
-    releaseViewerTarget();
+    releaseStudioViewTarget();
     if (FAILED(d->CreateTexture(
-            width, height, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &viewerTarget, nullptr)) ||
-        !viewerTarget || FAILED(viewerTarget->GetSurfaceLevel(0, &viewerTargetSurface)) || !viewerTargetSurface ||
+            width, height, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &studioViewTarget, nullptr)) ||
+        !studioViewTarget || FAILED(studioViewTarget->GetSurfaceLevel(0, &studioViewTargetSurface)) || !studioViewTargetSurface ||
         FAILED(d->CreateDepthStencilSurface(
-            width, height, D3DFMT_D24S8, D3DMULTISAMPLE_NONE, 0, TRUE, &viewerDepth, nullptr)) ||
-        !viewerDepth) {
-        releaseViewerTarget();
+            width, height, D3DFMT_D24S8, D3DMULTISAMPLE_NONE, 0, TRUE, &studioViewDepth, nullptr)) ||
+        !studioViewDepth) {
+        releaseStudioViewTarget();
     }
-    viewerTargetWidth = width;
-    viewerTargetHeight = height;
-    return viewerTarget && viewerTargetSurface && viewerDepth;
+    studioViewTargetWidth = width;
+    studioViewTargetHeight = height;
+    return studioViewTarget && studioViewTargetSurface && studioViewDepth;
 }
 
-bool viewerRoom(IDirect3DDevice9* d,
+bool studioViewRoom(IDirect3DDevice9* d,
                 const Camera& camera,
-                const VehicleViewer& viewer,
+                const CinematicStudio& studioView,
                 double now,
                 const Mesh& car,
                 float angle,
@@ -500,31 +500,31 @@ bool viewerRoom(IDirect3DDevice9* d,
                 float rideHeight = 0,
                 bool clean = false)
 {
-    if (viewer.settings.scene == ViewerScene::Custom) {
-        const bool drawn = viewerStudio(d, camera, viewer, now);
-        if (drawn && viewer.settings.reflections) {
+    if (studioView.settings.scene == StudioViewScene::Custom) {
+        const bool drawn = studioViewStudio(d, camera, studioView, now);
+        if (drawn && (studioView.settings.floorReflectionQuality()>0)) {
             shopMirror(d, car, camera, angle, paint, opacity, carSize, rideHeight, clean,
-                       viewer.settings.reflectionQuality, vehicle);
+                       studioView.settings.floorReflectionQuality(), vehicle);
         }
         return drawn;
     }
-    const bool fullResolutionRibbons = viewer.settings.scene == ViewerScene::Ribbons && camera.h > 720.f;
+    const bool fullResolutionRibbons = studioView.settings.scene == StudioViewScene::Ribbons && camera.h > 720.f;
     const auto backdrop = [&](const Camera& view, bool includeRibbons) {
-        return viewerStudio(d, view, viewer, now) &&
-               ((fullResolutionRibbons && !includeRibbons) || viewerPatterns(d, view, viewer, now, false)) &&
-               viewerPatterns(d, view, viewer, now, true);
+        return studioViewStudio(d, view, studioView, now) &&
+               ((fullResolutionRibbons && !includeRibbons) || studioViewPatterns(d, view, studioView, now, false)) &&
+               studioViewPatterns(d, view, studioView, now, true);
     };
     const auto direct = [&] {
-        return backdrop(camera, true) && viewerStudio(d, camera, viewer, now, true);
+        return backdrop(camera, true) && studioViewStudio(d, camera, studioView, now, true);
     };
     // keep the animated bands above a subpixel grid on smaller displays. the foreground car stays native-sized
     const float scale = camera.h <= 720.f
         ? std::min(2.f, 720.f / std::max(1.f, camera.h))
         : std::min(.5f, 720.f / std::max(camera.w, camera.h));
-    const float qualityScale = scale * (.4f + .2f * viewer.settings.reflectionQuality);
+    const float qualityScale = scale * (.4f + .2f * studioView.settings.floorReflectionQuality());
     const UINT width = UINT(std::max(1.f, std::round(camera.w * qualityScale)));
     const UINT height = UINT(std::max(1.f, std::round(camera.h * qualityScale)));
-    if (!allocateViewerTarget(d, width, height)) {
+    if (!allocateStudioViewTarget(d, width, height)) {
         return direct();
     }
 
@@ -541,7 +541,7 @@ bool viewerRoom(IDirect3DDevice9* d,
     reduced.offsetX *= reduced.w / camera.w;
     reduced.offsetY *= reduced.h / camera.h;
     d->SetTexture(0, nullptr);
-    const bool roomDrawn = layers.select(viewerTargetSurface, nullptr, viewport) &&
+    const bool roomDrawn = layers.select(studioViewTargetSurface, nullptr, viewport) &&
                            SUCCEEDED(d->Clear(0, nullptr, D3DCLEAR_TARGET, 0xFF0F1012, 1, 0)) && backdrop(reduced, false);
     if (!layers.restore()) {
         return false;
@@ -567,22 +567,22 @@ bool viewerRoom(IDirect3DDevice9* d,
             d->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_ONE);
             d->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_ONE);
             const float u = taps[i][0] / camera.w, v = taps[i][1] / camera.h;
-            rect(d, 0, 0, camera.w, camera.h, color(0xFFFFFF, 1.f, taps[i][2]), viewerTarget,
+            rect(d, 0, 0, camera.w, camera.h, color(0xFFFFFF, 1.f, taps[i][2]), studioViewTarget,
                  u, v, 1.f + u, 1.f + v);
         }
         d->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
         d->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
         d->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
     } else {
-        rect(d, 0, 0, camera.w, camera.h, 0xFFFFFFFF, viewerTarget);
+        rect(d, 0, 0, camera.w, camera.h, 0xFFFFFFFF, studioViewTarget);
     }
     d->SetTexture(0, nullptr);
-    if (fullResolutionRibbons && !viewerPatterns(d, camera, viewer, now, false)) {
+    if (fullResolutionRibbons && !studioViewPatterns(d, camera, studioView, now, false)) {
         return direct();
     }
 
-    if (viewer.settings.reflections && opacity > 0 && !car.empty()) {
-        const bool reflectionReady = layers.select(viewerTargetSurface, viewerDepth, viewport) &&
+    if ((studioView.settings.floorReflectionQuality()>0) && opacity > 0 && !car.empty()) {
+        const bool reflectionReady = layers.select(studioViewTargetSurface, studioViewDepth, viewport) &&
                                      SUCCEEDED(d->Clear(0, nullptr, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, 0, 1, 0)) &&
                                      SUCCEEDED(d->SetRenderState(D3DRS_SRCBLENDALPHA, D3DBLEND_ONE)) &&
                                      SUCCEEDED(d->SetRenderState(D3DRS_DESTBLENDALPHA, D3DBLEND_INVSRCALPHA)) &&
@@ -610,16 +610,16 @@ bool viewerRoom(IDirect3DDevice9* d,
             return false;
         }
         if (reflectionReady) {
-            const float amount = opacity * viewerReflectionOpacity;
+            const float amount = opacity * studioViewReflectionOpacity;
             d->SetRenderState(D3DRS_ZENABLE, FALSE);
             d->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
             d->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
             d->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_ONE);
-            rect(d, 0, 0, camera.w, camera.h, color(0xFFFFFF, amount, amount), viewerTarget);
+            rect(d, 0, 0, camera.w, camera.h, color(0xFFFFFF, amount, amount), studioViewTarget);
             d->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
         }
     }
-    return viewerStudio(d, reduced, viewer, now, true, camera.w / reduced.w, camera.h / reduced.h);
+    return studioViewStudio(d, reduced, studioView, now, true, camera.w / reduced.w, camera.h / reduced.h);
 }
 
 void drawReviewPanel(IDirect3DDevice9* d,
@@ -735,7 +735,7 @@ void spawnReviewDialog(IDirect3DDevice9* d, float width, float height, const Mod
         return;
     }
     if (state.spawnReview == SpawnReview::ShopExit) {
-        const char* back = state.shop.fromViewer ? "Return to Viewer" : "Return to Cinematic";
+        const char* back = state.shop.fromStudioView ? "Return to Cinematic" : "Return to Cinematic";
         const std::array<const char*, 3> buttons{back, "Cancel", "Spawn Now"};
         drawReviewPanel(d,
                         width,
@@ -769,7 +769,7 @@ void spawnReviewDialog(IDirect3DDevice9* d, float width, float height, const Mod
     const char* primary = state.spawnReview == SpawnReview::Initial ? "Enter Cinematic" : "Back to Cinematic";
     const std::array<const char*, 3> buttons{primary, "Cancel", "Spawn Now"};
     const int count = state.reviewButtons();
-    const char* title = state.spawnReview == SpawnReview::Cinematic ? "Cinematic" : "Vehicle Viewer";
+    const char* title = state.spawnReview == SpawnReview::Cinematic ? "Cinematic" : "Cinematic";
     drawReviewPanel(d, width, height, state.reviewReveal(), state.reviewOffset(height), title,
                     first, second, buttons.data(), count, state.reviewChoice);
 }

@@ -3,11 +3,13 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <vector>
+#include "StudioBackgrounds.hpp"
 
 namespace gt4
-// vehicle viewer's main setup: inspired by gran turismo 7 spec iv update's car viewer
+// vehicle studioView's main setup: inspired by gran turismo 7 spec iv update's car studioView
 {
-    enum class ViewerScene
+    enum class StudioViewScene
     {
         Softbox,
         Ribbons,
@@ -15,22 +17,22 @@ namespace gt4
         Custom = 4
     };
 
-    struct ViewerPalette
+    struct StudioViewPalette
     {
         const char* name;
         uint32_t color;
         uint32_t halo;
     };
 
-    inline constexpr std::array<const char*, 5> viewerSceneNames = {
+    inline constexpr std::array<const char*, 5> studioViewSceneNames = {
         "Softbox Studio", "Ribbon Studio", "Wave Studio", nullptr, "Custom Studio"};
 
-    inline bool viewerWaveScene(ViewerScene scene)
+    inline bool studioViewWaveScene(StudioViewScene scene)
     {
-        return scene == ViewerScene::Wave;
+        return scene == StudioViewScene::Wave;
     }
 
-    inline constexpr std::array<ViewerPalette, 11> viewerPalettes = {{
+    inline constexpr std::array<StudioViewPalette, 11> studioViewPalettes = {{
         {"White", 0xEAF3FF, 0x768CA3},
         {"Warm White", 0xFFE1A1, 0xBA6327},
         {"Amber", 0xFF9F45, 0xA82917},
@@ -44,66 +46,73 @@ namespace gt4
         {"Green", 0x56D76F, 0x1B8340},
     }};
 
-    inline constexpr int viewerBlack = int(viewerPalettes.size());
-    inline constexpr int viewerWhite = viewerBlack + 1;
+    inline constexpr int studioViewBlack = int(studioViewPalettes.size());
+    inline constexpr int studioViewWhite = studioViewBlack + 1;
 
-    inline const char* viewerSurfaceName(int selection)
+    inline const char* studioViewSurfaceName(int selection)
     {
         if (selection < 0) {
             return "Default";
         }
-        if (selection == viewerBlack) {
+        if (selection == studioViewBlack) {
             return "Black";
         }
-        if (selection == viewerWhite) {
+        if (selection == studioViewWhite) {
             return "Pure White";
         }
-        return viewerPalettes[size_t(selection)].name;
+        return studioViewPalettes[size_t(selection)].name;
     }
 
-    inline uint32_t viewerSurfaceColor(int selection)
+    inline uint32_t studioViewSurfaceColor(int selection)
     {
-        if (selection == viewerBlack) {
+        if (selection == studioViewBlack) {
             return 0;
         }
-        if (selection == viewerWhite) {
+        if (selection == studioViewWhite) {
             return 0xFFFFFF;
         }
-        return viewerPalettes[size_t(selection)].color;
+        return studioViewPalettes[size_t(selection)].color;
     }
 
-    struct ViewerSettings
+    struct StudioViewSettings
     {
-        ViewerScene scene = ViewerScene::Softbox;
+        StudioViewScene scene = StudioViewScene::Softbox;
         int palette = 0;
         int wallColor = -1;
         int floorColor = -1;
         bool animate = true;
         bool reflections = true, shadows = true, vehicleReflections = true, inheritStudio = true;
         int reflectionQuality = 3;
+        int floorQuality = -1, vehicleQuality = -1, inheritedFloorQuality = -1;
+        int showroomBackground=-1,showroomStyle=-1;
+        int floorReflectionQuality() const { return floorQuality < 0 ? (reflections ? reflectionQuality : 0) : floorQuality; }
+        int vehicleReflectionQuality() const { return vehicleQuality < 0 ? (vehicleReflections ? reflectionQuality : 0) : vehicleQuality; }
 
-        const ViewerPalette& lighting() const
+        const StudioViewPalette& lighting() const
         {
-            static constexpr ViewerPalette neutral{"White", 0xFFFFFF, 0x768CA3};
-            if (scene == ViewerScene::Softbox || scene == ViewerScene::Custom) {
+            static constexpr StudioViewPalette neutral{"White", 0xFFFFFF, 0x768CA3};
+            if (scene == StudioViewScene::Softbox || scene == StudioViewScene::Custom) {
                 return neutral;
             }
-            return viewerPalettes[size_t(std::clamp(palette, 0, int(viewerPalettes.size()) - 1))];
+            return studioViewPalettes[size_t(std::clamp(palette, 0, int(studioViewPalettes.size()) - 1))];
         }
 
         void validate()
         {
-            scene = ViewerScene(std::clamp(int(scene), 0, int(viewerSceneNames.size()) - 1));
+            scene = StudioViewScene(std::clamp(int(scene), 0, int(studioViewSceneNames.size()) - 1));
             if (int(scene) == 3) {
-                scene = ViewerScene::Wave;
+                scene = StudioViewScene::Wave;
             }
-            palette = std::clamp(palette, 0, int(viewerPalettes.size()) - 1);
-            wallColor = std::clamp(wallColor, -1, viewerWhite);
-            floorColor = std::clamp(floorColor, -1, viewerWhite);
+            floorQuality=std::clamp(floorQuality,-1,4);vehicleQuality=std::clamp(vehicleQuality,-1,4);
+            inheritedFloorQuality=std::clamp(inheritedFloorQuality,-1,4);
+            showroomBackground=std::clamp(showroomBackground,-1,studioBackgroundCount-1);showroomStyle=std::clamp(showroomStyle,-1,1);
+            palette = std::clamp(palette, 0, int(studioViewPalettes.size()) - 1);
+            wallColor = std::clamp(wallColor, -1, studioViewWhite);
+            floorColor = std::clamp(floorColor, -1, studioViewWhite);
         }
     };
 
-    enum class ViewerPhase
+    enum class StudioViewPhase
     {
         Stable,
         FadeOut,
@@ -111,29 +120,43 @@ namespace gt4
         FadeIn
     };
 
-    struct ViewerOrbitProfile
+    struct StudioViewOrbitProfile
     {
         double duration;
         double frontTime;
     };
 
-    inline constexpr std::array<ViewerOrbitProfile, 5> viewerOrbitProfiles = {
+    inline constexpr std::array<StudioViewOrbitProfile, 5> studioViewOrbitProfiles = {
         {{26, 4.5}, {27, .75}, {32, 2.5}, {32, 2.5}, {26, 4.5}}};
 
     inline constexpr double studioEntryDelay = 2.;
 
-    struct VehicleViewer
+    inline int studioBackdropCode(const StudioViewSettings& v,int style,int background) {
+        return v.inheritStudio?(v.showroomStyle==1||(v.showroomStyle<0&&style==1)?200:100+(v.showroomBackground<0?background:v.showroomBackground)):int(v.scene);
+    }
+    inline bool animatedStudioBackdrop(int code) {return code==100+DefaultBackground||code==200||code==1||code==2;}
+    inline std::vector<int> studioBackdropChoices(bool animated) {
+        if(animated)return {100+DefaultBackground,200,1,2};
+        std::vector<int> codes;for(int i=1;i<studioBackgroundCount;++i)codes.push_back(100+i);
+        codes.push_back(0);codes.push_back(4);return codes;
+    }
+    inline const char* studioBackdropName(int code) {return code==200?"Prologue":code>=100?studioBackgroundNames[size_t(code-100)]:studioViewSceneNames[size_t(code)];}
+    inline bool customizableStudioBackdrop(int code) {return code>=0&&code<4;}
+    struct CinematicStudio
     {
         static constexpr double idleDelay = 150;
         static constexpr double fadeDuration = .3;
         static constexpr float fullTurn = 6.283185307179586f;
 
-        ViewerSettings settings;
-        ViewerPhase phase = ViewerPhase::Stable;
+        StudioViewSettings settings;
+        StudioViewPhase phase = StudioViewPhase::Stable;
         bool active = false, targetActive = false, automaticEntry = false, paused = false;
         bool hotspots = false, entryAudio = false;
         float yawOffset = 0, pitch = .18f, zoom = 1, zoomTarget = 1;
         float fromAlpha = 0;
+        mutable bool showroomCamera = false;
+        mutable std::array<float, 18> cameraSeed{};
+        mutable float seedYaw = 0, seedPitch = .18f, seedSize = 1, seedAngle = 0, seedZoom = 1;
         double lastActivity = 0, began = 0, blackPresented = -1;
         double motionBegan = 0, heldMotion = 0, lastClock = 0;
         double backgroundBegan = 0, heldBackground = 0;
@@ -147,21 +170,12 @@ namespace gt4
 
         bool transitioning() const
         {
-            return phase != ViewerPhase::Stable;
+            return false;
         }
 
         float opacity(double now) const
         {
-            const float amount = ease(float(std::max(0., now - began) / fadeDuration));
-            if (phase == ViewerPhase::FadeOut) {
-                return fromAlpha + (1 - fromAlpha) * amount;
-            }
-            if (phase == ViewerPhase::Black) {
-                return 1;
-            }
-            if (phase == ViewerPhase::FadeIn) {
-                return fromAlpha * (1 - amount);
-            }
+            (void)now;
             return 0;
         }
 
@@ -170,16 +184,21 @@ namespace gt4
             if (!std::isfinite(now) || (targetActive == enter && (active == enter || transitioning()))) {
                 return false;
             }
-            const float currentAlpha = opacity(now);
-            targetActive = enter;
-            blackPresented = -1;
-            began = now;
-            fromAlpha = currentAlpha;
+            targetActive = active = enter;
+            automaticEntry = false;
+            phase = StudioViewPhase::Stable;
+            fromAlpha = 0;
+            began = lastClock = lastActivity = now;
+            entryAudio = false;
+            showroomCamera = false;
             if (enter) {
-                automaticEntry = automatic;
-                entryAudio = true;
+                hotspots = false;
+                motionBegan = backgroundBegan = now;
+                heldMotion = heldBackground = 0;
+                yawOffset = 0;
+                paused = false;
             }
-            phase = !enter && !active ? ViewerPhase::FadeIn : ViewerPhase::FadeOut;
+            (void)automatic;
             return true;
         }
 
@@ -198,7 +217,7 @@ namespace gt4
 
         void presented(double now)
         {
-            if (phase == ViewerPhase::Black && blackPresented < 0 && std::isfinite(now)) {
+            if (phase == StudioViewPhase::Black && blackPresented < 0 && std::isfinite(now)) {
                 blackPresented = now;
             }
         }
@@ -214,38 +233,7 @@ namespace gt4
             settings.validate();
             syncBackground(now);
             zoom += (zoomTarget - zoom) * float(1 - std::exp(-std::min(dt, 1.) * 12));
-            if (phase == ViewerPhase::FadeOut && now - began >= fadeDuration) {
-                phase = ViewerPhase::Black;
-            }
-            if (phase == ViewerPhase::Black && blackPresented >= 0 &&
-                (!targetActive || now - began >= studioEntryDelay)) {
-                active = targetActive;
-                phase = ViewerPhase::FadeIn;
-                began = now;
-                fromAlpha = 1;
-                if (active) {
-                    hotspots = false;
-                    motionBegan = now;
-                    heldMotion = 0;
-                    backgroundBegan = now;
-                    heldBackground = 0;
-                    backgroundPaused = false;
-                    yawOffset = 0;
-                    paused = false;
-                }
-            }
-            if (phase == ViewerPhase::FadeIn && now - began >= fadeDuration) {
-                phase = ViewerPhase::Stable;
-                entryAudio = false;
-                if (!active) {
-                    automaticEntry = false;
-                }
-            }
-            if (!eligible) {
-                lastActivity = now;
-            } else if (!active && !transitioning() && now - lastActivity >= idleDelay) {
-                request(true, true, now);
-            }
+            if (!eligible) lastActivity = now;
         }
 
         double elapsed(double now) const
@@ -274,10 +262,10 @@ namespace gt4
             }
         }
 
-        const ViewerOrbitProfile& orbitProfile() const
+        const StudioViewOrbitProfile& orbitProfile() const
         {
-            const size_t scene = size_t(std::clamp(int(settings.scene), 0, int(viewerOrbitProfiles.size()) - 1));
-            return viewerOrbitProfiles[scene];
+            const size_t scene = size_t(std::clamp(int(settings.scene), 0, int(studioViewOrbitProfiles.size()) - 1));
+            return studioViewOrbitProfiles[scene];
         }
 
         float yaw(double now) const
@@ -287,7 +275,7 @@ namespace gt4
             return float(phase) * fullTurn + yawOffset;
         }
 
-        void changeScene(ViewerScene scene, double now)
+        void changeScene(StudioViewScene scene, double now)
         {
             const float previousYaw = yaw(now);
             settings.scene = scene;

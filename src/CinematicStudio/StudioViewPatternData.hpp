@@ -3,18 +3,18 @@
 #include <cstddef>
 
 namespace gt4
-// this is mostly of what controls the vehicle viewer's extra controls and performance stability
+// this is mostly of what controls the vehicle studioView's extra controls and performance stability
 {
-    inline constexpr std::size_t viewerPatternColumns = 33;
+    inline constexpr std::size_t studioViewPatternColumns = 33;
 
     template <std::size_t Fields>
-    struct ViewerPatternKey
+    struct StudioViewPatternKey
     {
         float time;
-        std::array<std::array<float, viewerPatternColumns>, Fields> fields;
+        std::array<std::array<float, studioViewPatternColumns>, Fields> fields;
     };
 
-    inline constexpr std::array<ViewerPatternKey<3>, 49> viewerRibbonKeys = {{
+    inline constexpr std::array<StudioViewPatternKey<3>, 49> studioViewRibbonKeys = {{
         {
             0.000000f,
             {{
@@ -1584,7 +1584,7 @@ namespace gt4
             }}
         },
     }};
-    inline constexpr std::array<ViewerPatternKey<2>, 60> viewerWaveKeys = {{
+    inline constexpr std::array<StudioViewPatternKey<2>, 60> studioViewWaveKeys = {{
         {
             0.000000f,
             {{

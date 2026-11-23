@@ -9,6 +9,9 @@
 
 namespace gt4 {
 enum class Gallery { Main, Wang, Coutt, Verdant, Grotti };
+inline bool galleryChargesVehicle(Gallery context) {
+    return context != Gallery::Main && context != Gallery::Wang;
+}
 struct GalleryProfile {
     const wchar_t* section;
     const char* name;

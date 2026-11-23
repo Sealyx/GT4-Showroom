@@ -22,7 +22,7 @@ namespace gt4
     };
 
     // encode before creating the file so a failed codec cannot leave an empty photo behind
-    inline bool writeViewerPhoto(const std::vector<uint8_t>& pixels,
+    inline bool writeStudioViewPhoto(const std::vector<uint8_t>& pixels,
                                  UINT width,
                                  UINT height,
                                  const std::filesystem::path& folder,
@@ -145,9 +145,9 @@ namespace gt4
     }
 
     // save our private studio target, never the game's backbuffer or another menu's overlay
-    inline bool saveViewerPhoto(IDirect3DDevice9* device,
+    inline bool saveStudioViewPhoto(IDirect3DDevice9* device,
                                 IDirect3DTexture9* texture,
-                                const ViewerPhoto& photo,
+                                const StudioViewPhoto& photo,
                                 const std::filesystem::path& folder,
                                 std::filesystem::path& saved)
     {
@@ -199,6 +199,6 @@ namespace gt4
             return false;
         }
 
-        return writeViewerPhoto(pixels, crop.width, crop.height, folder, saved);
+        return writeStudioViewPhoto(pixels, crop.width, crop.height, folder, saved);
     }
 }

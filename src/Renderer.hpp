@@ -33,8 +33,8 @@
 #include "RenderTargets.hpp"
 #include "PreviewAntialiasing.hpp"
 #include "PreviewOcclusion.hpp"
-#include "ViewerStudio.hpp"
-#include "ViewerPhotoCapture.hpp"
+#include "StudioViewStudio.hpp"
+#include "StudioViewPhotoCapture.hpp"
 #include "StudioLighting.hpp"
 #include "StudioGradient.hpp"
 #include "StudioSurfaces.hpp"
@@ -567,7 +567,7 @@ namespace gt4
             const Paint target = model.previewPaint(entry);
             const bool browsingExtras = model.page == Page::Extras;
             if (appearance.model != entry.id || appearance.opened != model.opened ||
-                model.ui.cinematic.active || model.viewer.active || model.page == Page::Prize) {
+                model.ui.cinematic.active || model.studioView.active || model.page == Page::Prize) {
                 appearance = {};
                 appearance.model = entry.id;
                 appearance.opened = model.opened;
@@ -577,7 +577,7 @@ namespace gt4
                 Paint paint = appearance.toPaint;
                 const float t = ease(float((model.clock - appearance.paintStarted) / duration));
                 for (size_t i = 0; i < 4; ++i) {
-                    paint.rgb[i] = viewerBlend(appearance.fromPaint.rgb[i], paint.rgb[i], t);
+                    paint.rgb[i] = studioViewBlend(appearance.fromPaint.rgb[i], paint.rgb[i], t);
                 }
                 return paint;
             };
@@ -590,7 +590,7 @@ namespace gt4
             }
 
             appearanceMesh = 0;
-            if (main && !model.ui.cinematic.active && !model.viewer.active) {
+            if (main && !model.ui.cinematic.active && !model.studioView.active) {
                 appearanceMesh = main->serial;
                 if (appearance.materialSource != main->serial) {
                     if (appearance.fromLivery.materials) { appearance.fromLivery = {}; }
@@ -626,7 +626,7 @@ namespace gt4
         }
         int entryPreviewModel = -1;
         double entrySelectionStamp = -1., entrySessionStamp = -1., entryRenderableAt = -1.;
-        uint32_t viewerLightTint = 0xFFFFFF;
+        uint32_t studioViewLightTint = 0xFFFFFF;
         std::vector<uint32_t> prizePixels;
         UINT prizeWidth = 0, prizeHeight = 0;
         IDirect3DTexture9* prizeTexture = nullptr;
@@ -678,6 +678,10 @@ namespace gt4
         UINT tw = 0, th = 0;
         int targetAntialiasing = -1;
         PreviewAntialiasing antialiasing;
+        IDirect3DTexture9* photoBackdrop=nullptr;
+        UINT photoBackdropW=0,photoBackdropH=0;
+        bool photoBackdropReady=false;
+        double photoBackdropSession=-1;
         IDirect3DTexture9* uiBackdrop=nullptr;
         UINT uiBackdropW=0, uiBackdropH=0;
         float footerDrop=0;
@@ -686,7 +690,7 @@ namespace gt4
         UnicodeText unicodeText;
         int occlusionQuality = 2;
         bool occlusionGeometry = false, occlusionGeometryOkay = true;
-        IDirect3DTexture9* viewerTarget = nullptr;
+        IDirect3DTexture9* studioViewTarget = nullptr;
         IDirect3DTexture9* customStudioTexture = nullptr;
         std::filesystem::path customStudioPath;
         std::filesystem::path collectionPath;
@@ -694,9 +698,9 @@ namespace gt4
         bool collectionTried = false;
         std::string galleryTitle;
         bool customStudioLoadAttempted = false;
-        IDirect3DSurface9* viewerTargetSurface = nullptr;
-        IDirect3DSurface9* viewerDepth = nullptr;
-        UINT viewerTargetWidth = 0, viewerTargetHeight = 0;
+        IDirect3DSurface9* studioViewTargetSurface = nullptr;
+        IDirect3DSurface9* studioViewDepth = nullptr;
+        UINT studioViewTargetWidth = 0, studioViewTargetHeight = 0;
 
         struct OcclusionVertex { Vertex vertex; float cavity = 0; };
 
@@ -1179,7 +1183,7 @@ namespace gt4
 
         void releaseTarget()
         {
-            releaseViewerTarget();
+            releaseStudioViewTarget();
             releaseCustomStudio();
             if (target) {
                 target->Release();
@@ -1276,6 +1280,7 @@ namespace gt4
         uint64_t triangles = 0, drawCalls = 0, uploads = 0;
 #ifdef BODY_REVIEW
         unsigned pointerDraws = 0, extrasPanelDraws = 0;
+        std::array<DWORD,12> photoEntryStates{};
         void backgroundArtworkForReview(const std::filesystem::path& path) { backgroundArtwork.setPath(path); }
         void buttonArtworkForReview(const std::filesystem::path& path) { buttonArtwork.setPath(path); }
 #endif
@@ -1524,6 +1529,8 @@ namespace gt4
             bikeExtrasFrame.reset();
             bikeExtrasFrameSource = 0;
             antialiasing.rejectedQuality = -1;
+            if(photoBackdrop){photoBackdrop->Release();photoBackdrop=nullptr;}
+            photoBackdropReady=false;photoBackdropSession=-1;
             if(uiBackdrop) { uiBackdrop->Release(); uiBackdrop=nullptr; }
             occlusion.reset();
             studioGradient.reset();
@@ -1979,7 +1986,7 @@ namespace gt4
                 ScreenVertex v[6]{};
                 for (int i = 0; i < 6; ++i) {
                     v[i] = vertex(cursorOutline[size_t(indices[i])],
-                                  layer ? viewerBlend(0x9C740E, 0x303438, cursorFeedback) : 0x080A07,
+                                  layer ? studioViewBlend(0x9C740E, 0x303438, cursorFeedback) : 0x080A07,
                                   layer ? 1.f : .35f,
                                   layer ? 0 : 1.4f * scale);
                 }
@@ -1990,7 +1997,7 @@ namespace gt4
             ScreenVertex faces[6]{};
             for (int i = 0; i < 6; ++i) {
                 constexpr uint32_t monochrome[]{0xFAFAFA, 0x888888, 0xA0A0A0, 0xFFFFFF, 0xCFCFCF, 0xE8E8E8};
-                faces[i] = vertex(cursorInset[size_t(indices[i])], viewerBlend(gold[i], monochrome[i], cursorFeedback), 1);
+                faces[i] = vertex(cursorInset[size_t(indices[i])], studioViewBlend(gold[i], monochrome[i], cursorFeedback), 1);
             }
             d->DrawPrimitiveUP(D3DPT_TRIANGLELIST, 2, faces, sizeof(ScreenVertex));
             ++drawCalls;
@@ -2011,8 +2018,8 @@ namespace gt4
                 d->DrawPrimitiveUP(D3DPT_TRIANGLELIST, 2, v, sizeof(ScreenVertex));
                 ++drawCalls;
             };
-            stroke(cursorInset[0], cursorInset[1], .65f, viewerBlend(0xDEB837, 0xDADADA, cursorFeedback));
-            stroke(cursorInset[0], cursorInset[3], .85f, viewerBlend(0xA57308, 0x808080, cursorFeedback));
+            stroke(cursorInset[0], cursorInset[1], .65f, studioViewBlend(0xDEB837, 0xDADADA, cursorFeedback));
+            stroke(cursorInset[0], cursorInset[3], .85f, studioViewBlend(0xA57308, 0x808080, cursorFeedback));
         }
 
         void drawSelectionChip(IDirect3DDevice9* d, Rect b, float scale, float opacity, bool selected,
@@ -2376,7 +2383,7 @@ namespace gt4
             finishBackdrop();
         }
 
-#include "VehicleViewerRenderer.inl"
+#include "CinematicStudioRenderer.inl"
 
         void mesh(IDirect3DDevice9* d,
                   const Mesh& m,
@@ -2389,7 +2396,7 @@ namespace gt4
                   bool reflection = false,
                   bool absolute = false,
                   const CinematicVehicleState* vehicle = nullptr,
-                  bool viewerSubject = false,
+                  bool studioViewSubject = false,
                   float rideHeight = 0,
                   bool panoramaReflection = false,
                   bool clean = false,
@@ -2425,13 +2432,13 @@ namespace gt4
             }
             if (shadow && thumbnail) {
                 light = {0, 0, 1};
-            } else if (shadow && staticMainShadow && !viewerSubject) {
+            } else if (shadow && staticMainShadow && !studioViewSubject) {
                 light = {0, 0, 1};
-            } else if (shadow && prologueStyle > 0.f && !viewerSubject && !absolute) {
+            } else if (shadow && prologueStyle > 0.f && !studioViewSubject && !absolute) {
                 light.x *= 1.f - prologueStyle;
                 light.y *= 1.f - prologueStyle;
             }
-            const float directional = shadow && !thumbnail && !viewerSubject && !absolute ? darkGrayShadowWeight : 0.f;
+            const float directional = shadow && !thumbnail && !studioViewSubject && !absolute ? darkGrayShadowWeight : 0.f;
             const V3 shadowDirection{-.66f, -.55f, 1.f};
             light = light * (1.f - directional) + shadowDirection * directional;
             transforms(d, cam, world);
@@ -2498,11 +2505,11 @@ namespace gt4
             }
             if (shadow) {
                 d->SetTexture(0, nullptr);
-                float shadowOpacity = thumbnail ? .9f : staticMainShadow && !viewerSubject ? studioLighting::frame(16.).shadowOpacity : useStudioShadow ? studioLight.shadowOpacity : .55f;
-                if (prologueStyle > 0.f && !thumbnail && !viewerSubject && !absolute && !staticMainShadow) {
+                float shadowOpacity = thumbnail ? .9f : staticMainShadow && !studioViewSubject ? studioLighting::frame(16.).shadowOpacity : useStudioShadow ? studioLight.shadowOpacity : .55f;
+                if (prologueStyle > 0.f && !thumbnail && !studioViewSubject && !absolute && !staticMainShadow) {
                     shadowOpacity += (studioLighting::frame(16.).shadowOpacity - shadowOpacity) * prologueStyle;
                 }
-                if (!thumbnail && !viewerSubject && !absolute) {
+                if (!thumbnail && !studioViewSubject && !absolute) {
                     shadowOpacity += (.80f - shadowOpacity) * studioSurfaceWeight;
                 }
                 d->SetRenderState(D3DRS_STENCILENABLE, TRUE);
@@ -2587,10 +2594,10 @@ namespace gt4
                 d->SetStreamSource(0, g->vb, 0, sizeof(OcclusionVertex));
                 d->SetRenderState(D3DRS_LIGHTING, TRUE);
             }
-            if (viewerSubject) {
+            if (studioViewSubject) {
                 d->SetRenderState(D3DRS_AMBIENT, 0xFF7C7C7C);
             }
-            auto* room = viewerSubject && mainReflectionQuality>0 && (m.paintMask || panoramaReflection) ? studioEnvironment.cubeTexture() :
+            auto* room = studioViewSubject && mainReflectionQuality>0 && (m.paintMask || panoramaReflection) ? studioEnvironment.cubeTexture() :
                 !thumbnail && mainReflectionActive && mainReflectionQuality > 0 && !reflection ? mainEnvironment.cubeTexture() : nullptr;
             const bool remapActive = m.serial == appearanceMesh && !absolute && !thumbnail;
             const bool blendRemap = remapActive && liveryBlendSupported &&
@@ -2642,13 +2649,13 @@ namespace gt4
             lamp.Direction = {-light.x, -light.y, -light.z};
             lamp.Diffuse = {.58f, .58f, .58f, 1};
             lamp.Specular = {.65f, .65f, .65f, 1};
-            if (viewerLightTint != 0xFFFFFF) {
-                lamp.Diffuse.r *= .8f + .2f * float((viewerLightTint >> 16) & 255) / 255;
-                lamp.Diffuse.g *= .8f + .2f * float((viewerLightTint >> 8) & 255) / 255;
-                lamp.Diffuse.b *= .8f + .2f * float(viewerLightTint & 255) / 255;
-                lamp.Specular.r *= float((viewerLightTint >> 16) & 255) / 255;
-                lamp.Specular.g *= float((viewerLightTint >> 8) & 255) / 255;
-                lamp.Specular.b *= float(viewerLightTint & 255) / 255;
+            if (studioViewLightTint != 0xFFFFFF) {
+                lamp.Diffuse.r *= .8f + .2f * float((studioViewLightTint >> 16) & 255) / 255;
+                lamp.Diffuse.g *= .8f + .2f * float((studioViewLightTint >> 8) & 255) / 255;
+                lamp.Diffuse.b *= .8f + .2f * float(studioViewLightTint & 255) / 255;
+                lamp.Specular.r *= float((studioViewLightTint >> 16) & 255) / 255;
+                lamp.Specular.g *= float((studioViewLightTint >> 8) & 255) / 255;
+                lamp.Specular.b *= float(studioViewLightTint & 255) / 255;
             }
             d->SetLight(0, &lamp);
             d->LightEnable(0, TRUE);
@@ -2747,7 +2754,7 @@ namespace gt4
                         occlusionGeometry = true;
                         occlusionGeometryOkay = true;
                         mesh(d, m, cam, angle, paint, opacity, size, false, false, absolute, vehicle,
-                             viewerSubject, rideHeight, panoramaReflection, clean, false, origin);
+                             studioViewSubject, rideHeight, panoramaReflection, clean, false, origin);
                         occlusionGeometry = false;
                         if (!occlusionGeometryOkay) {
                             return false;
@@ -2777,7 +2784,7 @@ namespace gt4
                     d->SetTextureStageState(stage, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
                 }
             }
-            if (viewerSubject) {
+            if (studioViewSubject) {
                 d->SetRenderState(D3DRS_AMBIENT, 0xFF6B6B6B);
             }
             d->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
@@ -3102,12 +3109,12 @@ namespace gt4
             ++drawCalls;
         }
 
-        void monitorStepArrow(IDirect3DDevice9* d, UIRect box, float scale, bool selected, int direction)
+        void monitorStepArrow(IDirect3DDevice9* d, UIRect box, float scale, bool selected, int direction, float alpha=1)
         {
 #ifndef GT4_ICON_EXPORT
             const char* asset=direction<0?(selected?"step-left-highlight":"step-left-normal"):
                                          (selected?"step-right-highlight":"step-right-normal");
-            if(buttonBackdrop(d,asset,box,1,false))return;
+            if(buttonBackdrop(d,asset,box,alpha,false))return;
 #endif
             const auto& ramp = selected ? monitorOrange : monitorArrowGray;
             for (size_t band = 0; band < ramp.size(); ++band) {
@@ -3116,20 +3123,20 @@ namespace gt4
                      box.y + box.h * band / ramp.size(),
                      box.w,
                      box.h / ramp.size() + .1f,
-                     color(ramp[band], 1));
+                     color(ramp[band], alpha));
             }
-            rect(d, box.x, box.y, scale * .65f, box.h, selected ? 0xFFFFD18A : 0xFFF2F4F9);
+            rect(d, box.x, box.y, scale * .65f, box.h, color(selected ? 0xFFD18A : 0xF2F4F9,alpha));
             const float x = box.x + box.w * .5f, y = box.y + box.h * .5f;
 #ifndef GT4_ICON_EXPORT
             const float extent=16.f/3.f*scale;
             if(pngIcon(d,direction<0?L"arrow-left.png":L"arrow-right.png",
-                       {x-extent,y-extent,2*extent,2*extent},1,0x111214)) return;
+                       {x-extent,y-extent,2*extent,2*extent},alpha,0x111214)) return;
 #endif
             screen(d);
             d->SetTexture(0, nullptr);
             const float left = direction < 0 ? 2.5f : -2.5f;
             const float right = -left;
-            const DWORD ink = 0xFF111214;
+            const DWORD ink = color(0x111214,alpha);
             const ScreenVertex triangle[]{{x + left * scale, y - 4.5f * scale, 0, 1, ink, 0, 0},
                                           {x + right * scale, y, 0, 1, ink, 0, 0},
                                           {x + left * scale, y + 4.5f * scale, 0, 1, ink, 0, 0}};
@@ -3142,11 +3149,27 @@ namespace gt4
                        const std::filesystem::path& folder,
                        std::filesystem::path& saved)
         {
-            return saveViewerPhoto(d, target, s.photo, folder, saved);
+            return saveStudioViewPhoto(d, target, s.photo, folder, saved);
         }
 
-        void drawViewerPhoto(IDirect3DDevice9* d, float W, float H, const Model& s)
+        void drawStudioViewPhoto(IDirect3DDevice9* d, float W, float H, const Model& s)
         {
+#ifdef BODY_REVIEW
+            const D3DTEXTURESTAGESTATETYPE types[]{D3DTSS_TEXCOORDINDEX,D3DTSS_TEXTURETRANSFORMFLAGS,D3DTSS_COLORARG1,D3DTSS_COLORARG2,D3DTSS_ALPHAARG1,D3DTSS_ALPHAARG2};
+            for(size_t i=0;i<6;++i)d->GetTextureStageState(0,types[i],&photoEntryStates[i]);
+            d->GetTextureStageState(1,D3DTSS_COLOROP,&photoEntryStates[6]);
+            d->GetTextureStageState(2,D3DTSS_COLOROP,&photoEntryStates[7]);
+            d->GetRenderState(D3DRS_STENCILENABLE,&photoEntryStates[8]);d->GetRenderState(D3DRS_SCISSORTESTENABLE,&photoEntryStates[9]);
+            d->GetRenderState(D3DRS_CLIPPLANEENABLE,&photoEntryStates[10]);d->GetRenderState(D3DRS_ZENABLE,&photoEntryStates[11]);
+#endif
+            d->SetPixelShader(nullptr);d->SetVertexShader(nullptr);d3dShopOverlay(d);
+            d->SetRenderState(D3DRS_STENCILENABLE,FALSE);d->SetRenderState(D3DRS_SCISSORTESTENABLE,FALSE);d->SetRenderState(D3DRS_CLIPPLANEENABLE,0);
+            d->SetRenderState(D3DRS_SRCBLEND,D3DBLEND_SRCALPHA);d->SetRenderState(D3DRS_DESTBLEND,D3DBLEND_INVSRCALPHA);
+            d->SetRenderState(D3DRS_SEPARATEALPHABLENDENABLE,FALSE);d->SetRenderState(D3DRS_COLORWRITEENABLE,15);
+            d->SetTextureStageState(0,D3DTSS_TEXCOORDINDEX,0);d->SetTextureStageState(0,D3DTSS_TEXTURETRANSFORMFLAGS,D3DTTFF_DISABLE);
+            d->SetTextureStageState(0,D3DTSS_COLORARG1,D3DTA_TEXTURE);d->SetTextureStageState(0,D3DTSS_COLORARG2,D3DTA_DIFFUSE);
+            d->SetTextureStageState(0,D3DTSS_ALPHAARG1,D3DTA_TEXTURE);d->SetTextureStageState(0,D3DTSS_ALPHAARG2,D3DTA_DIFFUSE);
+            for(DWORD stage:{1u,2u}){d->SetTextureStageState(stage,D3DTSS_COLOROP,D3DTOP_DISABLE);d->SetTextureStageState(stage,D3DTSS_ALPHAOP,D3DTOP_DISABLE);}
             const auto& photo = s.photo;
             if (photo.requested) {
                 return;
@@ -3159,7 +3182,7 @@ namespace gt4
             if (s.interfaceReveal<=0) {
                 return;
             }
-            const float scale = ViewerPhoto::uiScale(W, H);
+            const float scale = StudioViewPhoto::uiScale(W, H);
             {
             const auto box = photo.panel(W, H);
             rect(d, box.x + 3 * scale, box.y + 3 * scale, box.w, box.h, color(0, .26f));
@@ -3175,7 +3198,7 @@ namespace gt4
                  0,
                  true);
             const char* names[]{"Zoom", "FOV", "Roll", "Ratio", "Preset"};
-            for (int row = 0; row < ViewerPhoto::settingCount; ++row) {
+            for (int row = 0; row < StudioViewPhoto::settingCount; ++row) {
                 const auto item = photo.choice(W, H, row);
                 const auto field = photo.field(W, H, row);
                 rect(d, item.x, item.y, item.w, item.h, row % 2 ? 0xFFACACB1 : 0xFFB4B4B9);
@@ -3204,7 +3227,7 @@ namespace gt4
                 } else if (row == 2) {
                     std::snprintf(value, sizeof(value), "%+.0f", photo.roll);
                 } else if (row == 3) {
-                    std::snprintf(value, sizeof(value), "%s", ViewerPhoto::ratios[size_t(photo.ratio)]);
+                    std::snprintf(value, sizeof(value), "%s", StudioViewPhoto::ratios[size_t(photo.ratio)]);
                 } else {
                     std::snprintf(value, sizeof(value), "%d%s", photo.preset + 1,
                                   photo.presets[size_t(photo.preset)].valid ? "" : " - Empty");
@@ -3221,18 +3244,18 @@ namespace gt4
                      0,
                      true);
             }
-            for (int row : {ViewerPhoto::saveRow, ViewerPhoto::loadRow}) {
+            for (int row : {StudioViewPhoto::saveRow, StudioViewPhoto::loadRow}) {
                 const auto area = photo.choice(W, H, row);
                 rect(d, area.x, area.y, area.w, area.h, row % 2 ? 0xFFACACB1 : 0xFFB4B4B9);
-                text(d, row == ViewerPhoto::saveRow ? "Save Preset" : "Load Preset", area.x + 10 * scale,
+                text(d, row == StudioViewPhoto::saveRow ? "Save Preset" : "Load Preset", area.x + 10 * scale,
                      area.y + 4 * scale, 13.5f * scale, 0xFF08080C, false, 0, true);
                 auto button = photo.field(W, H, row);
                 monitorButton(d, button, "Enter", 1, scale, !photo.visuals && photo.row == row, 1.f);
             }
-            monitorButton(d, photo.choice(W, H, ViewerPhoto::captureRow), "Take Image", 1, scale,
-                          !photo.visuals && photo.row == ViewerPhoto::captureRow, 1.f);
-            monitorButton(d, photo.choice(W, H, ViewerPhoto::backRow), "Back", 1, scale,
-                          !photo.visuals && photo.row == ViewerPhoto::backRow, 1.f);
+            monitorButton(d, photo.choice(W, H, StudioViewPhoto::captureRow), "Take Image", 1, scale,
+                          !photo.visuals && photo.row == StudioViewPhoto::captureRow, 1.f);
+            monitorButton(d, photo.choice(W, H, StudioViewPhoto::backRow), "Back", 1, scale,
+                          !photo.visuals && photo.row == StudioViewPhoto::backRow, 1.f);
 
             }
             {
@@ -3255,8 +3278,8 @@ namespace gt4
                     text(d,s.photoVisualName(i),b.x+10*scale,b.y+4*scale,13.5f*scale,0xff111114,false,0,true);
                     monitorBevel(d,f,1,scale,false,false,false);
                     const float edge=f.h*1.2f;
-                    monitorStepArrow(d,{f.x,f.y,edge,f.h},scale,photo.visuals && photo.row==i,-1);
-                    monitorStepArrow(d,{f.x+f.w-edge,f.y,edge,f.h},scale,photo.visuals && photo.row==i,1);
+                    monitorStepArrow(d,{f.x,f.y,edge,f.h},scale,photo.visuals && photo.row==i && photo.side<0,-1);
+                    monitorStepArrow(d,{f.x+f.w-edge,f.y,edge,f.h},scale,photo.visuals && photo.row==i && photo.side>0,1);
                     const auto value=s.photoVisualValue(i);
                     text(d,value,f.x+f.w*.5f,f.y+3*scale,fitted(value,13*scale,f.w-2*edge,true),0xff151519,true,0,true);
                 }
@@ -3294,7 +3317,7 @@ namespace gt4
                 text(d,
                      m.monitorTitle(level),
                      r.x + r.w * .5f,
-                     r.y + (level == 0 && m.settingsView != SettingsView::VehicleViewer ? 3.f : 2.f) * scale,
+                     r.y + (level == 0 && m.settingsView != SettingsView::Cinematic ? 3.f : 2.f) * scale,
                      fitted(m.monitorTitle(level), 13 * scale, r.w - 20 * scale, true),
                      color(0xD0D0D2, alpha),
                      true,
@@ -3352,6 +3375,12 @@ namespace gt4
                                  color(ramp[band], alpha));
                         }
                         }
+                    } else if(level==0 && !single && rows[size_t(i)].action==StudioAction::StudioViewType) {
+                        monitorBevel(d,field,alpha,scale,false,false,false);
+                        const float edge=field.h*1.2f;
+                        monitorStepArrow(d,{field.x,field.y,edge,field.h},scale,m.monitorFieldSelected(level,i)&&m.typeSide<0,-1,alpha);
+                        monitorStepArrow(d,{field.x+field.w-edge,field.y,edge,field.h},scale,m.monitorFieldSelected(level,i)&&m.typeSide>0,1,alpha);
+                        text(d,value,field.x+field.w*.5f,field.y+3.4f*scale,fitted(value,13*scale,field.w-2*edge,true),color(0x151519,alpha),true,0,true);
                     } else {
                         monitorBevel(d,
                                      field,
@@ -3476,7 +3505,10 @@ namespace gt4
     public:
 
         Rect carHit;
-        Camera lastCarCamera{1280, 720, 5};
+        Camera lastCarCamera{1280,720,5};
+        bool photoWasActive=false,inspectionWasVisible=false;
+        double returnAngleSelection=-1,returnAngleSession=-1;
+        float returnAngleOffset=0;
         UINT presentationWidth = 0, presentationHeight = 0;
         float lastCarAngle = 0, lastCarSize = 1;
 #ifdef BODY_REVIEW
@@ -3728,19 +3760,30 @@ namespace gt4
             if (!s.shop.open()) {
                 shopFooter = {};
             }
-            const bool customStudio = s.viewer.settings.scene == ViewerScene::Custom;
-            viewerLightTint = s.viewer.active && !s.viewer.settings.inheritStudio && !customStudio ? s.viewer.settings.lighting().color : 0xFFFFFF;
+            const bool customStudio = s.studioView.settings.scene == StudioViewScene::Custom;
+            studioViewLightTint = s.studioView.active && !s.studioView.settings.inheritStudio && !customStudio ? s.studioView.settings.lighting().color : 0xFFFFFF;
+            if(s.studioView.active && s.photo.returning) {
+                const auto& previous=s.photo.returnStudioView.settings;
+                const uint32_t from=previous.inheritStudio?0xFFFFFF:previous.lighting().color;
+                studioViewLightTint=studioViewBlend(from,studioViewLightTint,s.photo.returnAlpha(s.clock));
+            }
             triangles = drawCalls = uploads = 0;
 #ifdef BODY_REVIEW
             pointerDraws = extrasPanelDraws = 0;
 #endif
             ++frameSerial;
             studioClock=s.clock;
+            if(!s.photo.active && !s.photo.returning && photoBackdrop) {
+                photoBackdrop->Release();photoBackdrop=nullptr;photoBackdropReady=false;photoBackdropSession=-1;
+            }
+            if(s.photo.active && photoBackdropSession!=s.photo.originalBegan) {
+                photoBackdropReady=false;photoBackdropSession=s.photo.originalBegan;
+            }
             lightPhase = float(s.clock) * .42f;
             lastShadowPhase = lightPhase;
             useStudioShadow = false;
-            const bool inheritedRoom = s.viewer.active && s.viewer.settings.inheritStudio;
-            const bool mainStudio = (!s.viewer.active || inheritedRoom) && s.page != Page::Prize;
+            const bool inheritedRoom = s.studioView.active && s.studioView.settings.inheritStudio;
+            const bool mainStudio = (!s.studioView.active || inheritedRoom) && s.page != Page::Prize;
             prologueStyle = mainStudio
                 ? s.prologueMix : 0.f;
             studioSurfaceWeight = 0.f;
@@ -3768,8 +3811,8 @@ namespace gt4
             }
             const auto oldVP = targets.view();
             occlusionQuality = s.ui.ambientOcclusion;
-            mainReflectionQuality = s.viewer.active ? (s.viewer.settings.vehicleReflections ? s.viewer.settings.reflectionQuality : 0) : s.ui.vehicleReflections;
-            mainReflectionActive = (!s.viewer.active || inheritedRoom) && !s.shop.open();
+            mainReflectionQuality = s.renderVehicleQuality();
+            mainReflectionActive = (!s.studioView.active || inheritedRoom) && !s.shop.open();
             if (!allocate(d, width, height, s.ui.antialiasing)) {
                 saved->Release();
                 return false;
@@ -3878,7 +3921,7 @@ namespace gt4
                 bikeExtrasFrameSource = 0;
             }
             const bool keepExtrasFraming = extrasFraming && !s.ui.cinematic.active &&
-                !s.viewer.active && s.ui.cinematic.mix <= .001f && s.page != Page::Prize;
+                !s.studioView.active && s.ui.cinematic.mix <= .001f && s.page != Page::Prize;
             const Mesh* framing = keepExtrasFraming ? extrasFraming : main;
             const V3 framingHigh = framing ? previewFramingHigh(e, *framing) : V3{};
             const float span = framing ? std::max({framingHigh.x - framing->low.x,
@@ -3908,7 +3951,7 @@ namespace gt4
                 const double studioTime = s.ui.cinematic.active ? s.ui.cinematic.lightTime(s.clock)-s.backdropPause : s.clock-s.backdropPause;
                 lastShadowPhase = float(studioTime) * .42f;
                 const Paint paint = appearancePaint(e, s, main);
-                const bool browseEntry = !s.enthusia && !s.viewer.active && !s.photo.active &&
+                const bool browseEntry = !s.enthusia && !s.studioView.active && !s.photo.active &&
                     !s.ui.cinematic.active && s.ui.cinematic.mix <= .001f;
                 // Keep the floor at its settled position while models load and their entry camera moves
                 Camera browseBackdrop = cam;
@@ -3920,7 +3963,7 @@ namespace gt4
                     const bool protectedBike = twoWheelerPreview(e);
                     float angle = s.heading(s.clock - s.changed, protectedBike) + pi;
                     const bool normalAutomobile = (e.kind == 0 || e.kind == 1) && !s.enthusia &&
-                                                  !s.viewer.active && !s.photo.active;
+                                                  !s.studioView.active && !s.photo.active;
                     const float browseMix = normalAutomobile ? (1.f - s.ui.cinematic.mix) : 0.f;
                     const int framingClass = classIndex(e.classId);
                     const bool stagedEntry = (normalAutomobile || protectedBike) && browseEntry;
@@ -3931,6 +3974,9 @@ namespace gt4
                         entrySessionStamp = s.opened;
                         entryRenderableAt = -1.;
                     }
+                    const bool inspectionReturned=!s.studioView.active && inspectionWasVisible;
+                    if (inspectionReturned) entryRenderableAt=s.clock-2.;
+                    inspectionWasVisible=s.studioView.active;
                     if (stagedEntry) {
                         if(auto* gpu=upload(d,*main)) {
                             if(entryRenderableAt<0.) entryRenderableAt=s.clock;
@@ -4122,7 +4168,7 @@ namespace gt4
                         }
                         mainCam.focal *= 1.f+(std::max(.2f,boost)-1.f)*browseMix;
                     }
-                    if (protectedBike && !s.viewer.active && !s.photo.active && !s.enthusia) {
+                    if (protectedBike && !s.studioView.active && !s.photo.active && !s.enthusia) {
                         const float showroomMix = 1.f - s.ui.cinematic.mix;
                         mainCam.focal *= 1.f + .06f * showroomMix;
                         const float poseSize = bikePose ? 1.08f : 1.f;
@@ -4201,21 +4247,32 @@ namespace gt4
                         mainCam.right = unit(cross(mainCam.forward, {0, 0, 1}));
                         mainCam.up = cross(mainCam.right, mainCam.forward);
                     }
-                    if (s.viewer.active) {
-                        lightPhase = lastShadowPhase = s.viewer.shadowPhase(s.clock);
-                        if (!inheritedRoom && s.viewer.settings.vehicleReflections && (main->paintMask || customStudio)) {
-                            studioEnvironment.resolution(1u << (5+s.viewer.settings.reflectionQuality));
-                            updateStudioEnvironment(d, s.viewer, s.clock);
+                    if (s.studioView.active) {
+                        lightPhase = lastShadowPhase = s.renderStudioViewLightPhase();
+                        if (!inheritedRoom && s.renderVehicleQuality()>0 && (main->paintMask || customStudio)) {
+                            studioEnvironment.resolution(1u << (5+s.renderVehicleQuality()));
+                            updateStudioEnvironment(d, s.studioView, s.clock);
                         }
-                        mainCam = s.photo.active ? viewerPhotoCamera(W, H, s.photo, s.viewer, s.clock)
-                                                 : viewerCamera(W, H, s.viewer, s.clock);
-                        angle = pi;
+                        auto& view = s.studioView;
+                        if (!view.showroomCamera || (photoWasActive && !s.photo.active)) {
+                            const auto& c = lastCarCamera;
+                            view.cameraSeed = {c.eye.x,c.eye.y,c.eye.z,c.forward.x,c.forward.y,c.forward.z,
+                                c.right.x,c.right.y,c.right.z,c.up.x,c.up.y,c.up.z,
+                                c.focal/c.h,c.cy/c.h,c.offsetX/c.w,c.offsetY/c.h,c.w,c.h};
+                            view.seedYaw=view.yaw(s.clock);view.seedPitch=view.pitch;view.seedZoom=view.zoom;
+                            view.seedSize=lastCarSize;view.seedAngle=lastCarAngle;
+                            view.showroomCamera=true;
+                        }
+                        previewSize = view.seedSize;
+                        mainCam = s.photo.active ? studioViewPhotoCamera(W,H,s.photo,s.studioView,s.clock) :
+                            studioViewCamera(W,H,s.studioView,s.clock);
+                        angle = s.studioView.seedAngle;
                     } else {
-                        if (s.photo.active) {
-                            mainCam = cinematicPhotoCamera(mainCam, s.photo);
+                        if (s.photo.active || s.photo.returning) {
+                            mainCam=cinematicPhotoCamera(mainCam,s.photo.active?s.photo:returningPhotoPose(s.photo,s.studioView,s.clock));
                         }
                     }
-                    if (!s.viewer.active || inheritedRoom) {
+                    if (!s.studioView.active || inheritedRoom) {
                         if (mainEnvironmentRequested != mainReflectionQuality) {
                             mainEnvironmentRequested = mainReflectionQuality;
                             mainEnvironmentResolution = 1u << (5 + std::clamp(mainReflectionQuality, 1, 4));
@@ -4243,7 +4300,7 @@ namespace gt4
                             }
                         }
                     }
-                    if (!s.viewer.active) {
+                    if (!s.studioView.active) {
                         backdropCamera = browseEntry ? browseBackdrop : mainCam;
                         if (!browseEntry && browseMix > 0.f) {
                             // Reframing the car should not move the floor during ordinary browsing
@@ -4255,10 +4312,18 @@ namespace gt4
                         }
                         studio(d, backdropCamera, studioTime, s.backgroundBlend);
                     }
+                    photoWasActive=s.photo.active;
+                    if(inspectionReturned) {
+                        const float orbit=std::atan2(lastCarCamera.eye.x,-lastCarCamera.eye.y);
+                        returnAngleOffset=std::remainder(lastCarAngle-orbit-angle,2*pi);
+                        returnAngleSelection=s.changed;returnAngleSession=s.opened;
+                    }
+                    if(!s.studioView.active && returnAngleSelection==s.changed && returnAngleSession==s.opened)
+                        angle+=returnAngleOffset;
                     lastCarCamera = mainCam;
                     lastCarAngle = angle;
                     lastCarSize = previewSize;
-                    if (bikePose && !s.viewer.active) {
+                    if (bikePose && !s.studioView.active) {
                         lastCarSize *= 1.f + .08f * (1.f - std::clamp(s.ui.cinematic.mix, 0.f, 1.f));
                     }
                     lastShadowAngle = angle;
@@ -4292,11 +4357,11 @@ namespace gt4
                     const float rideHeight = float(s.shop.confirmedRideHeight) * .025f;
                     if (inheritedRoom) {
                         studio(d,browseBackdrop,studioTime,s.backgroundBlend);
-                        if(s.viewer.settings.reflections) shopMirror(d,*main,mainCam,angle,paint,materialOpacity,lastCarSize,rideHeight,s.shop.washed,s.viewer.settings.reflectionQuality,vehicle);
-                    } else if (s.viewer.active) {
-                        viewerRoom(d,
+                        if(s.renderFloorQuality()>0) shopMirror(d,*main,mainCam,angle,paint,materialOpacity,lastCarSize,rideHeight,s.shop.washed,s.renderFloorQuality(),vehicle);
+                    } else if (s.studioView.active) {
+                        studioViewRoom(d,
                                    mainCam,
-                                   s.viewer,
+                                   s.studioView,
                                    s.clock,
                                    *main,
                                    angle,
@@ -4307,11 +4372,26 @@ namespace gt4
                                    rideHeight,
                                    s.shop.washed);
                     }
-                    if (!s.viewer.active && s.ui.floorReflections() > 0) {
+                    if (!s.studioView.active && s.renderFloorQuality() > 0) {
                         shopMirror(d, *main, mainCam, angle, paint, materialOpacity, lastCarSize, rideHeight,
-                                   s.shop.washed, s.ui.floorReflections(), vehicle, .31f + .22f * studioSurfaceWeight, origin);
+                                   s.shop.washed, s.renderFloorQuality(), vehicle, .31f + .22f * studioSurfaceWeight, origin);
                     }
-                    if (s.viewer.active ? s.viewer.settings.shadows : s.ui.shadows()) {
+                    if(s.photo.active) {
+                        if(!photoBackdrop || photoBackdropW!=width || photoBackdropH!=height) {
+                            if(photoBackdrop){photoBackdrop->Release();photoBackdrop=nullptr;}
+                            photoBackdropW=width;photoBackdropH=height;photoBackdropReady=false;
+                            d->CreateTexture(width,height,1,D3DUSAGE_RENDERTARGET,D3DFMT_A8R8G8B8,D3DPOOL_DEFAULT,&photoBackdrop,nullptr);
+                        }
+                        IDirect3DSurface9* snapshot=nullptr;
+                        if(photoBackdrop && SUCCEEDED(photoBackdrop->GetSurfaceLevel(0,&snapshot))) {
+                            photoBackdropReady=SUCCEEDED(d->StretchRect(antialiasing.surface?antialiasing.surface:surface,nullptr,snapshot,nullptr,D3DTEXF_NONE));
+                            snapshot->Release();
+                        }
+                    } else if(s.photo.returning && photoBackdropReady && photoBackdrop && photoBackdropW==width && photoBackdropH==height) {
+                        d3dShopOverlay(d);
+                        rect(d,0,0,W,H,color(0xffffff,1.f-s.photo.returnAlpha(s.clock)),photoBackdrop);
+                    }
+                    if (s.renderShadows()) {
                         mesh(d,
                              *main,
                              mainCam,
@@ -4337,7 +4417,7 @@ namespace gt4
                          false,
                          false,
                          vehicle,
-                         s.viewer.active && !inheritedRoom,
+                         s.studioView.active && !inheritedRoom,
                          rideHeight,
                          customStudio,
                          s.shop.washed, false, origin);
@@ -4761,7 +4841,7 @@ namespace gt4
                         cursor(d, s.pointerX * W, s.pointerY * H, scale * .85f, 1);
                     }
                 } else if (s.photo.active && reveal>0) {
-                    drawViewerPhoto(d, W, H, s);
+                    drawStudioViewPhoto(d, W, H, s);
                 }
                 if(s.purchase.active() && s.purchase.studioView()) drawPurchase(d,W,H,s,e,main);
                 if(fadingUI) rect(d,0,0,W,H,color(0xffffff,1.f-reveal),uiBackdrop);

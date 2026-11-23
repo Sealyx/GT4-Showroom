@@ -8,6 +8,7 @@ inline void ContextMenu::monitorToggle(float px, float py, double now)
     closeResult = 0;
     sliderDrag = -1;
     sliderChanged = false;
+    typeChanged=false;typeSide=1;
     sub = countries = countryFocus = false;
     row = sortRow = countryRow = focusLevel = 0;
     monitorPicker = monitorHover = monitorHeaderHover = monitorKeyboard = false;
@@ -149,9 +150,7 @@ inline std::string ContextMenu::monitorTitle(int level) const
     if (level == 0) {
         switch (settingsView) {
             case SettingsView::Cinematic:
-                return "Cinematic Settings";
-            case SettingsView::VehicleViewer:
-                return "Vehicle Viewer";
+                return "Cinematic";
             default:
                 return "Showroom Settings";
         }
@@ -171,6 +170,7 @@ inline std::string ContextMenu::monitorTitle(int level) const
         case MenuBranch::Volume:
             return "Volume";
         case MenuBranch::Reflections:
+        case MenuBranch::StudioViewReflections:
             return "Reflections";
         case MenuBranch::Display:
             return "Display Settings";
@@ -196,6 +196,7 @@ inline std::string ContextMenu::monitorValue(int level, int index) const
         return {};
     }
     const auto& item = rows[size_t(index)];
+    if(level==0 && index==0 && settingsView==SettingsView::Cinematic) return animatedStudioBackdrop(studioBackdropCode(studioViewSettings,styleChoice,backgroundChoice))?"Animated":"Static";
     const auto branch = item.child;
     if (branch != MenuBranch::None) {
         if (branch == MenuBranch::Language) {
@@ -204,6 +205,10 @@ inline std::string ContextMenu::monitorValue(int level, int index) const
         if (branch == MenuBranch::FloorReflections || branch == MenuBranch::VehicleReflections) {
             constexpr const char* names[]{"Off", "Low", "Medium", "High", "Ultra"};
             return names[std::clamp(branch == MenuBranch::FloorReflections ? floorReflections : vehicleReflections, 0, 4)];
+        }
+        if(branch==MenuBranch::StudioViewFloorReflections || branch==MenuBranch::StudioViewVehicleReflections) {
+            constexpr const char* names[]{"Off","Low","Medium","High","Ultra"};
+            return names[std::clamp(branch==MenuBranch::StudioViewFloorReflections?studioViewSettings.floorReflectionQuality():studioViewSettings.vehicleReflectionQuality(),0,4)];
         }
         if (branch == MenuBranch::Antialiasing || branch == MenuBranch::AmbientOcclusion) {
             constexpr const char* names[]{"Off", "Standard", "High", "Ultra"};
@@ -245,31 +250,31 @@ inline std::string ContextMenu::monitorValue(int level, int index) const
         if (branch == MenuBranch::CinematicRotation) {
             return cinematicPaused ? "Off" : "On";
         }
-        if (branch == MenuBranch::ViewerAnimate) {
-            return viewerSettings.animate ? "On" : "Off";
+        if (branch == MenuBranch::StudioViewAnimate) {
+            return studioViewSettings.animate ? "On" : "Off";
         }
-        if (branch == MenuBranch::ViewerScene) {
-            auto settings = viewerSettings;
+        if (branch == MenuBranch::StudioViewScene) {
+            auto settings = studioViewSettings;
             settings.validate();
-            return viewerSceneNames[size_t(settings.scene)];
+            return studioBackdropName(studioBackdropCode(settings,styleChoice,backgroundChoice));
         }
-        if (branch == MenuBranch::ViewerColor) {
-            return viewerSurfaceName(viewerSettings.wallColor);
+        if (branch == MenuBranch::StudioViewColor) {
+            return studioViewSurfaceName(studioViewSettings.wallColor);
         }
-        if (branch == MenuBranch::ViewerFloor) {
-            return viewerSurfaceName(viewerSettings.floorColor);
+        if (branch == MenuBranch::StudioViewFloor) {
+            return studioViewSurfaceName(studioViewSettings.floorColor);
         }
-        if (branch == MenuBranch::ViewerPalette) {
-            return viewerSettings.lighting().name;
+        if (branch == MenuBranch::StudioViewPalette) {
+            return studioViewSettings.lighting().name;
         }
-        if (branch == MenuBranch::ViewerReflections) {
-            return viewerSettings.reflections ? "On" : "Off";
+        if (branch == MenuBranch::StudioViewReflections) {
+            return "Settings";
         }
-        if (branch == MenuBranch::ViewerShadows) {
-            return viewerSettings.shadows ? "On" : "Off";
+        if (branch == MenuBranch::StudioViewShadows) {
+            return studioViewSettings.shadows ? "On" : "Off";
         }
-        if (branch == MenuBranch::ViewerPause) {
-            return viewerPaused ? "Paused" : "Playing";
+        if (branch == MenuBranch::StudioViewPause) {
+            return studioViewPaused ? "Paused" : "Playing";
         }
         if (branch == MenuBranch::Hotspots) {
             return hotspots ? "On" : "Off";
@@ -301,7 +306,7 @@ inline std::string ContextMenu::monitorValue(int level, int index) const
     if (item.action == StudioAction::EnterTransFender) {
         return customizationEnabled ? "Enter" : "Unavailable";
     }
-    if (item.action == StudioAction::ViewerEnter || item.action == StudioAction::Cinematic ||
+    if (item.action == StudioAction::Cinematic ||
         item.action == StudioAction::EnterPhoto) {
         return "Enter";
     }
@@ -324,6 +329,7 @@ inline std::string ContextMenu::help() const
         return {};
     }
     const auto item = rows[size_t(index)];
+    if(item.action==StudioAction::StudioViewType) return "Choose animated or static studio backgrounds";
     const auto branch = item.child;
     if (branch == MenuBranch::CinematicAnimation || item.action == StudioAction::CinematicAnimation) {
         return "Pause or resume the studio background and shadow animation";
@@ -331,34 +337,31 @@ inline std::string ContextMenu::help() const
     if (branch == MenuBranch::CinematicRotation || item.action == StudioAction::CinematicRotation) {
         return "Pause or resume vehicle rotation without changing the studio animation";
     }
-    if (item.action == StudioAction::ViewerEnter) {
-        return "View the vehicle in animated studios with adjustable backgrounds, reflections and camera controls";
-    }
-    if (branch == MenuBranch::ViewerAnimate || item.action == StudioAction::ViewerAnimate) {
-        if (viewerSettings.scene == ViewerScene::Softbox) {
+    if (branch == MenuBranch::StudioViewAnimate || item.action == StudioAction::StudioViewAnimate) {
+        if (studioViewSettings.scene == StudioViewScene::Softbox) {
             return "Keep the studio shadows moving while vehicle rotation is paused";
         }
         return "Keep the studio animation and shadows moving while vehicle rotation is paused";
     }
-    if (branch == MenuBranch::ViewerScene || item.action == StudioAction::ViewerScene) {
+    if (branch == MenuBranch::StudioViewScene || item.action == StudioAction::StudioViewScene) {
         return "Choose the studio surrounding the vehicle";
     }
-    if (branch == MenuBranch::ViewerColor || item.action == StudioAction::ViewerColor) {
+    if (branch == MenuBranch::StudioViewColor || item.action == StudioAction::StudioViewColor) {
         return "Change the studio background color";
     }
-    if (branch == MenuBranch::ViewerFloor || item.action == StudioAction::ViewerFloor) {
+    if (branch == MenuBranch::StudioViewFloor || item.action == StudioAction::StudioViewFloor) {
         return "Change the studio floor color";
     }
-    if (branch == MenuBranch::ViewerPalette || item.action == StudioAction::ViewerPalette) {
+    if (branch == MenuBranch::StudioViewPalette || item.action == StudioAction::StudioViewPalette) {
         return "Choose the lighting color for the animated studio";
     }
-    if (branch == MenuBranch::ViewerReflections || item.action == StudioAction::ViewerReflections) {
+    if (branch == MenuBranch::StudioViewReflections || item.action == StudioAction::StudioViewReflections) {
         return "Show or hide the vehicle reflection on the studio floor";
     }
-    if (branch == MenuBranch::ViewerShadows || item.action == StudioAction::ViewerShadows) {
+    if (branch == MenuBranch::StudioViewShadows || item.action == StudioAction::StudioViewShadows) {
         return "Show or hide the vehicle shadow in the studio";
     }
-    if (branch == MenuBranch::ViewerPause || item.action == StudioAction::ViewerPause) {
+    if (branch == MenuBranch::StudioViewPause || item.action == StudioAction::StudioViewPause) {
         return "Pause or resume vehicle rotation without changing the selected studio";
     }
     if (branch == MenuBranch::Hotspots) {
@@ -476,10 +479,9 @@ inline bool ContextMenu::fieldOpensWindow(int level, int index) const
         return false;
     }
     const auto b = rows[size_t(index)].child;
-    return b == MenuBranch::Display || b == MenuBranch::Logos || b == MenuBranch::Extras || b == MenuBranch::Volume || b == MenuBranch::Reflections || b == MenuBranch::Categories ||
+    return b == MenuBranch::Display || b == MenuBranch::Logos || b == MenuBranch::Extras || b == MenuBranch::Volume || b == MenuBranch::Reflections || b == MenuBranch::StudioViewReflections || b == MenuBranch::Categories ||
            rows[size_t(index)].action == StudioAction::EnterTransFender ||
            rows[size_t(index)].action == StudioAction::EnterPhoto ||
-           rows[size_t(index)].action == StudioAction::ViewerEnter ||
            rows[size_t(index)].action == StudioAction::Cinematic;
 }
 
@@ -554,6 +556,10 @@ inline void ContextMenu::monitorPoint(float px, float py, float w, float h)
         return;
     }
     const float scale = h / 720.f;
+    if(settingsView==SettingsView::Cinematic) {
+        const auto f=monitorField(0,0,w,h);const float edge=f.h*1.2f;
+        typeSide=UIRect{f.x,f.y,edge,f.h}.contains(px,py)?-1:UIRect{f.x+f.w-edge,f.y,edge,f.h}.contains(px,py)?1:0;
+    }
     const auto boxes = monitorPanels(w, h);
     auto footer = [&](int level) {
         for (int button = 0; button < 2; ++button) {
@@ -725,6 +731,7 @@ inline void ContextMenu::monitorMove(int dx, int dy)
         setSliderValue(sortRow, sliderValue(sortRow) + dx);
         return;
     }
+    if(dx && level==0 && settingsView==SettingsView::Cinematic && row==0) {typeSide=dx;typeChanged=true;return;}
     if (dx < 0) {
         monitorBack();
         return;
@@ -811,6 +818,7 @@ inline StudioAction ContextMenu::monitorActivate()
         return StudioAction::None;
     }
     const auto item = rows[size_t(index)];
+    if(item.action==StudioAction::StudioViewType) return item.action;
     if (item.action == StudioAction::EnterTransFender && !customizationEnabled) {
         return StudioAction::None;
     }
@@ -929,6 +937,7 @@ inline StudioAction ContextMenu::monitorClick(float px, float py, float w, float
     }
     for (size_t i = 0; i < rootItems().size(); ++i) {
         if (monitorField(0, int(i), w, h).contains(px, py)) {
+            if(settingsView==SettingsView::Cinematic && i==0 && !typeSide) return StudioAction::None;
             row = int(i);
             focusLevel = 0;
             countryFocus = sub = monitorPicker = false;

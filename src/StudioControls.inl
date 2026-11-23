@@ -46,8 +46,9 @@ void finishSettings()
             setGameVolume(ui.menuVolume);
             ui.menu.volume = ui.menuVolume;
         }
-        state.viewer = state.menuViewer;
-        state.viewer.lastActivity = state.clock;
+        state.inspection=state.menuInspection;
+        state.studioView = state.menuStudioView;
+        state.studioView.lastActivity = state.clock;
     } else if (ui.preferences() != ui.menuPreferences) {
         saveStudioPreferences();
     }
@@ -73,7 +74,8 @@ void openStudioSettings(float x, float y, bool keyboard)
         const auto& entry = entries[state.selected];
         ui.menu.setVehicleKind(entry.kind, entry.classId);
     }
-    state.menuViewer = state.viewer;
+    state.menuInspection=state.inspection;
+    state.menuStudioView = state.studioView;
     ui.menuCinematic = ui.cinematic;
     ui.menuVehicle = ui.vehicle;
     ui.dealerBackgroundWritten = false;
@@ -89,12 +91,20 @@ void openStudioSettings(float x, float y, bool keyboard)
     ui.menuVolume = ui.menu.volume;
     ui.menuSnapshot = true;
     ui.menu.settingsView = SettingsView::Showroom;
-    if (state.viewer.active) {
-        ui.menu.settingsView = SettingsView::VehicleViewer;
+    if (state.studioView.active) {
+        ui.menu.settingsView = SettingsView::Cinematic;
     } else if (ui.cinematic.active) {
         ui.menu.settingsView = SettingsView::Cinematic;
     }
     ui.syncMenuPresentation();
+    ui.menu.studioViewSettings=state.studioView.settings;
+    ui.menu.studioViewSettings.floorQuality=state.studioViewFloorQuality();
+    ui.menu.studioViewSettings.vehicleQuality=state.renderVehicleQuality();
+    if(ui.cinematic.active) {
+        ui.menu.backgroundChoice=state.activeBackground();ui.menu.styleChoice=state.activeStyle();
+        ui.menu.floorReflections=state.renderFloorQuality();ui.menu.vehicleReflections=state.renderVehicleQuality();
+        ui.menu.shadows=state.renderShadows();
+    }
     ui.menu.toggle(x, y, state.clock);
     ui.menu.monitorKeyboard = keyboard;
 }
@@ -104,9 +114,8 @@ void closeStudioPhoto(float width, float height)
 {
     auto& photo = state.photo;
     const auto panel = photo.panel(width, height);
-    photo.end(state.viewer, state.clock);
-    if (photo.viewerContext) { state.viewer = photo.originalViewer; state.viewer.lastActivity=state.clock; }
-    if (state.ui.cinematic.active || state.viewer.active) {
+    state.closePhoto();
+    if (state.ui.cinematic.active || state.studioView.active) {
         openStudioSettings(panel.x / width, panel.y / height, true);
         state.ui.dock = true;
     }
@@ -143,7 +152,10 @@ void requestStudioAction(StudioAction action)
         return;
     }
     if (action == StudioAction::FloorReflections || action == StudioAction::VehicleReflections) {
-        if (action == StudioAction::FloorReflections) {
+        if(state.ui.cinematic.active) {
+            if(action==StudioAction::FloorReflections)state.inspection.floor=std::clamp(state.ui.menu.choice,0,4);
+            else state.inspection.vehicle=std::clamp(state.ui.menu.choice,0,4);
+        } else if (action == StudioAction::FloorReflections) {
             state.ui.chooseFloorReflections(state.ui.menu.choice);
             state.ui.syncMenuPresentation();
         } else {
@@ -165,8 +177,13 @@ void requestStudioAction(StudioAction action)
         return;
     }
     if (action == StudioAction::ShowroomStyle) {
-        state.ui.menuStyleEdited=true;
-        state.ui.showroomStyle = std::clamp(state.ui.menu.choice, 0, studioStyleCount - 1);
+        if(state.ui.cinematic.active) {
+            state.inspection.style=std::clamp(state.ui.menu.choice,0,studioStyleCount-1);
+            state.inspection.floor=state.inspection.shadows=-1;
+        } else {
+            state.ui.menuStyleEdited=true;
+            state.ui.showroomStyle=std::clamp(state.ui.menu.choice,0,studioStyleCount-1);
+        }
         state.ui.syncMenuPresentation();
         state.ui.menu.open = true;
         state.ui.menu.selectedAction();
@@ -174,7 +191,13 @@ void requestStudioAction(StudioAction action)
         blockActions();
         return;
     }
-    if (action == StudioAction::Background && state.ui.showroomStyle != 0) { return; }
+    if (action == StudioAction::Background && state.activeStyle() != 0) { return; }
+    if (action == StudioAction::Background && state.ui.cinematic.active) {
+        state.inspection.background=std::clamp(state.ui.menu.choice,0,studioBackgroundCount-1);
+        state.inspection.floor=state.inspection.shadows=-1;
+        state.studioView.settings.inheritedFloorQuality=-1;
+        state.ui.menu.open=true;state.ui.menu.selectedAction();state.cue=Cue::Accept;blockActions();return;
+    }
     if (action == StudioAction::Background) {
         if (gallery != Gallery::Main && !state.ui.favoritesOnly) {
             if (saveGalleryBackground(ini.c_str(), gallery, state.ui.menu.choice)) state.ui.dealerBackgroundWritten = true;
@@ -241,18 +264,11 @@ void requestStudioAction(StudioAction action)
         return;
     }
     if (action == StudioAction::EnterPhoto) {
-        if ((state.ui.cinematic.active || state.viewer.active) && !state.viewer.transitioning()) {
+        if ((state.ui.cinematic.active || state.studioView.active) && !state.studioView.transitioning()) {
             state.ui.menu.finish(1);
             finishSettings();
             state.photo.loadPresets(std::filesystem::path(base) / L"GT4Showroom/photo-presets.dat");
-            if (state.viewer.active) {
-                state.photo.begin(state.viewer, state.clock);
-            } else {
-                state.photo.beginCinematic(state.clock);
-            }
-            state.photo.originalViewer = state.viewer;
-            state.photo.background = state.ui.backgroundStyle();
-            state.photo.style = state.ui.showroomStyle;
+            state.beginPhoto();
             photoHide.blockUntilRelease();
             photoReset.blockUntilRelease();
             state.ui.vehicle.endWheelDrag();
@@ -269,51 +285,60 @@ void requestStudioAction(StudioAction action)
         state.ui.menu.finish(1);
         finishSettings();
         state.shopExitArmed = state.shopReturnNavigation = false;
-        state.shop.fromViewer = state.viewer.active;
+        state.shop.fromStudioView = state.studioView.active;
         state.shop.request(ShopPage::Menu, state.clock);
         state.cue = Cue::Accept;
         blockActions();
         return;
     }
-    if (action == StudioAction::ViewerEnter || action == StudioAction::Cinematic) {
+    if (action == StudioAction::Cinematic) {
         state.ui.menu.finish(1);
         finishSettings();
-        const bool started = action == StudioAction::ViewerEnter ? state.startViewer() : state.startCinematic();
+        const bool started = state.startCinematic();
         state.cue = started ? Cue::Accept : Cue::Error;
         blockActions();
         return;
     }
-    if (action == StudioAction::ViewerAnimate || action == StudioAction::ViewerScene ||
-        action == StudioAction::ViewerColor || action == StudioAction::ViewerFloor ||
-        action == StudioAction::ViewerPalette || action == StudioAction::ViewerReflections ||
-        action == StudioAction::ViewerShadows || action == StudioAction::ViewerPause) {
-        auto& viewer = state.viewer;
+    if (action == StudioAction::StudioViewType || action == StudioAction::StudioViewAnimate || action == StudioAction::StudioViewScene ||
+        action == StudioAction::StudioViewColor || action == StudioAction::StudioViewFloor ||
+        action == StudioAction::StudioViewPalette || action == StudioAction::StudioViewReflections ||
+        action == StudioAction::StudioViewFloorReflections || action == StudioAction::StudioViewVehicleReflections ||
+        action == StudioAction::StudioViewShadows || action == StudioAction::StudioViewPause) {
+        auto& studioView = state.studioView;
         const int value = state.ui.menu.choice;
-        if (action == StudioAction::ViewerAnimate) {
-            viewer.settings.animate = value != 0;
-            viewer.syncBackground(state.clock);
-        } else if (action == StudioAction::ViewerScene) {
-            viewer.settings.inheritStudio = value < 0;
-            if(value>=0) viewer.changeScene(ViewerScene(value), state.clock);
-        } else if (action == StudioAction::ViewerColor) {
-            viewer.settings.inheritStudio=false;
-            viewer.settings.wallColor = value;
-        } else if (action == StudioAction::ViewerFloor) {
-            viewer.settings.inheritStudio=false;
-            viewer.settings.floorColor = value;
-        } else if (action == StudioAction::ViewerPalette) {
-            viewer.settings.inheritStudio=false;
-            viewer.settings.palette = value;
-        } else if (action == StudioAction::ViewerReflections) {
-            if (value==0 || value==1) viewer.settings.reflections = value != 0;
-            else if(value==2 || value==3) viewer.settings.vehicleReflections = value==3;
-            else viewer.settings.reflectionQuality=std::clamp(value-3,1,4);
-        } else if (action == StudioAction::ViewerShadows) {
-            viewer.settings.shadows = value != 0;
-        } else if (viewer.paused != (value != 0)) {
-            viewer.toggle(state.clock);
+        if(action==StudioAction::StudioViewType) {
+            const int code=studioBackdropCode(studioView.settings,state.activeStyle(),state.activeBackground());
+            state.chooseStudioViewBackground(studioBackdropChoices(!animatedStudioBackdrop(code)).front());
+        } else if (action == StudioAction::StudioViewAnimate) {
+            studioView.settings.animate = value != 0;
+            studioView.syncBackground(state.clock);
+            state.ui.cinematic.setAnimation(value != 0,state.clock);
+        } else if (action == StudioAction::StudioViewScene) {
+            state.chooseStudioViewBackground(value);
+        } else if (action == StudioAction::StudioViewColor) {
+            studioView.settings.inheritStudio=false;
+            studioView.settings.wallColor = value;
+        } else if (action == StudioAction::StudioViewFloor) {
+            studioView.settings.inheritStudio=false;
+            studioView.settings.floorColor = value;
+        } else if (action == StudioAction::StudioViewPalette) {
+            studioView.settings.inheritStudio=false;
+            studioView.settings.palette = value;
+        } else if(action==StudioAction::StudioViewFloorReflections) {
+            if(studioView.settings.inheritStudio)studioView.settings.inheritedFloorQuality=std::clamp(value,0,4);
+            else studioView.settings.floorQuality=std::clamp(value,0,4);
+        } else if(action==StudioAction::StudioViewVehicleReflections) {
+            studioView.settings.vehicleQuality=std::clamp(value,0,4);
+        } else if (action == StudioAction::StudioViewReflections) {
+            if (value==0 || value==1) studioView.settings.reflections = value != 0;
+            else if(value==2 || value==3) studioView.settings.vehicleReflections = value==3;
+            else studioView.settings.reflectionQuality=std::clamp(value-3,1,4);
+        } else if (action == StudioAction::StudioViewShadows) {
+            studioView.settings.shadows = value != 0;
+        } else if (studioView.paused != (value != 0)) {
+            studioView.toggle(state.clock);
         }
-        viewer.settings.validate();
+        studioView.settings.validate();
         state.ui.menu.open = true;
         state.ui.menu.selectedAction();
         state.cue = Cue::Accept;
@@ -324,7 +349,7 @@ void requestStudioAction(StudioAction action)
         action == StudioAction::DisplayModelId || action == StudioAction::DisplayModelName) {
         const bool value = state.ui.menu.choice != 0;
         if (action == StudioAction::Shadows) {
-            state.ui.chooseShadows(value);
+            if(state.ui.cinematic.active)state.inspection.shadows=value;else state.ui.chooseShadows(value);
             state.ui.syncMenuPresentation();
         } else if (action == StudioAction::CarLogo) {
             state.ui.carLogo = value;
@@ -346,7 +371,7 @@ void requestStudioAction(StudioAction action)
         if (!state.ui.menu.allowHotspots) {
             return;
         }
-        auto& visible = state.viewer.active ? state.viewer.hotspots : state.ui.vehicle.hotspots;
+        auto& visible = state.studioView.active ? state.studioView.hotspots : state.ui.vehicle.hotspots;
         visible = state.ui.menu.choice != 0;
         state.ui.menu.open = true;
         state.ui.menu.selectedAction();
@@ -390,8 +415,8 @@ void applyViewTransition()
     state.leavePrize();
     state.ui.cinematic.leave();
     state.ui.vehicle.centerWheels();
-    state.viewer.reset(state.clock);
-    state.viewerSnapshot = state.postSelectionCinematic = false;
+    state.studioView.reset(state.clock);
+    state.studioViewSnapshot = state.postSelectionCinematic = false;
     state.spawnReview = SpawnReview::None;
     state.setSelectionPage(Page::Cars);
     state.paintMix = 0;
@@ -474,8 +499,15 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
     state.ui.menu.setCategories(state.ui.japaneseCategory(), state.ui.bikeCategory());
     state.ui.syncMenuPresentation();
     state.ui.menu.hotspots = state.hotspotsEnabled();
-    state.ui.menu.viewerSettings = state.viewer.settings;
-    state.ui.menu.viewerPaused = state.viewer.paused;
+    state.ui.menu.studioViewSettings = state.studioView.settings;
+    state.ui.menu.studioViewSettings.floorQuality=state.studioViewFloorQuality();
+    state.ui.menu.studioViewSettings.vehicleQuality=state.renderVehicleQuality();
+    if(state.ui.cinematic.active) {
+        state.ui.menu.backgroundChoice=state.activeBackground();state.ui.menu.styleChoice=state.activeStyle();
+        state.ui.menu.floorReflections=state.renderFloorQuality();state.ui.menu.vehicleReflections=state.renderVehicleQuality();
+        state.ui.menu.shadows=state.renderShadows();
+    }
+    state.ui.menu.studioViewPaused = state.studioView.paused;
     state.ui.menu.cinematicPaused = state.ui.cinematic.paused;
     state.ui.menu.cinematicAnimated = state.ui.cinematic.animate;
     const uintptr_t rawMouse = 0xB73418;
@@ -601,9 +633,9 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         return;
     }
     if (information && !state.photo.requested && !state.ui.menu.open && !state.plateOpen && state.spawnReview == SpawnReview::None &&
-        (state.photo.active || state.shop.open() || state.viewer.active || state.ui.cinematic.active)) {
+        (state.photo.active || state.shop.open() || state.studioView.active || state.ui.cinematic.active)) {
         state.tutorial = state.photo.active ? Tutorial::Photo : state.shop.open() ? Tutorial::Customization :
-                         state.viewer.active ? Tutorial::Viewer : Tutorial::Cinematic;
+                         Tutorial::Cinematic;
         state.tutorialMotion = {state.clock};
         state.tutorialFocus = true;
         state.cue = Cue::Open;
@@ -652,12 +684,12 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         if (!photo.hidden && click && !rDown) {
             if(tools.contains(px,py)) {
                 photo.visuals=true;
-                if(py<tools.y+21*ViewerPhoto::uiScale(W,H)) {
+                if(py<tools.y+21*StudioViewPhoto::uiScale(W,H)) {
                     photo.dragging=true; photo.draggingVisual=true;
                     photo.dragX=px-tools.x;photo.dragY=py-tools.y;photo.row=0;return;
                 }
             } else if(photo.panel(W,H).contains(px,py)) {
-                if(photo.visuals) photo.row=ViewerPhoto::captureRow;
+                if(photo.visuals) photo.row=StudioViewPhoto::captureRow;
                 photo.visuals=false;
                 if(photo.header(W,H).contains(px,py)) {
                     auto box=photo.panel(W,H);photo.dragging=true;photo.draggingVisual=false;
@@ -666,10 +698,10 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
             }
         }
         if (photo.visuals && (goBack || settingsTap)) {
-            photo.visuals=false; photo.row=ViewerPhoto::captureRow;
+            photo.visuals=false; photo.row=StudioViewPhoto::captureRow;
             blockActions(); return;
         }
-        if ((!state.ui.cinematic.active && !state.viewer.active) || goBack) {
+        if ((!state.ui.cinematic.active && !state.studioView.active) || goBack) {
             closeStudioPhoto(W, H);
             return;
         }
@@ -688,14 +720,21 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         }
         if (photo.visuals && !photo.hidden) {
             const int count=photo.visualCount();
-            if(upPress || downPress) photo.row=(photo.row+int(downPress)-int(upPress)+count)%count;
+            if(upPress || downPress) {photo.row=(photo.row+int(downPress)-int(upPress)+count)%count;photo.side=1;}
             int direction=int(rightPress)-int(leftPress);
             bool selected=accept;
-            if(moved || click) for(int i=0;i<count;++i) {
-                const auto b=photo.visualItem(W,H,i);
-                if(b.contains(state.pointerX*W,state.pointerY*H)) {
+            if(moved || click) {
+                photo.side=0;
+                for(int i=0;i<count;++i) {
+                    const auto b=photo.visualItem(W,H,i);
+                    if(!b.contains(state.pointerX*W,state.pointerY*H))continue;
                     photo.row=i;
-                    if(click) { selected=true; direction=state.pointerX*W<b.x+b.w*.58f ? -1:1; }
+                    const float scale=StudioViewPhoto::uiScale(W,H);
+                    const UIRect field{b.x+b.w*.43f,b.y+3*scale,b.w*.54f,b.h-6*scale};
+                    const float edge=field.h*1.2f;
+                    if(UIRect{field.x,field.y,edge,field.h}.contains(px,py))photo.side=-1;
+                    else if(UIRect{field.x+field.w-edge,field.y,edge,field.h}.contains(px,py))photo.side=1;
+                    if(click && photo.side){selected=true;direction=photo.side;}
                     break;
                 }
             }
@@ -704,18 +743,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
             return;
         }
         if (photoReset.poll(key('R') || pad.favorites, tick)) {
-            const float panelX = photo.panelX, panelY = photo.panelY;
-            auto retainedViewer = photo.originalViewer;
-            const int retainedStyle=photo.style, retainedBackground=photo.background;
-            if (state.viewer.active) {
-                photo.begin(state.viewer, state.clock, false);
-            } else {
-                photo.beginCinematic(state.clock, false);
-            }
-            photo.originalViewer = retainedViewer;
-            photo.style=retainedStyle; photo.background=retainedBackground;
-            photo.panelX = panelX;
-            photo.panelY = panelY;
+            state.resetPhotoCamera();
             state.cue = Cue::Accept;
             blockActions();
             return;
@@ -734,15 +762,15 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         }
         photo.movingPanel = movePanel;
         if (!photo.hidden && !movePanel && (upPress || downPress)) {
-            photo.row = (photo.row + int(downPress) - int(upPress) + ViewerPhoto::rowCount) % ViewerPhoto::rowCount;
+            photo.row = (photo.row + int(downPress) - int(upPress) + StudioViewPhoto::rowCount) % StudioViewPhoto::rowCount;
             state.cue = Cue::Move;
         }
         const int direction = int(rightPress) - int(leftPress);
         if (!photo.hidden && !movePanel && direction) {
-            if (photo.row < ViewerPhoto::settingCount) {
+            if (photo.row < StudioViewPhoto::settingCount) {
                 state.cue = photo.adjust(direction) ? Cue::Slider : Cue::Error;
             } else {
-                photo.row = photo.row == ViewerPhoto::captureRow ? ViewerPhoto::backRow : ViewerPhoto::captureRow;
+                photo.row = photo.row == StudioViewPhoto::captureRow ? StudioViewPhoto::backRow : StudioViewPhoto::captureRow;
                 state.cue = Cue::Move;
             }
         }
@@ -783,30 +811,30 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
                 if (clickedDirection) {
                     photo.side = clickedDirection;
                 }
-                activate = activate || (click && (hit >= ViewerPhoto::settingCount || clickedDirection));
+                activate = activate || (click && (hit >= StudioViewPhoto::settingCount || clickedDirection));
             }
         }
         if (activate) {
-            if (photo.row < ViewerPhoto::settingCount) {
+            if (photo.row < StudioViewPhoto::settingCount) {
                 state.cue = photo.adjust(clickedDirection ? clickedDirection : photo.side) ? Cue::Slider : Cue::Error;
-            } else if (photo.row == ViewerPhoto::saveRow) {
+            } else if (photo.row == StudioViewPhoto::saveRow) {
                 const bool stored = photo.storePreset() &&
                     photo.savePresets(std::filesystem::path(base) / L"GT4Showroom/photo-presets.dat");
                 photo.status = stored ? "Preset saved" : "Preset could not be saved";
                 photo.statusUntil = state.clock + 3;
                 state.cue = stored ? Cue::Accept : Cue::Error;
                 blockActions();
-            } else if (photo.row == ViewerPhoto::loadRow) {
-                const bool loaded = photo.restorePreset(state.viewer, state.clock);
+            } else if (photo.row == StudioViewPhoto::loadRow) {
+                const bool loaded = photo.restorePreset(state.studioView, state.clock);
                 photo.status = loaded ? "Preset loaded" : "This preset is empty";
                 photo.statusUntil = state.clock + 3;
                 state.cue = loaded ? Cue::Accept : Cue::Error;
                 blockActions();
-            } else if (photo.row == ViewerPhoto::captureRow) {
+            } else if (photo.row == StudioViewPhoto::captureRow) {
                 photo.triggerCapture(state.clock);
                 state.cue = Cue::Flash;
                 blockActions();
-            } else if (photo.row == ViewerPhoto::backRow) {
+            } else if (photo.row == StudioViewPhoto::backRow) {
                 closeStudioPhoto(W, H);
             }
         }
@@ -827,7 +855,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         return;
     }
     if (state.shop.open() && state.spawnReview == SpawnReview::None) {
-        state.viewer.activity(state.clock);
+        state.studioView.activity(state.clock);
         const bool wheelLeft = wheel && game::at<uint8_t>(rawMouse + 3);
         if (context && state.shop.page==ShopPage::Menu) state.shopExitArmed=false;
         processShopInput(leftPress || wheelLeft,
@@ -844,7 +872,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         dockPointer(state, entries, W, H, dt);
         return;
     }
-    if (activeInput && state.viewer.activity(state.clock)) {
+    if (activeInput && state.studioView.activity(state.clock)) {
         state.ui.vehicle.endWheelDrag();
         state.ui.cinematic.grabbed = false;
         blockActions();
@@ -1061,6 +1089,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
             return;
         }
         auto applySliders = [&] {
+            if(m.typeChanged){m.typeChanged=false;requestStudioAction(StudioAction::StudioViewType);return;}
             if (!m.sliderChanged) {
                 return;
             }
@@ -1130,7 +1159,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
     if (state.ui.cinematic.active) {
         auto& c = state.ui.cinematic;
         auto& v = state.ui.vehicle;
-        auto& viewer = state.viewer;
+        auto& studioView = state.studioView;
         if (goBack) {
             v.endWheelDrag();
             state.back();
@@ -1155,8 +1184,8 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         }
         const bool wheelFocused = hasHotspots && v.canSteer(v.focus) && mesh->cinematic.supported(v.focus);
         const auto toggleRotation = [&] {
-            if (viewer.active) {
-                viewer.toggle(state.clock);
+            if (studioView.active) {
+                studioView.toggle(state.clock);
             } else {
                 c.toggle(state.clock);
             }
@@ -1192,12 +1221,12 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
             state.ui.pointerMoved = state.clock;
             return;
         }
-        if (viewer.active) {
+        if (studioView.active) {
             if (click && !hotspotClicked && mesh && renderer.hitCar(*mesh, state.pointerX * W, state.pointerY * H)) {
-                viewer.toggle(state.clock);
+                studioView.toggle(state.clock);
             }
             if ((lDown && !hotspotClicked) || rDown) {
-                viewer.orbit(dx * .007f, dy * .004f, state.clock);
+                studioView.orbit(dx * .007f, dy * .004f, state.clock);
             }
         } else {
             if (click && !hotspotClicked && mesh && renderer.hitCar(*mesh, state.pointerX * W, state.pointerY * H)) {
@@ -1245,8 +1274,8 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
                 camera.wheel(pad.zoom * float(dt) * 8);
             }
         };
-        if (viewer.active) {
-            moveCamera(viewer);
+        if (studioView.active) {
+            moveCamera(studioView);
         } else {
             moveCamera(c);
         }

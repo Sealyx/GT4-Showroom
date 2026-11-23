@@ -356,7 +356,7 @@ namespace gt4
         customizationNative::clear();
         clearShopGeometry();
         state.shop = {};
-        if (state.photo.active && state.photo.viewerContext) state.viewer=state.photo.originalViewer;
+        if (state.photo.active && state.photo.studioViewContext) state.studioView=state.photo.originalStudioView;
         state.photo = {};
         extrasModel = -1;
         dirtyExtraModel = extrasFramingModel = -1;
@@ -1360,7 +1360,7 @@ namespace gt4
             }
             reloadExclusions();
             renderer.setGalleryBrand(std::filesystem::path(base)/L"GT4Showroom",int(gallery),galleries[int(gallery)].name);
-            state.dealerPurchaseEnabled = gallery != Gallery::Main;
+            state.dealerPurchaseEnabled = galleryChargesVehicle(gallery);
             state.showDealerPrices = gallery == Gallery::Coutt || gallery == Gallery::Verdant || gallery == Gallery::Grotti;
             state.galleryFavorites = galleries[int(gallery)].fullService;
             openIntent.clear();
@@ -1521,7 +1521,7 @@ namespace gt4
                             } else {
                                 void* spawned = nullptr;
                                 const int due = claimingPrize ? 0 : state.shop.pendingCost();
-                                const bool dealershipPurchase = gallery != Gallery::Main && !claimingPrize;
+                                const bool dealershipPurchase = galleryChargesVehicle(gallery) && !claimingPrize;
                                 const int vehiclePrice = dealershipPurchase ? spawnEntryModel.price : 0;
                                 int* wallet = (dealershipPurchase || due > 0) ? shopWallet() : nullptr;
                                 VehiclePayment payment;
@@ -1896,7 +1896,7 @@ namespace gt4
                 ? state.tutorialMotion.reveal(state.clock) > 0.f
                 : state.informationOpen && state.informationMotion.reveal(state.clock) > 0.f;
             const bool interfaceHidden = state.ui.footerHidden && state.page == Page::Cars &&
-                !state.viewer.active && !state.ui.cinematic.active && !state.photo.active &&
+                !state.studioView.active && !state.ui.cinematic.active && !state.photo.active &&
                 state.shop.page == ShopPage::Closed;
             const unsigned displayedTopics = state.tutorialOpen() ? tutorialTopics(state.tutorial)
                                                                  : welcomeTutorialBit;

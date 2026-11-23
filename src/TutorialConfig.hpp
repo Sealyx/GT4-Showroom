@@ -33,17 +33,20 @@ namespace gt4
 
 
     inline constexpr const wchar_t* tutorialProgressKeys[]{
-        L"Cinematic", L"CustomizationIntro", L"Viewer", L"Customization", L"Welcome"
+        L"Cinematic", L"CustomizationIntro", nullptr, L"Customization", L"Welcome"
     };
 
     inline unsigned loadTutorialProgress(const wchar_t* ini, bool enabled)
     {
         unsigned shown = 0;
+        if (GetPrivateProfileIntW(L"TutorialBox",L"Viewer",0,ini)==1)
+            WritePrivateProfileStringW(L"TutorialBox",L"Cinematic",L"1",ini);
+        WritePrivateProfileStringW(L"TutorialBox",L"Viewer",nullptr,ini);
         for (unsigned i=0;i<5;++i) {
-            if (GetPrivateProfileIntW(L"TutorialBox",tutorialProgressKeys[i],0,ini)==1) shown |= 1u<<i;
+            if (tutorialProgressKeys[i] && GetPrivateProfileIntW(L"TutorialBox",tutorialProgressKeys[i],0,ini)==1) shown |= 1u<<i;
         }
-        if (enabled && shown==31u) {
-            for (const auto* key:tutorialProgressKeys)
+        if (enabled && (shown & 27u)==27u) {
+            for (const auto* key:tutorialProgressKeys) if(key)
                 WritePrivateProfileStringW(L"TutorialBox",key,L"0",ini);
             return 0;
         }
@@ -53,10 +56,10 @@ namespace gt4
     inline bool saveTutorialProgress(const wchar_t* ini, bool& enabled, unsigned shown)
     {
         for (unsigned i=0;i<5;++i) {
-            if ((shown & (1u<<i)) &&
+            if (tutorialProgressKeys[i] && (shown & (1u<<i)) &&
                 !WritePrivateProfileStringW(L"TutorialBox",tutorialProgressKeys[i],L"1",ini)) return false;
         }
-        if (shown==31u) {
+        if ((shown & 27u)==27u) {
             if (!WritePrivateProfileStringW(L"TutorialBox",L"Enabled",L"0",ini)) return false;
             enabled=false;
         }

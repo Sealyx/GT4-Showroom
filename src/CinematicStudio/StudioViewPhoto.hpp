@@ -22,15 +22,20 @@ namespace gt4
         float panX = 0, panY = 0, panZ = 0, entryYaw = 0;
     };
 
-    struct ViewerPhoto : PhotoCameraState
+    struct StudioViewPhoto : PhotoCameraState
     {
         bool active = false, hidden = false, requested = false;
-        bool dragging = false, movingPanel = false, viewerContext = false;
+        bool dragging = false, movingPanel = false, studioViewContext = false;
         static constexpr int settingCount = 5, saveRow = 5, loadRow = 6, captureRow = 7, backRow = 8, rowCount = 9;
         bool visuals = false, settingsPressed = false;
         float settingsTravel = 0;
         int background = 0, style = 0;
-        VehicleViewer originalViewer;
+        CinematicStudio originalStudioView, returnStudioView;
+        CinematicView originalCinematic;
+        int floorQuality=-1, vehicleQuality=-1, shadowChoice=-1;
+        bool returning=false;
+        double returnBegan=-1, originalBegan=-1;
+        float returnAlpha(double now) const { return returning ? CinematicStudio::ease(float((now-returnBegan)/.3)) : 1.f; }
         float visualX=.65f, visualY=.06f;
         bool draggingVisual=false;
         UIRect visualPanel(float w,float h) const {
@@ -38,7 +43,8 @@ namespace gt4
             return {std::clamp(w*visualX,0.f,std::max(0.f,w-width)),
                     std::clamp(h*visualY,0.f,std::max(0.f,h*.907f-height)),width,height};
         }
-        int visualCount() const { return viewerContext ? 7 : 5; }
+        std::vector<int> visualRows{9,0,5,6,7,8};
+        int visualCount() const { return studioViewContext ? int(visualRows.size()) : 7; }
         UIRect visualItem(float w,float h,int index) const {
             const auto box=visualPanel(w,h);
             const float scale=uiScale(w,h);
@@ -59,11 +65,11 @@ namespace gt4
         void rememberCamera()
         {
             if (valid) {
-                cameras[size_t(viewerContext)] = static_cast<const PhotoCameraState&>(*this);
+                cameras[size_t(studioViewContext)] = static_cast<const PhotoCameraState&>(*this);
             }
         }
 
-        void beginView(bool viewer, double now, bool resume)
+        void beginView(bool studioView, double now, bool resume)
         {
             rememberCamera();
             const auto saved = cameras;
@@ -76,23 +82,23 @@ namespace gt4
             preset = retainedSlot;
             panelX = x;
             panelY = y;
-            viewerContext = viewer;
-            if (resume && saved[size_t(viewer)].valid) {
-                static_cast<PhotoCameraState&>(*this) = saved[size_t(viewer)];
+            studioViewContext = studioView;
+            if (resume && saved[size_t(studioView)].valid) {
+                static_cast<PhotoCameraState&>(*this) = saved[size_t(studioView)];
             }
             active = true;
             began = now;
         }
 
-        void begin(const VehicleViewer& viewer, double now, bool resume = true)
+        void begin(const CinematicStudio& studioView, double now, bool resume = true)
         {
             beginView(true, now, resume);
             if (!valid) {
-                yaw = viewer.yaw(now);
-                pitch = viewer.pitch;
-                zoom = viewer.zoom;
+                yaw = studioView.yaw(now);
+                pitch = studioView.pitch;
+                zoom = studioView.zoom;
             }
-            entryYaw = viewer.yaw(now);
+            entryYaw = studioView.yaw(now);
             valid = true;
         }
 
@@ -105,11 +111,11 @@ namespace gt4
             valid = true;
         }
 
-        void end(const VehicleViewer& viewer, double now)
+        void end(const CinematicStudio& studioView, double now)
         {
-            if (viewerContext) {
-                yaw += viewer.yaw(now) - entryYaw;
-                entryYaw = viewer.yaw(now);
+            if (studioViewContext) {
+                yaw += studioView.yaw(now) - entryYaw;
+                entryYaw = studioView.yaw(now);
             }
             rememberCamera();
             active = requested = dragging = movingPanel = false;
@@ -171,14 +177,14 @@ namespace gt4
             return true;
         }
 
-        bool restorePreset(const VehicleViewer& viewer, double now)
+        bool restorePreset(const CinematicStudio& studioView, double now)
         {
             const auto pose = presets[size_t(preset)];
             if (!pose.valid || !validPreset(pose)) {
                 return false;
             }
             static_cast<PhotoCameraState&>(*this) = pose;
-            entryYaw = viewerContext ? viewer.yaw(now) : 0;
+            entryYaw = studioViewContext ? studioView.yaw(now) : 0;
             return true;
         }
 
@@ -346,7 +352,7 @@ namespace gt4
         std::string help(double now, bool controller) const
         {
             static constexpr const char* keyboard[]{
-                "Arrows Settings    RETURN Select    Space Take Image    BACKSPACE Return",
+                "Arrows Settings    RETURN Select    SPACE Take Image    BACKSPACE Return",
                 "Drag RMB Look    WASD Pan    Wheel Zoom    +/- FOV    Q/E Roll",
                 "RMB Settings    I Info    H Hide UI    R Reset    Drag Title Bar Move Panel"};
             static constexpr const char* gamepad[]{

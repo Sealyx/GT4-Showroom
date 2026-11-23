@@ -148,7 +148,7 @@ namespace gt4
 
         ShopPage page = ShopPage::Closed, destination = ShopPage::Closed;
         double transitionStart = -1., pageStart = 0., washStart = -1.;
-        bool midpoint = false, stripDrag = false, liftDrag = false, fromViewer = false;
+        bool midpoint = false, stripDrag = false, liftDrag = false, fromStudioView = false;
         double transitionLength = transitionSeconds;
         int section = 0, option = 0;
         std::vector<ShopPart> parts;

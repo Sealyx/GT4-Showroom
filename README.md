@@ -12,7 +12,7 @@ Gran Turismo 4 inspired vehicle showroom and spawner for classic GTA San Andreas
 
 - Animated 3D showroom with installed and add-on vehicles, full paint names and native livery texture previews.
 - Persistent Favorites, country filtering, and name, class, top speed or model ID sorting from the right-click sidebar.
-- Cinematic view with free orbit, zoom and optional automatic rotation.
+- Unified Cinematic inspection with orbit/zoom, optional rotation, hotspots, studio settings, separate floor/vehicle reflection quality, Photo Lab and customization access.
 - Model name/ID search, configurable exclusions and country badges.
 - Keyboard, mouse and controller navigation, including an on-screen search keyboard.
 

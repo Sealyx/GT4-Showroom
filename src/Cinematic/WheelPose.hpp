@@ -1,7 +1,7 @@
 #pragma once
 
 namespace gt4
-// used for cinematic and vehicle viewer
+// used for cinematic and vehicle studioView
 {
     using WheelMatrixUpdate = void(__thiscall*)(void*, int, int);
 

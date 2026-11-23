@@ -1,3 +1,2 @@
-
-Your stored photos from Vehicle Viewer & Cinematic's Photo Mode is stored here
+Photos taken in Cinematic's Photo Lab are stored here
 All photos are saved in .png format
