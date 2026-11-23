@@ -1,0 +1,355 @@
+# GT4 Showroom UTF-8 FXT v1
+TA4DC16C8 Pengaturan Showroom
+TE8D285CF Pengaturan Sinematik
+TAA867D57 Penampil Kendaraan
+TE64A63FE Urutkan
+TFFB0FF72 Satuan
+T9A73DB9B Bahasa
+T5A05D9B5 Tampilan
+T8D006582 Pengaturan Tampilan
+T6AFD176B Logo
+TE20CF4F6 Bayangan
+T8DC6BC15 Pantulan
+T8F63F06C Anti-Aliasing
+T0AA4B01E Oklusi Ambien
+T5EA410BD Lantai
+TA27663CF Kendaraan
+TCB691D8E Ekstra
+T869E00C1 Ekstra 1
+T839DFC08 Ekstra 2
+TCAE29992 Ekstra VehFuncs
+TC04CEE0E Sinematik
+T74F576AF Volume
+T584A1D74 Musik
+T52F943DC Efek Suara
+TBAFC0ABD Latar
+TE5B43CF8 Warna
+T2397CCE9 Pencahayaan
+T41E389FD Animasi
+T0232777F Rotasi
+T25356EFD Titik Interaksi
+T2181B996 Kustomisasi
+T97CDF498 Lab Foto
+T4B058728 Pengaturan
+TAFF863AD Masuk
+T60E47DF0 Aktif
+T0DC6B4AA Nonaktif
+T0016AB68 Standar
+TB1DD9521 Rendah
+T09BE5F96 Sedang
+TBE0A061D Tinggi
+TBE6BE395 Ultra
+T126BEFB6 Otomatis
+TB70C1321 Metrik
+TD4E8F09C Imperial
+T19DC307E Bawaan
+T47E1A68C Abu-Abu Gelap
+TA37F187C Merah
+T6CEB2D06 Putih
+T79F6AD0A Putih Murni
+T2B043744 Hitam
+TE9DD1FED Biru
+TD6696D39 Mint
+TA953C75C Hijau
+T8BB8038D Merah Muda
+TD9CDEC69 Kuning
+T727B390B Oranye
+TB682BA1F Ungu
+TB4FE9ED4 Studio Softbox
+TE6F0C381 Studio Pita
+T9DF529F2 Studio Gelombang
+T9B534AF8 Studio Kustom
+TC54C6E41 Menaik
+TD611415B Menurun
+T50F97D9F Kelas
+T2062DC6D Negara
+T04F4FE71 Negara
+TDEF5DA1F Kecepatan Maksimal
+T491BDB50 Semua Kelas
+TBBCE7E06 Semua Negara
+TD594F3E0 Kelas Terpilih
+T01734A36 Negara Terpilih
+T58DE2772 Normal
+TF6BD0D7D Ekonomis
+T9280B647 Mewah
+TC2C9D551 Eksekutif
+TDE5C1A77 Pekerja
+TB9D577E0 Berat
+T91052CC9 Taksi
+T4FA194FE Bebek
+T4D71310F Sepeda Motor
+T081BF8BA Sepeda
+T256E043A Kapal Rekreasi
+T1B3373DE Kapal Kerja
+TDFEC80D0 Khusus
+TE6D211DF Kelas Kendaraan
+T0FE07306 Nama
+T1CF8D66D Nama Model
+T917545B3 ID Model
+TDA27E88F Logo Nama Mobil
+TCF4C4967 Logo Produsen
+T7897BED0 Produsen
+TFDB25855 Informasi
+T8FE1E625 Info
+T1A5EE459 Konfigurasi
+TC646A2C9 Cari
+TA04D5396 Cari Berdasarkan
+TCDE1C7A4 Kata Kunci
+T14412D02 Hasil Pencarian
+T812E97CA Model Ditemukan
+TE718B07B Model Tidak Ditemukan
+TF111F78D Informasi Kendaraan
+T82428606 Belum Ditetapkan
+T36C5F782 Belum Ditetapkan
+TDA4BAAA9 Tidak Tersedia
+T1C808AF8 Pelat Nomor
+T3E142D5E Teks
+T4115D182 Acak
+T1738B8F0 Munculkan Sekarang
+T668FE098 Masuk Sinematik
+T732553E2 Kembali ke Sinematik
+T68155A61 Kembali ke Sinematik
+T548FE29E Kembali ke Penampil
+TF9521B2B Pertahankan Warna
+T9842C327 Ganti ke Putih
+T4782FE62 Peringatan Livery
+T886D3D8D Tetap Sinematik
+T34CE44A5 Keluar
+TC2954BC2 Kembali
+T35AFCA3B Batal
+T85E4B82F OK
+TA183C9EF Konfirmasi
+TCE00444E Cari berdasarkan ID model, misalnya 411.
+TC5D31CB8 Cari berdasarkan nama model, misalnya infernus.
+T987D79CC Tambahkan nama atau ID model ke GT4Showroom.ini
+T3EB1ED38 Masukkan maksimal 8 karakter untuk pelat nomor.
+T9AB64D92 Yakin ingin memunculkan kendaraan sekarang?
+T9B35B0DB Masuk ke Sinematik untuk melihat dan memodifikasi kendaraan.
+T7ED8A2D3 Kendaraan ini memiliki livery dan sebaiknya menggunakan warna putih.
+T937B2C60 Ganti ke putih atau pertahankan warna yang dipilih?
+T65AB88D7 Kembali ke Sinematik atau keluar ke pilihan kendaraan?
+T46245844 Kembali ke tampilan sebelumnya atau keluar ke pilihan kendaraan.
+T2182EACC Pilih Kembali untuk kembali ke tampilan sebelumnya.
+TD63546A9 Kembalikan pelek atau komponen bodi ke bawaan?
+T04F49AE6 Pilih bagian yang ingin dikembalikan ke bawaan.
+T3F71CDB4 Reset Pelek
+T4087BC94 Reset Komponen
+T66FD0C3D Pelek
+T5C6C0389 Komponen
+T38457DCC Suspensi
+TCC2B59EC Cuci Mobil
+T69958EF9 Spoiler
+T4324037B Bumper Depan
+T70187AC2 Bumper Belakang
+T0B8FDA9B Kap Mesin
+TAF29706F Atap
+TF596BF31 Side Skirt
+T67C7F535 Bawaan
+TA2FE7692 Asli
+TC5AF67FA Melayani perawatan mobil terjangkau sejak 1986
+T2FEA3E00 Lihat komponen bodi yang sesuai dan pratinjau sebelum dipasang
+T566D5F82 Lihat komponen bodi yang sesuai dan konfirmasikan pilihan
+T96275A1F Lihat pelek yang sesuai dan pratinjau pemasangannya
+T4ED81135 Pilih pelek yang sesuai untuk kendaraan
+T60E50E02 Pilih pelek untuk dipasang
+TC0EF9A1F Pilih komponen bodi yang sesuai untuk kendaraan
+T5D52A35C Atur tinggi kendaraan dan konfirmasikan pengaturan
+TC834F771 Atur tinggi kendaraan dan pratinjau suspensi
+TC7B39C21 Atur tinggi kendaraan dan lihat perubahannya
+T93F9D068 Bersihkan kotoran dan siapkan kendaraan sebelum digunakan
+T94D9D401 Cuci kendaraan sebelum digunakan
+TFDD62521 Pencucian selesai
+TB20A3F58 Mencuci kendaraan...
+T30410B73 Mulai mencuci
+T5A9E5C62 Uang tidak cukup
+TB50CBD40 Pasang
+TFD424BA0 ditagihkan saat kendaraan dimunculkan
+T02FD8BF9 Pilih urutan daftar kendaraan
+T597DF04C Pilih satuan Windows, metrik, atau imperial
+TB849B5F9 Pilih bahasa menu dan deskripsi
+T884B8109 Pilih latar kategori ini tanpa mengubah kategori lain
+TCF283DA8 Pilih informasi di samping nama kendaraan di bawah gambar kecil
+TD41C1B4F Pilih tampilan logo produsen dan nama kendaraan
+TB804D572 Pilih studio di sekitar kendaraan
+T8FA0E24F Ubah warna latar studio
+TE5F5F291 Ubah warna lantai studio
+T79CFBB1B Pilih warna pencahayaan studio animasi
+T6F484BF6 Tampilkan titik interaksi pada kendaraan
+T0972BF1B Tampilkan atau sembunyikan pantulan kendaraan di lantai
+T8498A59E Tampilkan atau sembunyikan bayangan kendaraan di studio
+TAF230D8F Aktifkan atau nonaktifkan bayangan kendaraan
+T49B9C24A Jeda atau lanjutkan rotasi tanpa mengubah studio
+TF971DA69 Jeda atau lanjutkan rotasi tanpa mengubah animasi studio
+TC3F26DA9 Jeda atau lanjutkan animasi latar dan bayangan studio
+T7CFC75AC Lanjutkan animasi studio dan bayangan saat rotasi kendaraan dijeda
+T888F6293 Lanjutkan gerakan bayangan saat rotasi kendaraan dijeda
+T3A0E1F67 Atur komposisi dan potret studio animasi
+TD5981429 Buka TransFender untuk melihat dan memilih komponen
+T8D805C42 Putar dan perbesar tampilan di sekitar kendaraan terpilih
+T4395A4B2 Lihat kendaraan di studio animasi dengan pengaturan latar, pantulan, dan kamera
+T687D7346 Atur volume radio, musik, dan efek suara permainan
+TCE7D754B Geser pengatur untuk melihat dan memilih konfigurasi ekstra
+T55DA0B10 Lihat dan terapkan satu konfigurasi ekstra VehFuncs
+TFC45542D Lihat dan terapkan kategori ekstra bawaan ini
+TD64FC8B2 Tampilkan ID model di samping nama kendaraan
+T59415C14 Tampilkan nama model di samping nama kendaraan
+T38887A82 Gunakan logo nama mobil jika tersedia
+T2378641A Gunakan logo produsen jika tersedia
+T56171C1D Tampilkan kendaraan dari kelas terpilih
+TC47073B3 Tampilkan kendaraan dari negara terpilih
+TDD722D25 Urutkan kendaraan berdasarkan ID model
+TBA979C16 Urutkan nama kendaraan dari A ke Z
+TB0C1D414 Urutkan nama kendaraan dari Z ke A
+T9E7FB52D Urutkan kendaraan berdasarkan kecepatan maksimal
+T3C19D687 Beralih antara favorit dan seluruh daftar kendaraan
+T6DF7A910 Tunggu hingga pratinjau selesai dimuat
+T4C372B85 Atur pantulan lantai dan kendaraan secara terpisah dengan kualitas sesuai kemampuan perangkat
+TBF2197F7 Haluskan tepian dengan multisampling yang didukung serta penggunaan memori terbatas
+T0C5DACAB Gelapkan permukaan berdekatan tanpa bergantung pada bayangan; Tinggi dan Ultra memakai kedalaman serta normal terpisah jika didukung
+TDF450AD5 Berjalan
+TDE281FEB Dijeda
+T61AE3B47 Ambil Gambar
+T99B58508 Ambil Foto
+T62399752 Perbesaran
+TF3CDA0FC FOV
+T972B893E Kemiringan
+T39C493B8 Sudut
+T66CD9024 Rasio
+TC91EB13E Preset
+TBB0B1187 Simpan Preset
+TFBF649AC Muat Preset
+T247E2FD9 Preset disimpan
+TD59920C3 Preset dimuat
+T03FC2E7F Preset kosong
+TAC047322 Preset tidak dapat disimpan
+TCC01B1DF Kembali
+T3E892B4D Pilih
+T0AC8A560 Reset
+T36B37BD3 Warna
+TA7A7B5DA Livery
+T7C6C19ED Favorit
+T7C2C53BA Favorit
+T00C6075A Menu
+T31CBA666 Buka Semua
+T91A73E7D Sembunyikan UI
+TB45AEF8C Geser
+T7F2C2A34 Gerak
+T69960BB6 Lihat
+T1BD13562 Ketinggian
+T99F0D384 Lebih Cepat
+TD74F0A9E Atur
+TC2C76CB1 Edit
+TCD86ACC3 Tutup
+T4D2D5D68 Simpan
+T5797EA6A Hapus
+TF6F22637 Kontrol
+T6A3ACE0E Deskripsi
+T9202088E Tautan
+T7EA3C788 Twitter Saya
+T41546712 YouTube Saya
+T70AD7706 Periksa pembaruan
+TF17E78EC Versi 3.0
+T543FE4C1 Selamat datang di showroom saya yang terinspirasi Gran Turismo!
+T0C8C6481 Proyek ini telah direncanakan dan dikerjakan selama 3 tahun terakhir. Semoga kalian menikmati hasil kerja keras yang saya curahkan!
+TCD7ADAFE Seluruh kontrol ditampilkan di bagian bawah layar, silakan periksa jika belum mengetahui fungsi suatu tombol.
+T6EB910BF Sorot pengaturan untuk melihat deskripsinya di bagian bawah layar; ini berlaku untuk semua kotak pengaturan!
+T966BD5C8 Amerika Serikat
+TA28F44FB Jepang
+T3415F00C Italia
+T7B2E4BBA Prancis
+T7DF3B621 Britania Raya
+T263D0C7E Jerman
+TC06B954D Swedia
+T65E98669 Australia
+T0A0C11E8 Korea Selatan
+T94DA8330 Tiongkok
+TE6D1E3EE Spanyol
+T44101A4C Rusia
+T64B61F6B Belanda
+T5CF10BFB Kanada
+T95EADAC2 Softbox
+TB9840B4E Pita
+T2C96CCF4 Gelombang
+T9525B78E Kustom
+TE116F8F5 Tipe:
+T88238591 Massa:
+TE297F4AA Batas:
+T545F4307 Gigi:
+T61B1BBA5 Putih Hangat
+T15903060 Kuning Jingga
+TC98F325A Sian
+TF03BDF12 Violet
+T25BB4ED1 Warna
+T15554CF6 Kendaraan
+TC6929D38 Munculkan
+TD917ACEA Livery
+T7D662FAF Reset Kamera
+T92548670 Geser Judul
+TB8BEC55A Geser Panel
+T05DCBF88 Papan Ketik/Kolom
+T3C329992 NORMAL
+T38F953DD EKONOMIS
+T10440B27 MEWAH
+T9D215351 EKSEKUTIF
+TA8BC6FD7 PEKERJA
+TF454ABA0 BERAT
+TD3DF43E9 TAKSI
+T4D92C8FE BEBEK
+T52BAB8CF SEPEDA MOTOR
+T5A84109A KAPAL REKREASI
+T41CA219E KAPAL KERJA
+TA2F2D03A SEPEDA
+T5B6CFA10 KHUSUS
+T1C6FAEF4 Preset tidak dapat disimpan
+T49624FAD Preset ini kosong
+TFB42BA5A CARI
+T8F96A703 TUTUP
+T540F0F6A HAPUS
+TF733B490 MODEL DITEMUKAN:
+T7EF796FB MODEL TIDAK DITEMUKAN
+TD1571F8E Kosong
+TC832E449 Tanpa Livery
+T732A0F1B TANPA
+T8F9AA8B4 Selamat
+TED10CF71 MENYIAPKAN MOBIL HADIAH
+TBDEA34B5 Pilihan
+T4FAA1A17 Saring daftar kendaraan berdasarkan negara yang ditetapkan
+TD08F4430 Kendaraan dikelompokkan berdasarkan jenis dan kegunaannya
+T699AFFD5 Velg dikembalikan ke bawaan
+TCFB01CE1 Komponen dikembalikan ke bawaan
+TCB92098F Beberapa komponen tidak dapat direset
+T3486FC9D Dipilih Biaya dikenakan saat kendaraan dimunculkan
+T61497226 Kendaraan ini tidak memiliki velg yang cocok
+TFE92889E Kendaraan ini tidak memiliki komponen yang cocok
+TC640EB47 Ketinggian suspensi dipilih
+T026AFC6B Pencucian sudah dipilih
+TE2A2DFBA FAVORIT
+T0A0D6422 BELUM DITETAPKAN
+T9FF8DC4E BELUM ADA FAVORIT - UP / SQUARE MENAMBAHKAN MOBIL
+TB91236F4 TIDAK ADA KENDARAAN - RMB / SELECT MENGUBAH FILTER
+TF9A0F244 Menyiapkan pratinjau modifikasi...
+T072DAE84 Pratinjau modifikasi tidak tersedia Ganti komponen atau pilih bawaan
+T57F55CF7 Foto tidak dapat disimpan
+T1FF93B93 Kap Mesin
+T18112C23 Ventilasi Kap
+TB2D89B78 Ventilasi Kap Kanan
+T4B3C6E2A Side Skirt
+T9F712107 Side Skirt Kanan
+TDDDA4DCC Pelindung Depan
+T2E565449 Pelindung Belakang
+TB427BD9A Lampu Depan
+T0191355F Nitro
+T81B5D37F Hidraulis
+TF94FFE6D Stereo
+TD3B9825F Sasis
+TFD0EF65B Bumper depan
+TB62BF4E2 Bumper belakang
+T0ADEB45A Aksesori 1
+T09DEB2C7 Aksesori 2
+T08DEB134 Aksesori 3
+T94F01954 Tenaga:
+T4566F93B Torsi:
+TDAC9FBB8 R-STICK
+T9AB6C8CA L-STICK
+T6120D7CC Backspace
+T3AFBDB82 Beli
