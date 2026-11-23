@@ -88,7 +88,7 @@ bool drawCustomStudio(IDirect3DDevice9* device, const Camera& camera)
     if (!customStudioLoadAttempted) {
         customStudioLoadAttempted = true;
         if (!customStudioPath.empty()) {
-            customStudioTexture = VehicleLogos::loadPanorama(device, customStudioPath);
+            IconDictionary dictionary;customStudioTexture=dictionary.load(device,customStudioPath,L"custom").texture;
         }
     }
     if (!customStudioTexture) {
@@ -501,7 +501,12 @@ bool viewerRoom(IDirect3DDevice9* d,
                 bool clean = false)
 {
     if (viewer.settings.scene == ViewerScene::Custom) {
-        return viewerStudio(d, camera, viewer, now);
+        const bool drawn = viewerStudio(d, camera, viewer, now);
+        if (drawn && viewer.settings.reflections) {
+            shopMirror(d, car, camera, angle, paint, opacity, carSize, rideHeight, clean,
+                       viewer.settings.reflectionQuality, vehicle);
+        }
+        return drawn;
     }
     const bool fullResolutionRibbons = viewer.settings.scene == ViewerScene::Ribbons && camera.h > 720.f;
     const auto backdrop = [&](const Camera& view, bool includeRibbons) {
@@ -516,8 +521,9 @@ bool viewerRoom(IDirect3DDevice9* d,
     const float scale = camera.h <= 720.f
         ? std::min(2.f, 720.f / std::max(1.f, camera.h))
         : std::min(.5f, 720.f / std::max(camera.w, camera.h));
-    const UINT width = UINT(std::max(1.f, std::round(camera.w * scale)));
-    const UINT height = UINT(std::max(1.f, std::round(camera.h * scale)));
+    const float qualityScale = scale * (.4f + .2f * viewer.settings.reflectionQuality);
+    const UINT width = UINT(std::max(1.f, std::round(camera.w * qualityScale)));
+    const UINT height = UINT(std::max(1.f, std::round(camera.h * qualityScale)));
     if (!allocateViewerTarget(d, width, height)) {
         return direct();
     }

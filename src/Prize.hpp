@@ -248,32 +248,34 @@ namespace gt4
     {
         static constexpr double duration = .12;
         double elapsed = duration;
+        double interval = duration;
 
-        void begin()
+        void begin(double seconds = duration)
         {
+            interval = seconds;
             elapsed = 0;
         }
 
         void reset()
         {
-            elapsed = duration;
+            elapsed = interval;
         }
 
         void step(double delta)
         {
             if (std::isfinite(delta)) {
-                elapsed = std::clamp(elapsed + std::max(0., delta), 0., duration);
+                elapsed = std::clamp(elapsed + std::max(0., delta), 0., interval);
             }
         }
 
         bool active() const
         {
-            return elapsed < duration;
+            return elapsed < interval;
         }
 
         float opacity() const
         {
-            return 1 - smoothFade(float(elapsed / duration));
+            return 1 - smoothFade(float(elapsed / interval));
         }
     };
 

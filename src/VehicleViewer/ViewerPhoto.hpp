@@ -27,13 +27,31 @@ namespace gt4
         bool active = false, hidden = false, requested = false;
         bool dragging = false, movingPanel = false, viewerContext = false;
         static constexpr int settingCount = 5, saveRow = 5, loadRow = 6, captureRow = 7, backRow = 8, rowCount = 9;
+        bool visuals = false, settingsPressed = false;
+        float settingsTravel = 0;
+        int background = 0, style = 0;
+        VehicleViewer originalViewer;
+        float visualX=.65f, visualY=.06f;
+        bool draggingVisual=false;
+        UIRect visualPanel(float w,float h) const {
+            const float unit=uiScale(w,h), width=420*unit,height=(25+28*visualCount())*unit;
+            return {std::clamp(w*visualX,0.f,std::max(0.f,w-width)),
+                    std::clamp(h*visualY,0.f,std::max(0.f,h*.907f-height)),width,height};
+        }
+        int visualCount() const { return viewerContext ? 7 : 5; }
+        UIRect visualItem(float w,float h,int index) const {
+            const auto box=visualPanel(w,h);
+            const float scale=uiScale(w,h);
+            return {box.x+2*scale,box.y+(22+28*index)*scale,box.w-4*scale,28*scale};
+        }
         int row = captureRow, side = 1, preset = 0;
         std::array<PhotoCameraState, 3> presets;
         std::array<PhotoCameraState, 2> cameras;
         float panelX = .025f, panelY = .06f, dragX = 0, dragY = 0;
         std::string status;
         double statusUntil = 0;
-        double began = 0;
+        double began = 0, captureAt = -1., flashBegan = -10.;
+        void triggerCapture(double now) { requested = true; captureAt = now + .72; }
 
         static constexpr std::array<const char*, 7> ratios{"Original", "2.39:1", "1.85:1", "16:9", "4:3", "4:5", "1:1"};
 
@@ -301,6 +319,7 @@ namespace gt4
 
         UIRect pointerTarget(float width, float height) const
         {
+            if (visuals) return visualItem(width,height,row);
             return row < settingCount ? arrow(width, height, row, side) : choice(width, height, row);
         }
 
@@ -327,13 +346,13 @@ namespace gt4
         std::string help(double now, bool controller) const
         {
             static constexpr const char* keyboard[]{
-                "Arrows Settings    Enter Select    Space Take Image    Backspace Back",
-                "RMB Look    WASD Pan    Wheel Zoom    +/- FOV    Q/E Roll",
-                "H Hide UI    R Reset Camera    Drag Title Bar Move Panel"};
+                "Arrows Settings    RETURN Select    Space Take Image    BACKSPACE Return",
+                "Drag RMB Look    WASD Pan    Wheel Zoom    +/- FOV    Q/E Roll",
+                "RMB Settings    I Info    H Hide UI    R Reset    Drag Title Bar Move Panel"};
             static constexpr const char* gamepad[]{
                 "D-PAD Settings    CROSS Select    CIRCLE Back",
                 "R-STICK Look    SELECT + R-STICK Pan    L2/R2 Zoom    L1/R1 Roll",
-                "L3 Hide UI    TRIANGLE Reset Camera    SQUARE + R-STICK Move Panel"};
+                "SELECT Settings    SQUARE+TRIANGLE Info    L3 Hide UI    TRIANGLE Reset    SQUARE + R-STICK Move Panel"};
             const auto page = size_t(std::fmod(std::max(0., now - began) / 3., 3.));
             return controller ? gamepad[page] : keyboard[page];
         }

@@ -389,7 +389,7 @@ inline bool saveStudioPreferences(const std::filesystem::path& path,const Studio
         <<"; Recommended applies to Background. FloorReflections is 0/1; floor quality is Low, Medium, High or Ultra.\n"
         <<"; Country and class sections are independent. Combined sections use Countries.X.Classes.Y.\n"
         <<"; LastFilter decides which preset an untouched combination inherits.\n"
-        <<"; Logos: 0=None, 1=Manufacturer, 2=Vehicle name, 3=Both. Style is shared.\n"
+        <<"; Logos: 0=None, 1=Manufacturer, 2=Vehicle name, 3=Both. Style is shared by countries and classes in the keyboard showroom.\n"
         <<"; Only predefined categories and contexts customized in-game are generated.\n"
         <<"; Country/class root floor settings describe their Background in Default style.\n"
         <<"; Prologue and other customized backgrounds use independent Presets.<name> sections.\n"
@@ -414,7 +414,7 @@ inline bool saveStudioPreferences(const std::filesystem::path& path,const Studio
     const auto section=[&](uint64_t key,const PresentationContext& context,bool configured){
         const auto name=presentationSection(key);
         text<<"\n["<<name<<"]\n";
-        if(!key)text<<"; Shared showroom style: Default or Prologue - applies to every country and class\nStyle="<<(preferences.showroomStyle?"Prologue":"Default")<<"\n";
+        if(!key)text<<"; Keyboard showroom style: Default or Prologue - applies to its countries and classes\nStyle="<<(preferences.showroomStyle?"Prologue":"Default")<<"\n";
         text<<"; Background for this context; Recommended keeps its original or inherited default\nBackground=";
         if(context.backgroundOverridden)text<<studioBackgroundNames[size_t(context.backgroundSelection)];
         else if(!configured&&key)text<<studioBackgroundNames[size_t(key==favoritesPresentationContext?IndustrialGarageBackground:studioBackgroundForFilters(uint32_t(key),-1,uint32_t(key>>32),-1))];

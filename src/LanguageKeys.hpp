@@ -2,7 +2,7 @@
 #include <array>
 namespace gt4
 {
-    inline constexpr std::array<const char*, 355> languageSourceStrings{{
+    inline constexpr std::array<const char*, 356> languageSourceStrings{{
         "Showroom Settings",
         "Wash complete. Texture-painted dirt may remain.",
         "Providing cheap car services since 1986. We're not like Pay n' Spray, we provide more services at a discounted rate and we make sure we have no such things as 'Snitches'. Operating in San Andreas is already driving us insane, so please be nice to us.",
@@ -35,7 +35,7 @@ namespace gt4
         "Rotation",
         "Hotspots",
         "Customization",
-        "Photo Mode",
+        "Photo Lab",
         "Settings",
         "Enter",
         "On",
@@ -358,8 +358,9 @@ namespace gt4
         "R-STICK",
         "L-STICK",
         "Backspace",
+        "Purchase",
     }};
-    inline constexpr std::array<const char*, 355> languageIndonesianStrings{{
+    inline constexpr std::array<const char*, 356> languageIndonesianStrings{{
         "Pengaturan Showroom",
         "Pencucian selesai. Kotoran yang tergambar pada tekstur mungkin masih terlihat.",
         "Melayani mobil dengan harga murah sejak 1986. Kami berbeda dari Pay n' Spray: lebih banyak layanan dengan harga hemat, tanpa tukang lapor. Beroperasi di San Andreas sudah membuat kami pusing, jadi bersikaplah baik kepada kami.",
@@ -392,7 +393,7 @@ namespace gt4
         "Rotasi",
         "Titik Interaksi",
         "Kustomisasi",
-        "Mode Foto",
+        "Lab Foto",
         "Pengaturan",
         "Masuk",
         "Aktif",
@@ -715,5 +716,6 @@ namespace gt4
         "R-STICK",
         "L-STICK",
         "Backspace",
+        "Purchase",
     }};
 }

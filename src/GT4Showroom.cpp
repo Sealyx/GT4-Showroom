@@ -42,6 +42,9 @@ namespace gt4
     std::shared_ptr<const Mesh> extrasFraming;
     std::map<int, std::array<int, 3>> selectedExtras;
     ReturnFade returnFade;
+    bool dealershipCameraPending = false;
+    int dealershipCameraVehicle = -1;
+    double dealershipCameraWait = 0;
     std::unique_ptr<Mesh> prizeMesh;
     uint32_t prizeSerial = 0;
     bool prizePlayed = false, prizeCaptureTried = false;
@@ -277,13 +280,16 @@ namespace gt4
         auto savedPreferences = state.ui.preferences();
         if (loadStudioPreferences(std::filesystem::path(base) / L"GT4Showroom/settings.ini", savedPreferences)) {
             state.ui.applyPreferences(savedPreferences);
+            mainStyleChoice=savedPreferences.showroomStyle;
         }
         readGalleryAccess();
         galleryOptions = readGallery(ini.c_str(), gallery);
         state.allowRealBig = gallery == Gallery::Main || gallery == Gallery::Wang;
         state.ui.menu.categoriesEnabled = gallery != Gallery::Grotti;
         state.ui.dealerBackground = gallery == Gallery::Main ? -1 : galleryBackground(ini.c_str(), gallery);
+        state.ui.showroomStyle = galleryStyle(ini.c_str(), gallery, mainStyleChoice);
         state.ui.menu.musicChoice = galleryOptions.music;
+        state.ui.mainDefaultBackground = galleryBackground(ini.c_str(), Gallery::Main);
         studioConfig = readStudioConfig(ini);
         studioConfig.sort = menuSort(state.ui.sortMode);
         diagnostics.reload(ini, L"GT4Showroom");
@@ -350,6 +356,7 @@ namespace gt4
         customizationNative::clear();
         clearShopGeometry();
         state.shop = {};
+        if (state.photo.active && state.photo.viewerContext) state.viewer=state.photo.originalViewer;
         state.photo = {};
         extrasModel = -1;
         dirtyExtraModel = extrasFramingModel = -1;
@@ -358,8 +365,9 @@ namespace gt4
         liveryNative::clear(state);
         prizeNative::release();
         const bool wasOpen = state.open || pause.owned;
+        dealershipCameraVehicle=-1;
         if (reveal && wasOpen) {
-            returnFade.begin();
+            returnFade.begin(state.fade.action==CloseAction::Spawn ? .5 : ReturnFade::duration);
         } else if (!reveal) {
             returnFade.reset();
         }
@@ -393,7 +401,7 @@ namespace gt4
         saveCurrentFavorites();
         if (gallery != Gallery::Main) {
             gallery = Gallery::Main;
-            state.showDealerPrices = false;
+            state.showDealerPrices = state.dealerPurchaseEnabled = false;
             state.galleryFavorites = true;
             state.ui.dealerBackground = -1;
             state.ui.applyPreferences(mainPreferences);
@@ -401,7 +409,9 @@ namespace gt4
             galleryOptions = readGallery(ini.c_str(), gallery);
             state.allowRealBig = gallery == Gallery::Main || gallery == Gallery::Wang;
             state.ui.menu.categoriesEnabled = gallery != Gallery::Grotti;
-            state.ui.menu.musicChoice = galleryOptions.music;
+            state.ui.showroomStyle = galleryStyle(ini.c_str(), gallery, mainStyleChoice);
+        state.ui.menu.musicChoice = galleryOptions.music;
+        state.ui.mainDefaultBackground = galleryBackground(ini.c_str(), Gallery::Main);
             rebuildCatalogueView(mainVehicle);
             selectedExtras.clear();
             dealerShopVisited = false;
@@ -1059,13 +1069,16 @@ namespace gt4
         auto savedPreferences = state.ui.preferences();
         if (loadStudioPreferences(std::filesystem::path(base) / L"GT4Showroom/settings.ini", savedPreferences)) {
             state.ui.applyPreferences(savedPreferences);
+            mainStyleChoice=savedPreferences.showroomStyle;
         }
         readGalleryAccess();
         galleryOptions = readGallery(ini.c_str(), gallery);
         state.allowRealBig = gallery == Gallery::Main || gallery == Gallery::Wang;
         state.ui.menu.categoriesEnabled = gallery != Gallery::Grotti;
         state.ui.dealerBackground = gallery == Gallery::Main ? -1 : galleryBackground(ini.c_str(), gallery);
+        state.ui.showroomStyle = galleryStyle(ini.c_str(), gallery, mainStyleChoice);
         state.ui.menu.musicChoice = galleryOptions.music;
+        state.ui.mainDefaultBackground = galleryBackground(ini.c_str(), Gallery::Main);
         studioConfig = readStudioConfig(ini);
         studioConfig.sort = menuSort(state.ui.sortMode);
         diagnostics.reload(ini, L"GT4Showroom");
@@ -1186,7 +1199,9 @@ namespace gt4
     void saveStudioPreferences()
     {
         if (gallery != Gallery::Main) return;
-        if (!saveStudioPreferences(std::filesystem::path(base) / L"GT4Showroom/settings.ini", state.ui.preferences())) {
+        auto preferences=state.ui.preferences();
+        preferences.showroomStyle=mainStyleChoice;
+        if (!saveStudioPreferences(std::filesystem::path(base) / L"GT4Showroom/settings.ini", preferences)) {
             log("Studio preferences could not be saved; current session settings remain active");
         }
         if (diagnostics.enabled.load(std::memory_order_relaxed)) {
@@ -1264,6 +1279,13 @@ namespace gt4
             if (game::loading() || !gate.alive) {
                 returnFade.reset();
             } else if (focus && !gate.menu && !gate.codePause && !gate.userPause) {
+                if (dealershipCameraVehicle >= 0) {
+                    void* target = entryNative::function<void*(__cdecl*)(int)>(0x54FFF0)(dealershipCameraVehicle);
+                    dealershipCameraWait += dt;
+                    const bool focusedOnVehicle = target && game::field<void*>(spawnEntry.camera(),0x958)==target;
+                    if (!target || (focusedOnVehicle && dealershipCameraWait>=.12) || dealershipCameraWait>=1.5)
+                        dealershipCameraVehicle=-1;
+                }
                 returnFade.step(dt);
             }
         }
@@ -1289,7 +1311,7 @@ namespace gt4
         if (!state.open) updateGalleryMarkers(gate,key(VK_RETURN) || pad.accept,tick,dt);
         else if (arrivalTime >= 0 && focus && !game::menu()) {
             arrivalTime += dt;
-            if (arrivalTime >= 3.) arrivalTime=-1;
+            if (arrivalTime >= 2 * galleryHalfFade) arrivalTime=-1;
         }
         const bool physicalOpen = studioOpenInput(key(hotkey), state.open, pad);
         const bool pressed =
@@ -1320,6 +1342,7 @@ namespace gt4
             if (!blocked) {
                 if (state.open) {
                     state.exit();
+                    if(state.cue==Cue::Back) { audio.cue(Cue::Back, gallery==Gallery::Main);state.cue=Cue::None; }
                 } else {
                     openIntent.request(tick);
                 }
@@ -1337,6 +1360,7 @@ namespace gt4
             }
             reloadExclusions();
             renderer.setGalleryBrand(std::filesystem::path(base)/L"GT4Showroom",int(gallery),galleries[int(gallery)].name);
+            state.dealerPurchaseEnabled = gallery != Gallery::Main;
             state.showDealerPrices = gallery == Gallery::Coutt || gallery == Gallery::Verdant || gallery == Gallery::Grotti;
             state.galleryFavorites = galleries[int(gallery)].fullService;
             openIntent.clear();
@@ -1370,6 +1394,7 @@ namespace gt4
                 suspended = true;
                 blockActions();
                 audio.chooseMusic(galleryOptions.music, gameWindow(), base + L"GT4Showroom/audio/");
+                audio.setTransitionGain(gallery==Gallery::Main ? 1.f : 0.f);
                 audio.start();
                 logAudioFaults();
                 if (diagnostics.enabled.load(std::memory_order_relaxed)) {
@@ -1421,7 +1446,11 @@ namespace gt4
                     // the native viewport may belong to an auxiliary pass; input follows the displayed layout
                     const auto width = renderer.presentationWidth ? renderer.presentationWidth : vp.Width;
                     const auto height = renderer.presentationHeight ? renderer.presentationHeight : vp.Height;
-                    interaction(pad, float(width), float(height), dt, tick);
+                    if (arrivalTime < 0 && state.clock - state.opened >= MenuFade::entryDuration) {
+                        interaction(pad, float(width), float(height), dt, tick);
+                    } else {
+                        blockActions();
+                    }
                     if (state.page != Page::Prize &&
                         (!prizeNative::heldTxds.empty() || !prizeNative::heldModels.empty())) {
                         prizeNative::release();
@@ -1581,6 +1610,7 @@ namespace gt4
                                     }
                                     if (gallery != Gallery::Main || studioConfig.spawn != SpawnMode::InFront) {
                                         dealerSeatPending = gallery != Gallery::Main;
+                                        dealershipCameraPending = dealerSeatPending;
                                         V3 low = m ? m->low : V3{-1, -2.3f, -.5f}, high = m ? m->high : V3{1, 2.3f, 1.1f};
                                         if (col) {
                                             low = game::field<V3>(col, 0);
@@ -1632,12 +1662,13 @@ namespace gt4
                             }
                         }
                     }
+                    if (arrivalTime >= 0 || state.clock - state.opened < MenuFade::entryDuration) state.cue = Cue::None;
                     if (state.cue != Cue::None) {
                         if ((state.cue != Cue::Move && state.cue != Cue::Slider) || moveCue.allow(tick)) {
                             if (state.cue == Cue::WashSpin) {
                                 audio.cue(Cue::Accept);
                             }
-                            audio.cue(state.cue);
+                            audio.cue(state.cue, gallery==Gallery::Main && state.fade.action==CloseAction::Exit);
                         }
                         state.cue = Cue::None;
                     }
@@ -1650,7 +1681,14 @@ namespace gt4
                         if (dealerSeatPending || studioConfig.spawn == SpawnMode::DriverSeat) {
                             dealerSeatPending = false;
                             void* ped = entryNative::function<void*(__cdecl*)(int)>(0x56E210)(-1);
-                            log(seatPlayerAsDriver(ped, v) ? "Spawn: player seated directly as driver"
+                            const bool seated = seatPlayerAsDriver(ped, v);
+                            if (seated && returnFade.active() && dealershipCameraPending) {
+                                entryNative::function<void(__thiscall*)(void*)>(0x50BAB0)(spawnEntry.camera());
+                                dealershipCameraVehicle=entryNative::function<int(__cdecl*)(void*)>(0x54FFC0)(v);
+                                dealershipCameraWait=0;
+                            }
+                            dealershipCameraPending = false;
+                            log(seated ? "Spawn: player seated directly as driver"
                                                            : "Spawn: driver seat unavailable; vehicle left nearby");
                         } else {
                             const bool started = spawnEntry.begin(v, pendingEntryLow, pendingEntryHigh);
@@ -1688,10 +1726,10 @@ namespace gt4
         } else {
             audio.setShopMusic(false);
         }
-        float gain = state.open ? state.entryAudioGain() : 1.f;
-        if (state.open && state.shop.open()) {
-            gain *= 1.f - state.shop.fade(state.clock);
-        }
+        const bool keyboardEntry = gallery==Gallery::Main && state.open &&
+                                   state.clock-state.opened<MenuFade::entryDuration;
+        float gain = state.open && !keyboardEntry ? state.entryAudioGain() : 1.f;
+        if (arrivalTime >= 0) gain *= ease(float(std::clamp((arrivalTime-galleryHalfFade)/galleryHalfFade,0.,1.)));
         audio.setTransitionGain(gain);
         syncGameAudioLevels();
         audio.update();
@@ -1796,7 +1834,7 @@ namespace gt4
         studioPreparing = true;
         fillCache(output.Width, output.Height);
         if (game::renderCamera() == camera) {
-            if (state.showDealerPrices) {
+            if (state.dealerPurchaseEnabled) {
                 const int* wallet = shopWallet();
                 state.dealerBalance = wallet ? *wallet : 0;
             }
@@ -1807,7 +1845,7 @@ namespace gt4
                           extrasFramingModel >= 0 && state.selected < entries.size() &&
                               entries[state.selected].id == extrasFramingModel ? extrasFraming.get() : nullptr)) {
             studioPreparedFrame = frameSerial;
-            if (state.photo.active && state.photo.requested) {
+            if (state.photo.active && state.photo.requested && state.clock >= state.photo.captureAt) {
                 std::filesystem::path saved;
                 bool success = false;
                 const bool ready = state.selected < entries.size() && lookup(entries[state.selected].id);
@@ -1820,6 +1858,7 @@ namespace gt4
                     log("Photo could not be saved; studio state retained");
                 }
                 state.photo.requested = false;
+                state.photo.flashBegan = success ? state.clock : -10.;
                 if (success) {
                     state.photo.status = "Photo saved to GT4Showroom/photos";
                 } else if (ready) {
@@ -1828,7 +1867,7 @@ namespace gt4
                     state.photo.status = "Wait for the vehicle preview to finish loading";
                 }
                 state.photo.statusUntil = state.clock + 3;
-                state.cue = success ? Cue::Accept : Cue::Error;
+                state.cue = success ? Cue::None : Cue::Error;
             }
         }
         studioPreparing = false;
@@ -1849,7 +1888,7 @@ namespace gt4
         const bool sceneActive = game::at<int>(nativeSceneActive) != 0;
         if (drawToBackBuffer(d, swapChain, sceneActive, [&](UINT, UINT) {
                 const bool presented = renderer.presentStudio(d, state);
-                if (presented && arrivalTime >= 0) renderer.veil(d,1.f-ease(float(std::clamp((arrivalTime-1.5)/1.5,0.,1.))));
+                if (presented && arrivalTime >= 0) renderer.veil(d,1.f-ease(float(std::clamp((arrivalTime-galleryHalfFade)/galleryHalfFade,0.,1.))));
                 return presented;
             })) {
             studioCompositedFrame = frameSerial;
@@ -1862,7 +1901,7 @@ namespace gt4
             const unsigned displayedTopics = state.tutorialOpen() ? tutorialTopics(state.tutorial)
                                                                  : welcomeTutorialBit;
             if (state.tutorialsEnabled && tutorialVisible && !interfaceHidden && state.blackAlpha() < 1.f &&
-                (arrivalTime < 0 || arrivalTime > 1.5) && (displayedTopics & ~state.tutorialsSeen)) {
+                (arrivalTime < 0 || arrivalTime > galleryHalfFade) && (displayedTopics & ~state.tutorialsSeen)) {
                 const unsigned shown = state.tutorialsSeen | displayedTopics;
                 if (saveTutorialProgress(ini.c_str(),state.tutorialsEnabled,shown)) {
                     state.tutorialsSeen = shown;
@@ -1962,7 +2001,7 @@ namespace gt4
             }
         }
         if (!state.open && arrivalTime >= 0 && !game::menu() && focused() && camera == game::at<void*>(0xC1703C)) {
-            if (auto* d = game::device()) renderer.veil(d,ease(float(std::clamp(arrivalTime/1.5,0.,1.))));
+            if (auto* d = game::device()) renderer.veil(d,ease(float(std::clamp(arrivalTime/galleryHalfFade,0.,1.))));
         }
         if (!state.open && returnFade.active() && !game::menu() && !game::codePaused() && focused() &&
             camera == game::at<void*>(0xC1703C)) {
@@ -2190,13 +2229,16 @@ namespace gt4
         auto savedPreferences = state.ui.preferences();
         if (loadStudioPreferences(std::filesystem::path(base) / L"GT4Showroom/settings.ini", savedPreferences)) {
             state.ui.applyPreferences(savedPreferences);
+            mainStyleChoice=savedPreferences.showroomStyle;
         }
         readGalleryAccess();
         galleryOptions = readGallery(ini.c_str(), gallery);
         state.allowRealBig = gallery == Gallery::Main || gallery == Gallery::Wang;
         state.ui.menu.categoriesEnabled = gallery != Gallery::Grotti;
         state.ui.dealerBackground = gallery == Gallery::Main ? -1 : galleryBackground(ini.c_str(), gallery);
+        state.ui.showroomStyle = galleryStyle(ini.c_str(), gallery, mainStyleChoice);
         state.ui.menu.musicChoice = galleryOptions.music;
+        state.ui.mainDefaultBackground = galleryBackground(ini.c_str(), Gallery::Main);
         studioConfig = readStudioConfig(ini);
         studioConfig.sort = menuSort(state.ui.sortMode);
         const auto keys = readHotkey(ini);
@@ -2211,11 +2253,11 @@ namespace gt4
         }
         reloadSettings();
         reloadExclusions();
-        renderer.setShopLogo(std::filesystem::path(base) / L"GT4Showroom/transfender/logo.png");
+        renderer.setShopLogo(std::filesystem::path(base) / L"GT4Showroom/transfender.txd");
         renderer.setLogoRoot(std::filesystem::path(base) / L"GT4Showroom/logos");
         const std::filesystem::path fontPath = std::filesystem::path(base) / L"GT4Showroom/fonts/Michroma-Regular.ttf";
         state.random.seed(uint32_t(GetTickCount64()) ^ GetCurrentProcessId());
-        if (!renderer.loadPrize((std::filesystem::path(base) / L"GT4Showroom/prize/congratulations.rgba").wstring())) {
+        if (!renderer.loadPrize((std::filesystem::path(base) / L"GT4Showroom/prize.txd").wstring())) {
             log("Static prize backdrop unavailable; check the complete packaged asset folder");
         }
         if (!renderer.loadFont(fontPath.wstring(), L"Michroma")) {

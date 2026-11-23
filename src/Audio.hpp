@@ -122,14 +122,15 @@ namespace gt4
 
     class Audio
     {
-        static constexpr std::array<const wchar_t*, 9> effectFiles{
+        static constexpr std::array<const wchar_t*, 10> effectFiles{
             {L"move.wav", L"accept.wav", L"back.wav", L"open.wav", L"spawn.wav", L"error.wav", L"slider.wav",
-             L"wash-spin.wav", L"wash-complete.wav"}};
+             L"wash-spin.wav", L"wash-complete.wav", L"flash.wav"}};
 
         struct Voice
         {
             IDirectSoundBuffer* buffer = nullptr;
             uint64_t serial = 0;
+            bool sceneIndependent = false;
         };
 
         IDirectSound8* ds = nullptr;
@@ -268,7 +269,7 @@ namespace gt4
             const HRESULT result = active->Play(0, 0, DSBPLAY_LOOPING);
             bedPlaying = SUCCEEDED(result);
             if (FAILED(result)) {
-                fault("music-play", shopMusic ? L"transfender.mp3" : L"music.wav", result);
+                fault("music-play", shopMusic ? L"transfender.wav" : L"music.wav", result);
             }
             musicGain = 0;
         }
@@ -286,7 +287,8 @@ namespace gt4
             const LONG level = effectVolume();
             for (auto& voice : voices) {
                 if (voice.buffer) {
-                    voice.buffer->SetVolume(level);
+                    voice.buffer->SetVolume(voice.sceneIndependent ?
+                        mixedVolume(masterVolume, cueVolume, gameEffectsVolume, 1.f) : level);
                 }
             }
         }
@@ -315,6 +317,16 @@ namespace gt4
         {
             return faultsStored;
         }
+#ifdef BODY_REVIEW
+        std::vector<LONG> effectVoiceLevels() const
+        {
+            std::vector<LONG> levels;
+            for(const auto& voice:voices) if(voice.buffer) {
+                LONG level=0;voice.buffer->GetVolume(&level);levels.push_back(level);
+            }
+            return levels;
+        }
+#endif
 
         void setTransitionGain(float gain)
         {
@@ -545,7 +557,7 @@ namespace gt4
             }
             if (on && ds && !shopBedTried) {
                 shopBedTried = true;
-                shopBed = load(folder + L"transfender.mp3", 64 * 1024 * 1024);
+                shopBed = load(folder + L"transfender.wav", 64 * 1024 * 1024);
             }
             if (auto* active = activeBed()) {
                 active->Stop();
@@ -569,7 +581,7 @@ namespace gt4
                 const HRESULT result = active->SetVolume(
                     mixedVolume(masterVolume, bedVolume, gameRadioVolume, musicGain * transitionGain));
                 if (FAILED(result)) {
-                    fault("music-volume", shopMusic ? L"transfender.mp3" : L"music.wav", result);
+                    fault("music-volume", shopMusic ? L"transfender.wav" : L"music.wav", result);
                 }
                 if (musicGain <= 0 && target == 0) {
                     active->Stop();
@@ -689,7 +701,7 @@ namespace gt4
             return true;
         }
 
-        bool cue(Cue cue)
+        bool cue(Cue cue, bool sceneIndependent = false)
         {
             if (!enabled || !focused || !ds || cue == Cue::None) {
                 return false;
@@ -715,6 +727,9 @@ namespace gt4
             case Cue::Error:
                 index = 5;
                 break;
+            case Cue::Flash:
+                index = 9;
+                break;
             case Cue::WashSpin:
                 index = 7;
                 break;
@@ -734,7 +749,7 @@ namespace gt4
                 return false;
             }
 
-            const LONG level = effectVolume();
+            const LONG level = sceneIndependent ? mixedVolume(masterVolume, cueVolume, gameEffectsVolume, 1.f) : effectVolume();
             b->SetVolume(level == DSBVOLUME_MIN ? DSBVOLUME_MIN + 1 : DSBVOLUME_MIN);
             result = b->SetVolume(level);
             if (FAILED(result)) {
@@ -764,7 +779,7 @@ namespace gt4
                 it->buffer->Stop();
                 it->buffer->Release();
             }
-            *it = {b, ++serial};
+            *it = {b, ++serial, sceneIndependent};
             return true;
         }
 

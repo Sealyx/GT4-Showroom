@@ -1,9 +1,11 @@
 std::array<int,std::size(galleries)> galleryBlips{{-1,-1,-1,-1,-1}};
 std::array<bool,std::size(galleries)> galleryEnabled{};
 Gallery approaching = Gallery::Main;
+constexpr double galleryHalfFade = 1.0;
 double arrivalTime = -1;
 Key galleryReturn;
 StudioPreferences mainPreferences;
+int mainStyleChoice = 0;
 int mainVehicle = -1;
 bool dealerSeatPending = false;
 
@@ -158,7 +160,7 @@ void updateGalleryMarkers(const game::OpenState& gate, bool confirm, uint64_t ti
     if (pressed && arrivalTime < 0) arrivalTime=0;
     if (arrivalTime < 0) return;
     arrivalTime += dt;
-    if (arrivalTime >= 1.5 && gallery == Gallery::Main && !catalog.empty()) {
+    if (arrivalTime >= galleryHalfFade && gallery == Gallery::Main && !catalog.empty()) {
         mainPreferences = state.ui.preferences();
         mainVehicle = state.selected < entries.size() ? entries[state.selected].id : -1;
         gallery=nearest;

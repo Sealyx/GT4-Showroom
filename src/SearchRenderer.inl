@@ -29,6 +29,9 @@ UIRect messageRow(IDirect3DDevice9* device, UIRect box, int index, const std::st
 
 void searchIcon(IDirect3DDevice9* device, UIRect box, float scale, float alpha)
 {
+#ifndef GT4_ICON_EXPORT
+    if(pngIcon(device,L"search.png",{box.x+2*scale,box.y+2*scale,box.w-4*scale,box.h-4*scale},alpha)) return;
+#endif
     if (!searchGlyph) {
         constexpr unsigned size = 128;
         const auto pixels = magnifierPixels(size);
@@ -151,7 +154,7 @@ void drawPlate(IDirect3DDevice9* device, float width, float height, const Model&
     if (model.plateReturn != SpawnReview::None) {
         rect(device, 0, 0, width, height, color(0, .2f * alpha));
     }
-    const PlatePanel panel(width, height, model.ui.keyboard.open, model.plateMotion.offset(model.clock, height), model.plateReturn != SpawnReview::None);
+    const auto panel=model.plateLayout(width,height);
     const float scale = panel.scale;
     messageWindow(device, panel.box, "License Plate", scale, alpha);
     const auto input = messageRow(device, panel.box, 0, "Text", model.plate, scale, alpha);

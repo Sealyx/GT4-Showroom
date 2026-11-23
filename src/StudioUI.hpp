@@ -469,9 +469,7 @@ namespace gt4
                 }
                 rows.push_back({"Anti-Aliasing", StudioAction::None, -1, MenuBranch::Antialiasing});
                 rows.push_back({"Ambient Occlusion", StudioAction::None, -1, MenuBranch::AmbientOcclusion});
-                if (viewerSettings.scene != ViewerScene::Custom) {
-                    rows.push_back({"Reflections", StudioAction::None, -1, MenuBranch::ViewerReflections});
-                }
+                rows.push_back({"Reflections", StudioAction::None, -1, MenuBranch::ViewerReflections});
                 rows.push_back({"Shadows", StudioAction::None, -1, MenuBranch::ViewerShadows});
                 if (viewerSettings.scene != ViewerScene::Custom) {
                     rows.push_back({"Animation", StudioAction::None, -1, MenuBranch::ViewerAnimate});
@@ -483,7 +481,7 @@ namespace gt4
                 if (customizationEnabled) {
                     rows.push_back({"Customization", StudioAction::EnterTransFender});
                 }
-                rows.push_back({"Photo Mode", StudioAction::EnterPhoto});
+                rows.push_back({"Photo Lab", StudioAction::EnterPhoto});
                 return rows;
             }
             if (settingsView == SettingsView::Cinematic) {
@@ -501,7 +499,7 @@ namespace gt4
                     rows.push_back({"Customization", StudioAction::EnterTransFender});
                 }
                 rows.push_back({"Vehicle Viewer", StudioAction::ViewerEnter});
-                rows.push_back({"Photo Mode", StudioAction::EnterPhoto});
+                rows.push_back({"Photo Lab", StudioAction::EnterPhoto});
                 return rows;
             }
             std::vector<MenuItem> rows{{"Sort By", StudioAction::None, -1, MenuBranch::Sort},
@@ -634,13 +632,13 @@ namespace gt4
                     return {{"On", StudioAction::ViewerAnimate, 1, MenuBranch::None, viewerSettings.animate},
                             {"Off", StudioAction::ViewerAnimate, 0, MenuBranch::None, !viewerSettings.animate}};
                 case MenuBranch::ViewerScene: {
-                    std::vector<MenuItem> rows;
+                    std::vector<MenuItem> rows{{"Showroom",StudioAction::ViewerScene,-1,MenuBranch::None,viewerSettings.inheritStudio}};
                     for (size_t i = 0; i < viewerSceneNames.size(); ++i) {
                         if (!viewerSceneNames[i]) {
                             continue;
                         }
                         rows.push_back({viewerSceneNames[i], StudioAction::ViewerScene, int(i), MenuBranch::None,
-                                        int(viewerSettings.scene) == int(i)});
+                                        !viewerSettings.inheritStudio && int(viewerSettings.scene) == int(i)});
                     }
                     return rows;
                 }
@@ -673,8 +671,14 @@ namespace gt4
                     return rows;
                 }
                 case MenuBranch::ViewerReflections:
-                    return {{"On", StudioAction::ViewerReflections, 1, MenuBranch::None, viewerSettings.reflections},
-                            {"Off", StudioAction::ViewerReflections, 0, MenuBranch::None, !viewerSettings.reflections}};
+                    return {{"Floor On",StudioAction::ViewerReflections,1,MenuBranch::None,viewerSettings.reflections},
+                            {"Floor Off",StudioAction::ViewerReflections,0,MenuBranch::None,!viewerSettings.reflections},
+                            {"Vehicle On",StudioAction::ViewerReflections,3,MenuBranch::None,viewerSettings.vehicleReflections},
+                            {"Vehicle Off",StudioAction::ViewerReflections,2,MenuBranch::None,!viewerSettings.vehicleReflections},
+                            {"Low",StudioAction::ViewerReflections,4,MenuBranch::None,viewerSettings.reflectionQuality==1},
+                            {"Medium",StudioAction::ViewerReflections,5,MenuBranch::None,viewerSettings.reflectionQuality==2},
+                            {"High",StudioAction::ViewerReflections,6,MenuBranch::None,viewerSettings.reflectionQuality==3},
+                            {"Ultra",StudioAction::ViewerReflections,7,MenuBranch::None,viewerSettings.reflectionQuality==4}};
                 case MenuBranch::ViewerShadows:
                     return {{"On", StudioAction::ViewerShadows, 1, MenuBranch::None, viewerSettings.shadows},
                             {"Off", StudioAction::ViewerShadows, 0, MenuBranch::None, !viewerSettings.shadows}};
@@ -1102,7 +1106,8 @@ namespace gt4
         int sortMode = 5, countryFilter = -1, classFilter = -1;
         uint32_t countryMask = 0, classMask = 0;
         std::wstring menuDealerRaw;
-        bool dealerBackgroundWritten = false;
+        bool dealerBackgroundWritten = false, menuStyleEdited = false;
+        int mainDefaultBackground=DefaultBackground;
         int dealerBackground = -1, menuDealerBackground = -1;
         int backgroundSelection = 0, showroomStyle = 0;
         int unitFormat = 0, antialiasing = 2, ambientOcclusion = 2;
@@ -1219,7 +1224,9 @@ namespace gt4
 
         int backgroundStyle() const
         {
-            return dealerBackground >= 0 && !favoritesOnly ? dealerBackground : presentationBackground(*this, presentationContext());
+            if (dealerBackground >= 0 && !favoritesOnly) return dealerBackground;
+            if (!presentationContext() && !backgroundOverridden) return mainDefaultBackground;
+            return presentationBackground(*this, presentationContext());
         }
 
         bool accepts(Country country, int category) const

@@ -144,7 +144,12 @@ namespace gt4
             std::unordered_map<std::string, std::string> result;
             for (const auto *source : languageSourceStrings)
             {
-                const auto found = values.find(languageKey(source));
+                auto found = values.find(languageKey(source));
+                if (found == values.end() && std::string_view(source) == "Photo Lab" &&
+                    values.count(languageKey("Photo Mode"))) {
+                    result.emplace(source, "Photo Lab");
+                    continue;
+                }
                 if (found == values.end())
                 {
                     return false;

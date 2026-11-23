@@ -7,7 +7,7 @@ bool suppliedIcon(IDirect3DDevice9* device, unsigned index, UIRect box, float al
     }
     auto& image = suppliedIcons[index];
     if (!suppliedIconsTried[index]) {
-        image = VehicleLogos::load(device, assetPath(shopLogoPath.parent_path().parent_path() / L"icons" / files[index]), 256);
+        image = iconDictionary.load(device, assetPath(shopAssetRoot / L"icons.txd"), std::filesystem::path(files[index]).stem().wstring());
         suppliedIconsTried[index] = true;
     }
     if (!image.texture || !image.width || !image.height) {
@@ -108,7 +108,12 @@ void drawInformation(IDirect3DDevice9* device, float width, float height, const 
     constexpr Topic viewer[]{
         {"Inspect the vehicle", "Drag with the left mouse button or use the right stick to rotate. Scroll to zoom in on details."},
         {"Set up the studio", "Open Settings to change the scene, floor, palette, reflections or shadows. Set Rotation to Paused to hold your angle."},
-        {"Photo Mode", "Open Photo Mode from Settings to frame a shot. Use the controls in the footer to hide the interface or save a photo."}
+        {"Photo Lab", "Open Photo Lab from Settings to frame a shot. Use the controls in the footer to hide the interface or save a photo."}
+    };
+    constexpr Topic photo[]{
+        {"Frame the shot", "Drag to look, use WASD to pan and scroll to zoom. Adjust FOV, roll or aspect ratio in the camera panel."},
+        {"Visuals", "Change the studio for this shot. The previous background returns when you leave Photo Lab."},
+        {"Take an image", "Press Space or select Take Image. Focus and shutter sounds accompany the capture. Photos are saved in the showroom photos folder."}
     };
     constexpr Topic customization[]{
         {"Choose a service", "Highlight Car Wash, Suspension, Wheels or Components. The footer describes the current service."},
@@ -116,12 +121,12 @@ void drawInformation(IDirect3DDevice9* device, float width, float height, const 
         {"Apply and return", "Confirm a change to keep it. Backspace returns to the previous screen. Your choices carry through when you spawn."}
     };
     constexpr std::array<const wchar_t*, 3> demoNames{
-        L"tutorial/cinematic.png", L"tutorial/viewer.png", L"tutorial/customization.png"};
+        L"cinematic", L"viewer", L"customization"};
     const auto loadDemo = [&](size_t index) {
         auto& demo = tutorialDemos[index];
         if (!tutorialDemoTried[index]) {
             tutorialDemoTried[index] = true;
-            demo = VehicleLogos::load(device, assetPath(shopLogoPath.parent_path().parent_path() / demoNames[index]), 2048);
+            demo = tutorialArtworkDictionary.load(device, assetPath(shopAssetRoot / L"tutorial.txd"), demoNames[index]);
         }
         return demo.texture && demo.width == 2048 && demo.height == 1152;
     };
@@ -131,10 +136,10 @@ void drawInformation(IDirect3DDevice9* device, float width, float height, const 
     const bool inShop = model.tutorial == Tutorial::Customization;
     const bool legacy = model.tutorial == Tutorial::Cinematic;
     const size_t mainDemo = inViewer ? 1 : (inShop || intro ? 2 : 0);
-    const bool mainAnimated = tutorial && loadDemo(mainDemo);
+    const bool mainAnimated = tutorial && model.tutorial != Tutorial::Photo && loadDemo(mainDemo);
     const bool secondAnimated = combined && loadDemo(2);
     const bool animated = mainAnimated || secondAnimated;
-    const Topic* topics = intro ? overview + 3 : (inViewer ? viewer : (inShop ? customization : overview));
+    const Topic* topics = model.tutorial == Tutorial::Photo ? photo : intro ? overview + 3 : (inViewer ? viewer : (inShop ? customization : overview));
     const size_t rows = intro ? 1 : (combined ? 4 : 3);
     const float panelWidth = intro ? 680.f : 760.f;
     const float demoWidth = intro ? 280.f : 327.f;
@@ -188,8 +193,7 @@ void drawInformation(IDirect3DDevice9* device, float width, float height, const 
     if (!suppliedIcon(device, 4, {box.x + 20 * scale, box.y + 9 * scale, 29 * scale, 29 * scale}, alpha)) {
         write("i", 31, 8, 25, 0xD1D1D4);
     }
-    const char* title = !tutorial ? "Information" : (inViewer ? "Vehicle Viewer Tutorial" :
-                        (inShop ? "Customization Tutorial" : "Cinematic Tutorial"));
+    const char* title = "Information";
     write(title, 63, 11, 24, 0xD1D1D4);
     const auto separator = [&](float y, float width) {
         rect(device, box.x + 27 * scale, box.y + y * scale, width, scale, color(0x8C8D94, alpha));

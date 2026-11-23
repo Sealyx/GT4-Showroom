@@ -102,7 +102,7 @@ void shopPriceMark(IDirect3DDevice9* device, float x, float y, float scale, bool
 {
     d3dShopOverlay(device);
     if (!dealership && !shopStrokeTried) {
-        shopStroke = VehicleLogos::load(device, assetPath(shopLogoPath.parent_path() / L"stroke.png"), 1024);
+        shopStroke = shopArtworkDictionary.load(device,shopLogoPath,L"stroke");
         shopStrokeTried = true;
     }
     if (!dealership && shopStroke.texture && shopStroke.width) {
@@ -111,6 +111,13 @@ void shopPriceMark(IDirect3DDevice9* device, float x, float y, float scale, bool
         rect(device, x - width * .50f, y - height * .52f, width, height, color(0xFFFFFF), shopStroke.texture);
     }
     d3dShopOverlay(device);
+#ifndef GT4_ICON_EXPORT
+    if(iconImage(device,L"currency-dollar.png").texture &&
+       pngIcon(device,dealership?L"price-coin.png":L"price-coin-tilted.png",{x-32*scale+.5f,y-32*scale+.5f,64*scale,64*scale},1)) {
+        pngCurrency(device,x,y-17*scale,31*scale,0xFF9500,dealership?0.f:-.14f);
+        return;
+    }
+#endif
     constexpr size_t sides = 64;
     const float tilt = dealership ? 0.f : -.14f;
     const float sine = std::sin(tilt), cosine = std::cos(tilt);
@@ -127,7 +134,9 @@ void shopPriceMark(IDirect3DDevice9* device, float x, float y, float scale, bool
     };
     disc(1.28f, 2 * scale, color(0, .35f), color(0, 0));
     disc(1.f, 0, color(0x060606), color(0x060606));
+#ifndef GT4_ICON_EXPORT
     text(device, "$", x, y - 17 * scale, 31 * scale, color(0xFF9500), true, 0, textStyle(true), tilt);
+#endif
 }
 
 void shopFadedBand(IDirect3DDevice9* device, float x, float y, float width, float height, float alpha)
@@ -191,6 +200,9 @@ void shopWashMeter(IDirect3DDevice9* device, float width, float height, float pr
 
 void shopWashBack(IDirect3DDevice9* device, float x, float y, float scale)
 {
+#ifndef GT4_ICON_EXPORT
+    if(buttonBackdrop(device,"transfender-back",{x-32*scale,y-24*scale,64*scale,48*scale},1,false))return;
+#endif
     d3dShopOverlay(device);
     constexpr std::array<std::array<float, 2>, 7> points{{
         {-19, 0},
@@ -220,8 +232,9 @@ void shopWashBack(IDirect3DDevice9* device, float x, float y, float scale)
     draw(0, color(0x9ED453, 1), color(0x357526, 1));
 }
 
-void drawShopBackdrop(IDirect3DDevice9* device, float width, float height, ShopPage page)
+void drawShopBackdrop(IDirect3DDevice9* device, float width, float height, ShopPage page, const Model& model)
 {
+    (void)model;
     d3dShopOverlay(device);
     ScreenVertex floor[] = {
         {0, 0, 0, 1, color(0xA44B1E, 1), 0, 0},
@@ -230,13 +243,14 @@ void drawShopBackdrop(IDirect3DDevice9* device, float width, float height, ShopP
         {width, height, 0, 1, color(0xC77C29, 1), 0, 0},
     };
     device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, floor, sizeof(ScreenVertex));
+    if (model.plateOpen) return;
     constexpr std::array<const wchar_t*, 6> images{L"menu.png",       L"menu.png",       L"wheels.png",
                                                    L"components.png", L"suspension.png", L"car-wash.png"};
     constexpr std::array<uint32_t, 6> tints{0x726326, 0x9E8742, 0xBD725A, 0xA8789C, 0x9C8644, 0x629DC9};
     const size_t section = size_t(page);
     auto& artwork = shopArtwork[section];
     if (!shopArtworkTried[section]) {
-        artwork = VehicleLogos::load(device, assetPath(shopLogoPath.parent_path() / images[section]), 2048);
+        artwork = shopArtworkDictionary.load(device,shopLogoPath,std::filesystem::path(images[section]).stem().wstring());
         shopArtworkTried[section] = true;
     }
     const uint32_t tint = tints[section];
@@ -339,7 +353,7 @@ void drawVehicleAccount(IDirect3DDevice9* device, float width, float scale, cons
     device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 8, marker.data(), sizeof(ScreenVertex));
     text(device, entry.name, nameX + scale, top + 4 * scale, nameSize, color(0, .9f), false, 0, true);
     text(device, entry.name, nameX, top + 3 * scale, nameSize, color(0xFFFFFF), false, 0, true);
-    shopDollar(device, coinX, top + barHeight * .5f, 10 * scale);
+    shopDollar(device, coinX + 2 * scale, top + barHeight * .5f, 10 * scale);
     text(device, balance, moneyX + scale, top + 4 * scale, size, color(0, .9f), false, 0, true);
     text(device, balance, moneyX, top + 3 * scale, size, color(0xFFFFFF), false, 0, true);
     rect(device, dateX, top, dayWidth, barHeight, color(0xFFBD00));
@@ -375,7 +389,8 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
     const bool wash = page == ShopPage::CarWash;
     Paint paint = model.previewPaint(entry);
 
-    drawShopBackdrop(device, width, height, page);
+    prologueStyle=studioSurfaceWeight=darkGrayShadowWeight=0;
+    drawShopBackdrop(device, width, height, page, model);
     lightPhase = lastShadowPhase = 0;
     if (car && reveal > 0) {
         Camera camera(width, height, 5.f, wheels ? .35f : .40f);
@@ -418,6 +433,7 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
     }
 
     d3dShopOverlay(device);
+    if (model.plateOpen) return;
     const float carUi = std::clamp((time - .19f) / .24f, 0.f, 1.f);
     std::string detail;
     int price = 0;
@@ -430,7 +446,7 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
         text(device, "TransFender", width * .025f, height * .020f, 35 * scale,
              color(0xFFF4E5, 1), false, 0, serif);
         if (!shopLogoTried) {
-            shopLogo = VehicleLogos::load(device, assetPath(shopLogoPath));
+            shopLogo = shopArtworkDictionary.load(device,shopLogoPath,L"logo");
             shopLogoTried = true;
         }
         const float logoX = width * .027f;
@@ -648,8 +664,8 @@ void drawTransFender(IDirect3DDevice9* device, float width, float height, const 
              color(0xFFFFFF, 1), false, 0, true);
     }
     rect(device, 0, height * .922f, width, height * .078f, color(0x090909, 1));
-    const std::string controls = model.ui.controllerUsed ? "CIRCLE Return    TRIANGLE Reset"
-                                                        : "BACKSPACE Return    R Reset";
+    const std::string controls = model.ui.controllerUsed ? "CIRCLE / SELECT Return    TRIANGLE Reset    SQUARE+TRIANGLE Info"
+                                                        : "BACKSPACE / RMB Return    R Reset    I Info";
     const bool washing = shop.washStart >= 0.;
     const bool focusedDescription = shopFooter.describe(
         {int(page), page == ShopPage::Menu ? shop.section : shop.option, int(shop.partReview)}, model.clock);
@@ -700,6 +716,13 @@ void d3dShopOverlay(IDirect3DDevice9* device)
 
 void shopDollar(IDirect3DDevice9* device, float x, float y, float radius)
 {
+#ifndef GT4_ICON_EXPORT
+    if(iconImage(device,L"currency-dollar.png").texture &&
+       pngIcon(device,L"account-coin.png",{x-radius*4.f/3+.5f,y-radius*4.f/3+.5f,radius*8.f/3,radius*8.f/3},1)) {
+        pngCurrency(device,x,y-radius*.94f,radius*1.63f,0x281405);
+        return;
+    }
+#endif
     d3dShopOverlay(device);
     std::array<ScreenVertex, 26> circle{};
     circle[0] = {x, y, 0, 1, color(0xFFDF77, 1), 0, 0};
@@ -708,5 +731,7 @@ void shopDollar(IDirect3DDevice9* device, float x, float y, float radius)
         circle[i + 1] = {x + radius * std::cos(angle), y + radius * std::sin(angle), 0, 1, color(0xD89D36, 1), 0, 0};
     }
     device->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 24, circle.data(), sizeof(ScreenVertex));
+#ifndef GT4_ICON_EXPORT
     text(device, "$", x, y - radius * .94f, radius * 1.63f, color(0x281405, 1), true, 0, true);
+#endif
 }

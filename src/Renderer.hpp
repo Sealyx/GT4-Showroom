@@ -25,6 +25,9 @@
 #include "SnapshotPolicy.hpp"
 #include "PreviewPolicy.hpp"
 #include "VehicleLogos.hpp"
+#include "IconDictionary.hpp"
+#include "BackgroundArtwork.hpp"
+#include "ButtonArtwork.hpp"
 #include "PaintNames.hpp"
 #include "Cinematic.hpp"
 #include "RenderTargets.hpp"
@@ -497,6 +500,12 @@ namespace gt4
     class Renderer
     {
         VehicleLogos logos;
+        IconDictionary iconDictionary;
+        IconDictionary shopArtworkDictionary;
+        IconDictionary tutorialArtworkDictionary;
+        std::map<std::wstring,VehicleLogos::Image> iconImages;
+        BackgroundArtwork backgroundArtwork;
+        ButtonArtwork buttonArtwork;
         VehicleLogos::Image shopLogo, shopStroke;
         bool shopStrokeTried = false;
         std::array<VehicleLogos::Image, 3> tutorialDemos{};
@@ -508,7 +517,7 @@ namespace gt4
         std::array<bool, 6> shopArtworkTried{};
         std::array<VehicleLogos::Image, 6> suppliedIcons{};
         std::array<bool, 6> suppliedIconsTried{};
-        std::filesystem::path shopLogoPath;
+        std::filesystem::path shopLogoPath, shopAssetRoot;
         bool shopLogoTried = false;
         std::vector<std::string> shopTaglineLines;
         float shopTaglineWidth = -1, shopTaglineSize = -1;
@@ -522,6 +531,8 @@ namespace gt4
         StudioGradient studioGradient;
         StudioSurfaces studioSurfaces;
         PrologueSky prologueSky;
+        uint64_t purchaseSubjectMesh=0;
+        double purchaseSubjectStage=-1,purchaseSubjectBegan=-1;
         struct LiveryLayer {
             std::shared_ptr<void> texture;
             std::shared_ptr<const std::vector<std::shared_ptr<void>>> materials;
@@ -667,6 +678,10 @@ namespace gt4
         UINT tw = 0, th = 0;
         int targetAntialiasing = -1;
         PreviewAntialiasing antialiasing;
+        IDirect3DTexture9* uiBackdrop=nullptr;
+        UINT uiBackdropW=0, uiBackdropH=0;
+        float footerDrop=0;
+        double studioClock = 0;
         PreviewOcclusion occlusion;
         UnicodeText unicodeText;
         int occlusionQuality = 2;
@@ -688,6 +703,10 @@ namespace gt4
         struct GpuMesh
         {
             bool cavityReady = false, cavityUnavailable = false;
+            std::unique_ptr<CavityOcclusion> cavityBake;
+            std::array<float,9> bakePose{};
+            uint64_t bakeFrame=0;
+            double cavityBegan = -1;
             std::array<float, 9> cavityPose{}, observedPose{};
             uint64_t poseFrame = 0;
             IDirect3DVertexBuffer9* vb = nullptr;
@@ -697,9 +716,6 @@ namespace gt4
         };
 
         std::unordered_map<uint64_t, GpuMesh> buffers;
-        std::unique_ptr<CavityOcclusion> cavityBake;
-        uint64_t cavitySerial = 0, cavityFrame = 0;
-        std::array<float, 9> cavityPose{};
         std::unique_ptr<Mesh> bikeDisplay;
         uint64_t bikeDisplaySource = 0;
         std::unique_ptr<Mesh> bikeExtrasFrame;
@@ -781,7 +797,7 @@ namespace gt4
         }
 
         bool prepareCavity(IDirect3DDevice9* d, const Mesh& mesh, GpuMesh& gpu,
-                           const CinematicVehicleState* vehicle, float rideHeight)
+                           const CinematicVehicleState* vehicle, float rideHeight, double budget=0)
         {
             (void)d;
             if (gpu.cavityUnavailable) { return false; }
@@ -792,7 +808,10 @@ namespace gt4
                 pose[7] = vehicle->rearSteering;
             }
             pose[8] = rideHeight;
-            if (gpu.cavityReady && gpu.cavityPose == pose) { return true; }
+            if (gpu.cavityReady && gpu.cavityPose == pose) {
+                if(studioClock<gpu.cavityBegan) gpu.cavityBegan=studioClock-.18;
+                return true;
+            }
             if (gpu.observedPose != pose) {
                 gpu.observedPose = pose;
                 gpu.poseFrame = frameSerial;
@@ -800,35 +819,35 @@ namespace gt4
             }
             if (frameSerial - gpu.poseFrame < 2) { return false; }
             try {
-                if (!cavityBake || cavitySerial != mesh.serial || cavityPose != pose) {
-                    cavityBake = std::make_unique<CavityOcclusion>(mesh, [&](int component) {
+                if (!gpu.cavityBake || gpu.bakePose != pose) {
+                    gpu.cavityBake = std::make_unique<CavityOcclusion>(mesh, [&](int component) {
                         auto part = cinematicPartTransform(mesh.cinematic, vehicle, component);
                         if (component < int(CinematicComponent::FrontLeftWheel)) { part.position.z += rideHeight; }
                         return part;
                     });
-                    cavitySerial = mesh.serial;
-                    cavityPose = pose;
+                    gpu.bakePose = pose;
                 }
-                if (cavityFrame != frameSerial) {
-                    cavityBake->step();
-                    cavityFrame = frameSerial;
+                if (gpu.bakeFrame != frameSerial) {
+                    gpu.cavityBake->step(budget>0 ? budget : vehicle ? 1. : 3.);
+                    gpu.bakeFrame = frameSerial;
                 }
             } catch (const std::bad_alloc&) {
                 gpu.cavityUnavailable = true;
-                cavityBake.reset();
+                gpu.cavityBake.reset();
                 return false;
             }
-            if (!cavityBake->ready()) { return false; }
+            if (!gpu.cavityBake->ready()) { return false; }
             void* data = nullptr;
             if (FAILED(gpu.vb->Lock(0, 0, &data, 0))) { return false; }
             auto* vertices = static_cast<OcclusionVertex*>(data);
-            for (size_t i = 0; i < cavityBake->values.size(); ++i) {
-                vertices[i].cavity = cavityBake->values[i];
+            for (size_t i = 0; i < gpu.cavityBake->values.size(); ++i) {
+                vertices[i].cavity = gpu.cavityBake->values[i];
             }
             const bool okay = SUCCEEDED(gpu.vb->Unlock());
             gpu.cavityReady = okay;
+            gpu.cavityBegan = studioClock;
             gpu.cavityPose = pose;
-            cavityBake.reset();
+            gpu.cavityBake.reset();
             return okay;
         }
 
@@ -931,6 +950,21 @@ namespace gt4
                 return;
             }
             for (int n = 0; n < int(countryCount); ++n) {
+#ifndef GT4_ICON_EXPORT
+                std::string name=countryKeys[n];
+                for(char& ch:name) ch=char(std::tolower(static_cast<unsigned char>(ch)));
+                const std::string filename="flag-"+name+".png";
+                auto& png=iconImage(d,std::wstring(filename.begin(),filename.end()).c_str());
+                D3DLOCKED_RECT source{};
+                if(png.texture && png.width==128 && png.height==128 &&
+                   SUCCEEDED(png.texture->LockRect(0,&source,nullptr,D3DLOCK_READONLY))) {
+                    for(unsigned y=0;y<128;++y) std::memcpy(
+                        static_cast<uint8_t*>(l.pBits)+y*l.Pitch+n*128*4,
+                        static_cast<const uint8_t*>(source.pBits)+y*source.Pitch,128*4);
+                    png.texture->UnlockRect(0);
+                    continue;
+                }
+#endif
                 for (int y = 0; y < 128; ++y) {
                     for (int x = 0; x < 128; ++x) {
                         uint32_t out = flagPixel(Country(n), x, y, 128);
@@ -943,6 +977,9 @@ namespace gt4
 
         void marker(IDirect3DDevice9* d, float x, float y, float scale, float alpha)
         {
+#ifndef GT4_ICON_EXPORT
+            if(pngIcon(d,L"thumbnail-arrow.png",{x-16*scale,y-16*scale,32*scale,32*scale},alpha)) return;
+#endif
             if (alpha <= .002f) {
                 return;
             }
@@ -1158,12 +1195,90 @@ namespace gt4
         }
 
     public:
+#include "UIIconAssets.inl"
+#include "ButtonArtworkRenderer.inl"
+#ifdef GT4_ICON_EXPORT
+        void exportIcon(IDirect3DDevice9* d,int icon)
+        {
+            d->SetPixelShader(nullptr);
+            d->SetVertexShader(nullptr);
+            d->SetRenderState(D3DRS_SRCBLEND,D3DBLEND_SRCALPHA);
+            d->SetRenderState(D3DRS_DESTBLEND,D3DBLEND_INVSRCALPHA);
+            d->SetTextureStageState(1,D3DTSS_COLOROP,D3DTOP_DISABLE);
+            if(!prizeNameFont) fontCreate(d);
+            d->SetTextureStageState(0,D3DTSS_COLORARG1,D3DTA_TEXTURE);
+            d->SetTextureStageState(0,D3DTSS_COLORARG2,D3DTA_DIFFUSE);
+            d->SetTextureStageState(0,D3DTSS_ALPHAARG1,D3DTA_TEXTURE);
+            d->SetTextureStageState(0,D3DTSS_ALPHAARG2,D3DTA_DIFFUSE);
+            d3dShopOverlay(d);
+            if(icon==0) purchaseKeyArt(d,512,384,5,1);
+            else if(icon==1) shopPriceMark(d,512,512,16,true);
+            else if(icon==9) {shopStrokeTried=true;shopPriceMark(d,512,512,16,false);}
+            else if(icon==2) shopDollar(d,512,512,384);
+            else if(icon==3 || icon==4) {cursorFeedback=icon==4?1:0;cursor(d,256,128,20,1);}
+            else if(icon==5) {
+                const int indices[]{0,1,2,0,2,3};ScreenVertex vertices[6]{};
+                for(int i=0;i<6;++i) {const auto p=cursorOutline[size_t(indices[i])];
+                    vertices[i]={256+p.x*20,128+p.y*20,0,1,color(0x080A07,.35f),0,0};}
+                d->DrawPrimitiveUP(D3DPT_TRIANGLELIST,2,vertices,sizeof(ScreenVertex));
+            } else if(icon==6) marker(d,512,512,32,1);
+            else if(icon==7) monitorNextIcon(d,512,512,96,1);
+            else if(icon==8) {
+                ScreenVertex points[26]{};points[0]={512,512,0,1,0xffffffff,0,0};
+                for(size_t j=0;j<=24;++j) {const float a=float(j)*2*pi/24;
+                    points[j+1]={512+320*std::cos(a),512+320*std::sin(a),0,1,0xffffffff,0,0};}
+                d->DrawPrimitiveUP(D3DPT_TRIANGLEFAN,24,points,sizeof(ScreenVertex));
+            }
+        }
+        void exportButtonArtwork(IDirect3DDevice9* d,int index)
+        {
+            d->SetPixelShader(nullptr);d->SetVertexShader(nullptr);
+            d->SetRenderState(D3DRS_SRCBLEND,D3DBLEND_SRCALPHA);d->SetRenderState(D3DRS_DESTBLEND,D3DBLEND_INVSRCALPHA);
+            d->SetTextureStageState(0,D3DTSS_COLORARG1,D3DTA_TEXTURE);d->SetTextureStageState(0,D3DTSS_COLORARG2,D3DTA_DIFFUSE);
+            d->SetTextureStageState(0,D3DTSS_ALPHAARG1,D3DTA_TEXTURE);d->SetTextureStageState(0,D3DTSS_ALPHAARG2,D3DTA_DIFFUSE);
+            d->SetTextureStageState(1,D3DTSS_COLOROP,D3DTOP_DISABLE);d3dShopOverlay(d);
+            if(index==2 || index==3)purchaseButtonBackground(d,{0,0,384,64},64.f/38.16f,index==3,1);
+            else if(index>=4 && index<8)monitorStepArrow(d,{0,0,80,64},3.2f,index%2,index<6?-1:1);
+            else if(index>=8 && index<12)selectorButton(d,{0,0,80,64},3.2f,index%2,index>=10,1);
+            else if(index==12 || index==13) {
+                const auto& ramp=index==13?monitorOrange:monitorArrowGray;
+                for(size_t band=0;band<ramp.size();++band)rect(d,0,64.f*band/ramp.size(),16,64.f/ramp.size()+.1f,color(ramp[band]));
+            } else if(index==14)shopWashBack(d,512,384,16);
+            else if(index==15)prizeButtonBackground(d,{0,0,384,64},64.f/.034f,1);
+        }
+        void exportCoinComparison(IDirect3DDevice9* d)
+        {
+            shopPriceMark(d,160,90,2,true);
+            text(d,"$",160,56,62,color(0xFF9500),true,0,textStyle(true));
+            assert(pngIcon(d,L"price-coin.png",{416.5f,26.5f,128,128},1));
+            assert(pngCurrency(d,480,56,62,0xFF9500));
+            shopDollar(d,160,230,24);
+            text(d,"$",160,230-24*.94f,24*1.63f,color(0x281405),true,0,true);
+            assert(pngIcon(d,L"account-coin.png",{448.5f,198.5f,64,64},1));
+            assert(pngCurrency(d,480,230-24*.94f,24*1.63f,0x281405));
+        }
+        std::vector<uint8_t> exportCurrency(unsigned& width,unsigned& height)
+        {
+            width=unsigned(prizeNameWidths['$'-32])+1;height=unsigned(prizeFontCell);
+            std::vector<uint8_t> pixels(size_t(width)*height*4);
+            D3DLOCKED_RECT lock{};assert(SUCCEEDED(prizeNameFont->LockRect(0,&lock,nullptr,D3DLOCK_READONLY)));
+            for(unsigned y=0;y<height;++y)
+                std::memcpy(pixels.data()+size_t(y)*width*4,static_cast<uint8_t*>(lock.pBits)+y*lock.Pitch+
+                            ('$'-32)*prizeFontCell*4,width*4);
+            prizeNameFont->UnlockRect(0);return pixels;
+        }
+#endif
         std::array<unsigned, 4> qualityResources() const
         {
             return {antialiasing.samples, occlusion.width, occlusion.height, unsigned(occlusion.unavailable)};
         }
 
         uint64_t triangles = 0, drawCalls = 0, uploads = 0;
+#ifdef BODY_REVIEW
+        unsigned pointerDraws = 0, extrasPanelDraws = 0;
+        void backgroundArtworkForReview(const std::filesystem::path& path) { backgroundArtwork.setPath(path); }
+        void buttonArtworkForReview(const std::filesystem::path& path) { buttonArtwork.setPath(path); }
+#endif
         bool lastDraw = false;
         double cpuMs = 0;
         float lightPhase = 0, cursorFeedback = 0;
@@ -1196,11 +1311,14 @@ namespace gt4
 
         void setShopLogo(const std::filesystem::path& path)
         {
-            shopLogoPath = path;
-            shopHeadingAsset.load((path.parent_path().parent_path() / L"fonts/Kalam-Bold.ttf").wstring(), L"Kalam");
-            scriptTitleAsset.load((path.parent_path().parent_path() / L"fonts/Damion-Regular.ttf").wstring(),
+            shopAssetRoot=path.extension()==L".txd"?path.parent_path():path.parent_path().parent_path();
+            backgroundArtwork.setPath(assetPath(shopAssetRoot/L"backgrounds.txd"));
+            buttonArtwork.setPath(assetPath(shopAssetRoot/L"buttons.txd"));
+            shopLogoPath = assetPath(shopAssetRoot/L"transfender.txd");
+            shopHeadingAsset.load((shopAssetRoot / L"fonts/Kalam-Bold.ttf").wstring(), L"Kalam");
+            scriptTitleAsset.load((shopAssetRoot / L"fonts/Damion-Regular.ttf").wstring(),
                                   L"Damion", FW_NORMAL);
-            bikeTitleAsset.load((path.parent_path().parent_path() / L"fonts/RacingSansOne-Regular.ttf").wstring(),
+            bikeTitleAsset.load((shopAssetRoot / L"fonts/RacingSansOne-Regular.ttf").wstring(),
                                 L"Racing Sans One", FW_NORMAL);
         }
 
@@ -1220,7 +1338,7 @@ namespace gt4
                     *atlas = nullptr;
                 }
             }
-            customStudioPath = assetPath(path.parent_path() / L"studios/custom.png");
+            customStudioPath = assetPath(path.parent_path() / L"studios.txd");
             releaseCustomStudio();
         }
 
@@ -1272,6 +1390,13 @@ namespace gt4
 
         bool loadPrize(const std::wstring& path)
         {
+            if(std::filesystem::path(path).extension()==L".txd") {
+                IconDictionary dictionary;unsigned w=0,h=0;std::vector<uint32_t> pixels;
+                if(!dictionary.pixels(std::filesystem::path(path),"congratulations",w,h,pixels) ||
+                   uint64_t(w)*h>4194304)return false;
+                prizePixels=std::move(pixels);prizeWidth=w;prizeHeight=h;
+                if(prizeTexture)prizeTexture->Release();prizeTexture=nullptr;return true;
+            }
             std::ifstream input(std::filesystem::path(path), std::ios::binary | std::ios::ate);
             if (!input) {
                 return false;
@@ -1399,10 +1524,16 @@ namespace gt4
             bikeExtrasFrame.reset();
             bikeExtrasFrameSource = 0;
             antialiasing.rejectedQuality = -1;
+            if(uiBackdrop) { uiBackdrop->Release(); uiBackdrop=nullptr; }
             occlusion.reset();
             studioGradient.reset();
             studioSurfaces.reset();
+            backgroundArtwork.reset();
+            buttonArtwork.reset();
+            shopArtworkDictionary.reset();
+            tutorialArtworkDictionary.reset();
             prologueSky.reset();
+            purchaseSubjectMesh=0;purchaseSubjectStage=purchaseSubjectBegan=-1;
             appearance = {};
             appearanceMesh = 0;
             entryPreviewModel = -1;
@@ -1455,6 +1586,8 @@ namespace gt4
                 }
             }
             suppliedIconsTried.fill(false);
+            for(auto& item:iconImages) if(item.second.texture) item.second.texture->Release();
+            iconImages.clear();
             for (auto& demo : tutorialDemos) {
                 if (demo.texture) { demo.texture->Release(); }
                 demo = {};
@@ -1483,8 +1616,6 @@ namespace gt4
                 }
             }
             buffers.clear();
-            cavityBake.reset();
-            cavitySerial = 0;
             releaseTarget();
             if (font) {
                 font->Release();
@@ -1498,6 +1629,7 @@ namespace gt4
         }
 
 #include "InformationRenderer.inl"
+#include "PurchaseRenderer.inl"
 
         bool rect(IDirect3DDevice9* d,
                   float x,
@@ -1779,7 +1911,7 @@ namespace gt4
             const float start = content <= right - left ? center - content * .5f : left - offset;
             const float baseline = layout.countY + layout.countHeight * footerMainAscent;
             const float ascent = description ? footerDescriptionAscent : footerMainAscent;
-            const float y = baseline - size * ascent + (1 - reveal) * 9 * scale + verticalOffset * scale;
+            const float y = footerDrop + baseline - size * ascent + (1 - reveal) * 9 * scale + verticalOffset * scale;
             if (description) {
                 const float x0 = std::max(left, start), x1 = std::min(right, start + 6 * scale);
                 if (x1 > x0) {
@@ -1818,12 +1950,22 @@ namespace gt4
 
         void cursor(IDirect3DDevice9* d, float x, float y, float scale, float alpha)
         {
+#ifdef BODY_REVIEW
+            ++pointerDraws;
+#endif
+#ifndef GT4_ICON_EXPORT
+            if(pngCursor(d,x,y,scale,alpha)) return;
+#endif
             screen(d);
             d->SetTexture(0, nullptr);
             d->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG2);
             d->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG2);
             auto vertex = [&](ArrowPoint p, uint32_t rgb, float opacity, float offset = 0.f) {
+                #ifdef GT4_ICON_EXPORT
+                const float angle=0.f;
+#else
                 const float angle = std::clamp(cursorFeedback, 0.f, 1.f) * pi / 6;
+#endif
                 p = {p.x * std::cos(angle) - p.y * std::sin(angle),
                      p.x * std::sin(angle) + p.y * std::cos(angle)};
                 return ScreenVertex{
@@ -1831,6 +1973,9 @@ namespace gt4
             };
             const int indices[] = {0, 1, 2, 0, 2, 3};
             for (int layer = 0; layer < 2; ++layer) {
+#ifdef GT4_ICON_EXPORT
+                if(layer==0) continue;
+#endif
                 ScreenVertex v[6]{};
                 for (int i = 0; i < 6; ++i) {
                     v[i] = vertex(cursorOutline[size_t(indices[i])],
@@ -2119,8 +2264,11 @@ namespace gt4
             const auto finishBackdrop = [&] {
                 for (int index = DarkGrayBackground; index < studioBackgroundCount; ++index) {
                     const float alpha = surfaceAlpha[size_t(index)];
-                    if (alpha > 0.f && studioSurfaces.draw(d, cam.w, cam.h, index - StaticBackground,
-                                                           index >= IndustrialGarageBackground && floorVisible ? floorY / cam.h - .56f : floorShift, seconds, alpha, wallTexture)) {
+                    const float shift=index>=IndustrialGarageBackground && floorVisible?floorY/cam.h-.56f:floorShift;
+                    const bool edited=alpha>0.f && wallTexture &&
+                        backgroundArtwork.draw(d,cam.w,cam.h,index,.56f+shift,alpha,frameSerial);
+                    if (alpha > 0.f && (edited || studioSurfaces.draw(d, cam.w, cam.h, index - StaticBackground,
+                                                           shift, seconds, alpha, wallTexture))) {
                         triangles += 2;
                         ++drawCalls;
                     }
@@ -2325,7 +2473,7 @@ namespace gt4
                 return combined;
             };
             if (occlusionGeometry) {
-                const bool cavity = prepareCavity(d, m, *g, vehicle, rideHeight);
+                const float cavity = prepareCavity(d,m,*g,vehicle,rideHeight) ? ease(float((studioClock-g->cavityBegan)/.18)) : 0.f;
                 d->SetFVF(D3DFVF_XYZ | D3DFVF_NORMAL | D3DFVF_TEX2 | D3DFVF_TEXCOORDSIZE1(1));
                 d->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
                 d->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
@@ -2442,7 +2590,7 @@ namespace gt4
             if (viewerSubject) {
                 d->SetRenderState(D3DRS_AMBIENT, 0xFF7C7C7C);
             }
-            auto* room = viewerSubject && (m.paintMask || panoramaReflection) ? studioEnvironment.cubeTexture() :
+            auto* room = viewerSubject && mainReflectionQuality>0 && (m.paintMask || panoramaReflection) ? studioEnvironment.cubeTexture() :
                 !thumbnail && mainReflectionActive && mainReflectionQuality > 0 && !reflection ? mainEnvironment.cubeTexture() : nullptr;
             const bool remapActive = m.serial == appearanceMesh && !absolute && !thumbnail;
             const bool blendRemap = remapActive && liveryBlendSupported &&
@@ -2599,7 +2747,7 @@ namespace gt4
                         occlusionGeometry = true;
                         occlusionGeometryOkay = true;
                         mesh(d, m, cam, angle, paint, opacity, size, false, false, absolute, vehicle,
-                             viewerSubject, rideHeight, panoramaReflection, clean);
+                             viewerSubject, rideHeight, panoramaReflection, clean, false, origin);
                         occlusionGeometry = false;
                         if (!occlusionGeometryOkay) {
                             return false;
@@ -2673,6 +2821,27 @@ namespace gt4
             saved->Apply();
             targets.restore();
             saved->Release();
+        }
+
+        void prizeButtonBackground(IDirect3DDevice9* d, UIRect box, float viewportHeight, float alpha)
+        {
+#ifndef GT4_ICON_EXPORT
+            if(buttonBackdrop(d,"prize-confirm",box,alpha))return;
+#endif
+            const float bx=box.x,by=box.y,bw=box.w,bh=box.h;
+            for (int line = 0; line < 24; ++line) {
+                const float t = float(line) / 23, inset = (line == 0 || line == 23) ? bh * .24f
+                                                          : (line < 3 || line > 20) ? bh * .10f
+                                                                                    : 0;
+                const float light = (line == 0 || line == 23) ? .43f : .73f + .27f * std::sin(t * 3.14159265f);
+                rect(d,
+                     bx + inset,
+                     by + bh * line / 24,
+                     bw - inset * 2,
+                     bh / 24 + .5f,
+                     color(0xE4BD60, alpha, light));
+            }
+            rect(d, bx + bh * .11f, by + bh * .09f, bw - bh * .22f, viewportHeight * .0012f, color(0xFFF0B0, alpha * .65f));
         }
 
         void prizeScene(IDirect3DDevice9* d, float W, float H, const Model& s, const Entry& e, const Mesh* car)
@@ -2768,19 +2937,7 @@ namespace gt4
             const float readyAlpha = smoothFade(float((age - prizeReadyTime) / .3));
             const float bw = prizeButtonWidth(W, H), bh = H * prizeButtonHeight, bx = (W - bw) * .5f,
                         by = H * prizeButtonTop;
-            for (int line = 0; line < 24; ++line) {
-                const float t = float(line) / 23, inset = (line == 0 || line == 23) ? bh * .24f
-                                                          : (line < 3 || line > 20) ? bh * .10f
-                                                                                    : 0;
-                const float light = (line == 0 || line == 23) ? .43f : .73f + .27f * std::sin(t * 3.14159265f);
-                rect(d,
-                     bx + inset,
-                     by + bh * line / 24,
-                     bw - inset * 2,
-                     bh / 24 + .5f,
-                     color(0xE4BD60, readyAlpha, light));
-            }
-            rect(d, bx + bh * .11f, by + bh * .09f, bw - bh * .22f, H * .0012f, color(0xFFF0B0, readyAlpha * .65f));
+            prizeButtonBackground(d,{bx,by,bw,bh},H,readyAlpha);
             text(d, "OK", W * .5f, by - H * .0035f, H * .018f, color(0x151515, readyAlpha), true);
             rect(d, 0, H * .944f, W, H * .056f, 0xFF000000);
             const std::string message = s.status.empty() ? bonusLabel(s.prize.ability) : s.status;
@@ -2790,30 +2947,14 @@ namespace gt4
             }
         }
 
-        void monitorBevel(IDirect3DDevice9* d,
-                          UIRect r,
-                          float alpha,
-                          float scale,
-                          bool selected,
-                          bool opensWindow = false,
-                          bool drawArrow = true)
+        void selectorButton(IDirect3DDevice9* d, UIRect arrow, float scale, bool selected, bool opensWindow, float alpha)
         {
-            rect(d, r.x, r.y, r.w, r.h, color(0x696A72, alpha));
-            const float edge = std::max(.6f, scale), height = r.h - 2 * edge;
-            for (size_t i = 0; i < monitorFieldGray.size(); ++i) {
-                rect(d,
-                     r.x + edge,
-                     r.y + edge + height * i / monitorFieldGray.size(),
-                     r.w - 2 * edge,
-                     height / monitorFieldGray.size() + .1f,
-                     color(monitorFieldGray[i], alpha));
-            }
-            rect(d, r.x + edge, r.y + edge, edge, height, color(0xECEEF5, alpha));
-            rect(d, r.x + edge, r.y + r.h - edge, r.w - 2 * edge, edge, color(0x9697A0, alpha));
-            if (!drawArrow) {
-                return;
-            }
-            const auto arrow = monitorArrowPanel(r, scale);
+#ifndef GT4_ICON_EXPORT
+            const char* asset=opensWindow?(selected?"selector-window-highlight":"selector-window-normal"):
+                                         (selected?"selector-down-highlight":"selector-down-normal");
+            if(buttonBackdrop(d,asset,arrow,alpha,false)) return;
+#endif
+            const float edge=std::max(.6f,scale);
             const auto& ramp = selected ? monitorOrange : monitorArrowGray;
             for (size_t i = 0; i < ramp.size(); ++i) {
                 rect(d,
@@ -2846,6 +2987,32 @@ namespace gt4
             ++drawCalls;
         }
 
+        void monitorBevel(IDirect3DDevice9* d,
+                          UIRect r,
+                          float alpha,
+                          float scale,
+                          bool selected,
+                          bool opensWindow = false,
+                          bool drawArrow = true)
+        {
+            rect(d, r.x, r.y, r.w, r.h, color(0x696A72, alpha));
+            const float edge = std::max(.6f, scale), height = r.h - 2 * edge;
+            for (size_t i = 0; i < monitorFieldGray.size(); ++i) {
+                rect(d,
+                     r.x + edge,
+                     r.y + edge + height * i / monitorFieldGray.size(),
+                     r.w - 2 * edge,
+                     height / monitorFieldGray.size() + .1f,
+                     color(monitorFieldGray[i], alpha));
+            }
+            rect(d, r.x + edge, r.y + edge, edge, height, color(0xECEEF5, alpha));
+            rect(d, r.x + edge, r.y + r.h - edge, r.w - 2 * edge, edge, color(0x9697A0, alpha));
+            if (!drawArrow) {
+                return;
+            }
+            selectorButton(d,monitorArrowPanel(r,scale),scale,selected,opensWindow,alpha);
+        }
+
         void monitorButton(IDirect3DDevice9* d,
                            UIRect r,
                            const std::string& caption,
@@ -2855,6 +3022,11 @@ namespace gt4
                            float captionShift = 0,
                            float captionSize = 12)
         {
+            bool edited=false;
+#ifndef GT4_ICON_EXPORT
+            edited=buttonBackdrop(d,selected?"shared-highlight":"shared-normal",r,alpha);
+#endif
+            if(!edited) {
             const auto key = std::make_pair(int(std::lround(r.w / r.h * 64)), selected);
             auto found = monitorButtons.find(key);
             if (found == monitorButtons.end()) {
@@ -2900,6 +3072,7 @@ namespace gt4
                 d->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, v, sizeof(ScreenVertex));
                 ++drawCalls;
             }
+            }
             text(d,
                  caption,
                  r.x + r.w * .5f,
@@ -2913,6 +3086,10 @@ namespace gt4
 
         void monitorNextIcon(IDirect3DDevice9* d, float x, float y, float scale, float alpha)
         {
+#ifndef GT4_ICON_EXPORT
+            const float extent=16.f/3.f*scale;
+            if(pngIcon(d,L"arrow-right.png",{x-extent,y-extent,2*extent,2*extent},alpha,0x111115)) return;
+#endif
             screen(d);
             d->SetTexture(0, nullptr);
             d->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG2);
@@ -2927,6 +3104,11 @@ namespace gt4
 
         void monitorStepArrow(IDirect3DDevice9* d, UIRect box, float scale, bool selected, int direction)
         {
+#ifndef GT4_ICON_EXPORT
+            const char* asset=direction<0?(selected?"step-left-highlight":"step-left-normal"):
+                                         (selected?"step-right-highlight":"step-right-normal");
+            if(buttonBackdrop(d,asset,box,1,false))return;
+#endif
             const auto& ramp = selected ? monitorOrange : monitorArrowGray;
             for (size_t band = 0; band < ramp.size(); ++band) {
                 rect(d,
@@ -2938,6 +3120,11 @@ namespace gt4
             }
             rect(d, box.x, box.y, scale * .65f, box.h, selected ? 0xFFFFD18A : 0xFFF2F4F9);
             const float x = box.x + box.w * .5f, y = box.y + box.h * .5f;
+#ifndef GT4_ICON_EXPORT
+            const float extent=16.f/3.f*scale;
+            if(pngIcon(d,direction<0?L"arrow-left.png":L"arrow-right.png",
+                       {x-extent,y-extent,2*extent,2*extent},1,0x111214)) return;
+#endif
             screen(d);
             d->SetTexture(0, nullptr);
             const float left = direction < 0 ? 2.5f : -2.5f;
@@ -2969,19 +3156,20 @@ namespace gt4
             rect(d, 0, float(crop.y + crop.height), W, H - crop.y - crop.height, 0xFF000000);
             rect(d, 0, float(crop.y), float(crop.x), float(crop.height), 0xFF000000);
             rect(d, float(crop.x + crop.width), float(crop.y), W - crop.x - crop.width, float(crop.height), 0xFF000000);
-            if (photo.hidden) {
+            if (s.interfaceReveal<=0) {
                 return;
             }
             const float scale = ViewerPhoto::uiScale(W, H);
+            {
             const auto box = photo.panel(W, H);
             rect(d, box.x + 3 * scale, box.y + 3 * scale, box.w, box.h, color(0, .26f));
             rect(d, box.x, box.y, box.w, box.h, 0xFFB6B6BB);
             rect(d, box.x, box.y, box.w, 21 * scale, 0xFF17130A);
             text(d,
-                 "Photo Mode",
+                 "Photo Lab",
                  box.x + box.w * .5f,
                  box.y + 3 * scale,
-                 fitted("Photo Mode", 13 * scale, box.w - 20 * scale, true),
+                 fitted("Photo Lab", 13 * scale, box.w - 20 * scale, true),
                  0xFFD0D0D2,
                  true,
                  0,
@@ -3005,7 +3193,7 @@ namespace gt4
                     monitorStepArrow(d,
                                      photo.arrow(W, H, row, direction),
                                      scale,
-                                     photo.row == row && photo.side == direction,
+                                     !photo.visuals && photo.row == row && photo.side == direction,
                                      direction);
                 }
                 char value[48]{};
@@ -3039,18 +3227,45 @@ namespace gt4
                 text(d, row == ViewerPhoto::saveRow ? "Save Preset" : "Load Preset", area.x + 10 * scale,
                      area.y + 4 * scale, 13.5f * scale, 0xFF08080C, false, 0, true);
                 auto button = photo.field(W, H, row);
-                monitorButton(d, button, "Enter", 1, scale, photo.row == row, 1.f);
+                monitorButton(d, button, "Enter", 1, scale, !photo.visuals && photo.row == row, 1.f);
             }
             monitorButton(d, photo.choice(W, H, ViewerPhoto::captureRow), "Take Image", 1, scale,
-                          photo.row == ViewerPhoto::captureRow, 1.f);
+                          !photo.visuals && photo.row == ViewerPhoto::captureRow, 1.f);
             monitorButton(d, photo.choice(W, H, ViewerPhoto::backRow), "Back", 1, scale,
-                          photo.row == ViewerPhoto::backRow, 1.f);
+                          !photo.visuals && photo.row == ViewerPhoto::backRow, 1.f);
 
+            }
+            {
+            const auto box = photo.visualPanel(W,H);
+            rect(d, box.x + 3 * scale, box.y + 3 * scale, box.w, box.h, color(0, .26f));
+            rect(d, box.x, box.y, box.w, box.h, 0xFFB6B6BB);
+            rect(d, box.x, box.y, box.w, 21 * scale, 0xFF17130A);
+            text(d,
+                 "Visuals",
+                 box.x + box.w * .5f,
+                 box.y + 3 * scale,
+                 fitted("Visuals", 13 * scale, box.w - 20 * scale, true),
+                 0xFFD0D0D2,
+                 true,
+                 0,
+                 true);
+                for(int i=0;i<photo.visualCount();++i) {
+                    const auto b=photo.visualItem(W,H,i);
+                    const auto f=UIRect{b.x+b.w*.43f,b.y+3*scale,b.w*.54f,b.h-6*scale};
+                    text(d,s.photoVisualName(i),b.x+10*scale,b.y+4*scale,13.5f*scale,0xff111114,false,0,true);
+                    monitorBevel(d,f,1,scale,false,false,false);
+                    const float edge=f.h*1.2f;
+                    monitorStepArrow(d,{f.x,f.y,edge,f.h},scale,photo.visuals && photo.row==i,-1);
+                    monitorStepArrow(d,{f.x+f.w-edge,f.y,edge,f.h},scale,photo.visuals && photo.row==i,1);
+                    const auto value=s.photoVisualValue(i);
+                    text(d,value,f.x+f.w*.5f,f.y+3*scale,fitted(value,13*scale,f.w-2*edge,true),0xff151519,true,0,true);
+                }
+            }
             // keep the same footer and reveal as browsing; short pages leave the type at its normal size
             const auto message = !photo.status.empty() && s.clock < photo.statusUntil
                                      ? photo.status
                                      : photo.help(s.clock, s.ui.controllerUsed);
-            rect(d, 0, H * .907f, W, H * .093f, 0xFF000000);
+            rect(d, 0, H * .907f+footerDrop, W, H * .093f, 0xFF000000);
             const bool description = !photo.status.empty() && s.clock < photo.statusUntil;
             drawFooterText(d, W, H, message, description, s.clock);
             if (s.pointerVisible && !s.ui.controllerUsed) {
@@ -3058,12 +3273,19 @@ namespace gt4
             }
         }
 
-        void monitorSettings(IDirect3DDevice9* d, float W, float H, const Model& s)
+        void monitorSettings(IDirect3DDevice9* d, float W, float H, const Model& s, bool extrasOnly=false, float panelAlpha=1, float panelOffset=0)
         {
-            const auto& m = s.ui.menu;
+#ifdef BODY_REVIEW
+            if(extrasOnly) ++extrasPanelDraws;
+#endif
+            ContextMenu snapshot;
+            if(extrasOnly) { snapshot=s.ui.menu;snapshot.selectionExtras=true; }
+            const auto& m = extrasOnly?snapshot:s.ui.menu;
+            const auto shift=[&](UIRect box) { box.y+=panelOffset;return box; };
             const float scale = H / 720.f;
-            const float alpha = ease(float((s.clock - m.began) / .12));
-            const auto boxes = m.monitorPanels(W, H);
+            const float alpha = extrasOnly?panelAlpha:ease(float((s.clock-m.began)/.12));
+            auto boxes = m.monitorPanels(W,H);
+            for(auto& box:boxes) box=shift(box);
             auto window = [&](int level, bool single) {
                 const auto r = boxes[size_t(level)];
                 rect(d, r.x + 3 * scale, r.y + 3 * scale, r.w, r.h, color(0, .26f * alpha));
@@ -3087,7 +3309,7 @@ namespace gt4
                     }
                     rect(
                         d, r.x + 2 * scale, yy, r.w - 4 * scale, 28 * scale, color(i % 2 ? 0xACACB1 : 0xB4B4B9, alpha));
-                    const auto field = m.monitorField(level, i, W, H);
+                    const auto field = shift(m.monitorField(level, i, W, H));
                     std::string caption, value;
                     if (single) {
                         const auto b = m.thirdBranch();
@@ -3112,12 +3334,14 @@ namespace gt4
                          0,
                          true);
                     if (level == 1 && m.sliderWindow()) {
-                        const auto track = m.monitorSlider(i, W, H);
+                        const auto track = shift(m.monitorSlider(i, W, H));
                         const float center = track.y + track.h * .5f;
                         const float filled = track.w * m.sliderValue(i) / std::max(1, m.sliderMaximum(i));
                         rect(d, track.x, center - 2 * scale, track.w, 4 * scale, color(0x92939A, alpha));
                         rect(d, track.x, center - 1.5f * scale, filled, 3 * scale, color(0xF3AA27, alpha));
                         const UIRect knob{track.x + filled - 4 * scale, track.y, 8 * scale, track.h};
+                        const bool editedKnob=buttonBackdrop(d,m.monitorFieldSelected(level,i)?"slider-highlight":"slider-normal",knob,alpha,false);
+                        if(!editedKnob) {
                         const auto& ramp = m.monitorFieldSelected(level, i) ? monitorOrange : monitorArrowGray;
                         for (size_t band = 0; band < ramp.size(); ++band) {
                             rect(d,
@@ -3126,6 +3350,7 @@ namespace gt4
                                  knob.w,
                                  knob.h / ramp.size() + .1f,
                                  color(ramp[band], alpha));
+                        }
                         }
                     } else {
                         monitorBevel(d,
@@ -3147,13 +3372,13 @@ namespace gt4
                     }
                 }
                 monitorButton(d,
-                              m.monitorButton(level, 0, W, H),
+                              shift(m.monitorButton(level, 0, W, H)),
                               level ? "Back" : "Cancel",
                               alpha,
                               scale,
                               m.monitorButtonSelected(level, 0));
                 monitorButton(
-                    d, m.monitorButton(level, 1, W, H), "OK", alpha, scale, m.monitorButtonSelected(level, 1));
+                    d, shift(m.monitorButton(level, 1, W, H)), "OK", alpha, scale, m.monitorButtonSelected(level, 1));
             };
             auto dropdown = [&](UIRect r, int level) {
                 const float reveal = ease(float((s.clock - m.monitorChanged) / .09));
@@ -3218,8 +3443,11 @@ namespace gt4
 
         void studioMenu(IDirect3DDevice9* d, float W, float H, const Model& s)
         {
-            if (s.ui.menu.open || (s.page == Page::Extras && !s.ui.cinematic.active)) {
-                monitorSettings(d, W, H, s);
+            if(s.ui.menu.open && !s.ui.menu.selectionExtras && !s.purchase.active()) monitorSettings(d,W,H,s);
+            else if(!s.ui.cinematic.active && s.selectionPanelAlpha(Page::Extras)>.001f) {
+                const auto& motion=s.selectionPanels[2];
+                monitorSettings(d,W,H,s,true,s.selectionPanelAlpha(Page::Extras),
+                                motion.visible?0:s.selectionPanelOffset(Page::Extras,H/720.f));
             }
         }
 
@@ -3246,12 +3474,16 @@ namespace gt4
         }
 
     public:
+
         Rect carHit;
         Camera lastCarCamera{1280, 720, 5};
         UINT presentationWidth = 0, presentationHeight = 0;
         float lastCarAngle = 0, lastCarSize = 1;
 #ifdef BODY_REVIEW
         float lastCarOpacity = 0;
+        double lastPurchaseCavityReady=-1;
+        float lastPurchaseOpacity=0;
+        bool lastPurchaseAoReady=false;
 #endif
         uint64_t lastCarSerial = 0;
 
@@ -3308,7 +3540,7 @@ namespace gt4
             }
             const float scale = lastCarCamera.h / 720.f, co = std::cos(lastCarAngle), si = std::sin(lastCarAngle);
             for (size_t i = 0; i < cinematicComponentCount; ++i) {
-                if (!m.cinematic.supported(int(i))) {
+                if ((i >= 6 && !state.canSteer(int(i))) || !m.cinematic.supported(int(i))) {
                     continue;
                 }
                 const auto& p = m.cinematic.parts[i];
@@ -3396,6 +3628,10 @@ namespace gt4
             d->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
             d->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
             auto circle = [&](float x, float y, float radius, DWORD fill) {
+#ifndef GT4_ICON_EXPORT
+                if(pngIcon(d,L"hotspot-disc.png",{x-1.6f*radius,y-1.6f*radius,3.2f*radius,3.2f*radius},
+                           float(fill>>24)/255.f,fill&0xffffff)) return;
+#endif
                 std::array<ScreenVertex, 26> points{};
                 points[0] = {x, y, 0, 1, fill, 0, 0};
                 for (size_t j = 0; j <= 24; ++j) {
@@ -3493,23 +3729,28 @@ namespace gt4
                 shopFooter = {};
             }
             const bool customStudio = s.viewer.settings.scene == ViewerScene::Custom;
-            viewerLightTint = s.viewer.active && !customStudio ? s.viewer.settings.lighting().color : 0xFFFFFF;
+            viewerLightTint = s.viewer.active && !s.viewer.settings.inheritStudio && !customStudio ? s.viewer.settings.lighting().color : 0xFFFFFF;
             triangles = drawCalls = uploads = 0;
+#ifdef BODY_REVIEW
+            pointerDraws = extrasPanelDraws = 0;
+#endif
             ++frameSerial;
+            studioClock=s.clock;
             lightPhase = float(s.clock) * .42f;
             lastShadowPhase = lightPhase;
             useStudioShadow = false;
-            const bool mainStudio = !s.shop.open() && !s.viewer.active && s.page != Page::Prize;
+            const bool inheritedRoom = s.viewer.active && s.viewer.settings.inheritStudio;
+            const bool mainStudio = (!s.viewer.active || inheritedRoom) && s.page != Page::Prize;
             prologueStyle = mainStudio
                 ? s.prologueMix : 0.f;
             studioSurfaceWeight = 0.f;
-            if (!s.viewer.active && !s.shop.open()) {
+            if (mainStudio) {
                 for (int index = StaticBackground; index < studioBackgroundCount; ++index) {
                     studioSurfaceWeight += s.backgroundBlend[size_t(index)];
                 }
                 studioSurfaceWeight = std::clamp(studioSurfaceWeight, 0.f, 1.f) * (1.f - prologueStyle);
             }
-            staticMainShadow = s.ui.backgroundStyle() != 0 && !s.viewer.active && !s.shop.open();
+            staticMainShadow = s.activeBackground() != 0 && mainStudio && !s.shop.open();
             darkGrayShadowWeight = mainStudio
                 ? std::clamp(s.backgroundBlend[DarkGrayBackground], 0.f, 1.f) * (1.f - prologueStyle) : 0.f;
             if (!d || !s.open || (!entries.empty() && s.selected >= entries.size())) {
@@ -3527,8 +3768,8 @@ namespace gt4
             }
             const auto oldVP = targets.view();
             occlusionQuality = s.ui.ambientOcclusion;
-            mainReflectionQuality = s.ui.vehicleReflections;
-            mainReflectionActive = !s.viewer.active && !s.shop.open();
+            mainReflectionQuality = s.viewer.active ? (s.viewer.settings.vehicleReflections ? s.viewer.settings.reflectionQuality : 0) : s.ui.vehicleReflections;
+            mainReflectionActive = (!s.viewer.active || inheritedRoom) && !s.shop.open();
             if (!allocate(d, width, height, s.ui.antialiasing)) {
                 saved->Release();
                 return false;
@@ -3602,9 +3843,12 @@ namespace gt4
             liveryBlendSupported = SUCCEEDED(d->GetDeviceCaps(&materialCaps)) &&
                 materialCaps.MaxTextureBlendStages >= 4 && materialCaps.MaxSimultaneousTextures >= 3 &&
                 (materialCaps.PrimitiveMiscCaps & D3DPMISCCAPS_PERSTAGECONSTANT) != 0;
+            if(main && occlusionQuality>0 && ((e.kind==9 || e.kind==10) || (s.purchase.active() && s.purchase.studioView()))) {
+                if(auto* gpu=upload(d,*main)) prepareCavity(d,*main,*gpu,nullptr,0,s.purchase.step==PurchaseStep::Handoff ? 8. : 0.);
+            }
             const bool bikePose = main && (e.kind == 9 || e.kind == 10) && !s.shop.open() &&
                 s.page != Page::Prize;
-            if (bikePose) {
+            if (bikePose && !s.purchase.blackView() && !(s.purchasePlate && s.plateOpen)) {
                 if (bikeDisplaySource != main->serial) {
                     bikeDisplay.reset();
                     bikeDisplaySource = main->serial;
@@ -3640,7 +3884,9 @@ namespace gt4
             const float span = framing ? std::max({framingHigh.x - framing->low.x,
                 framingHigh.y - framing->low.y, framingHigh.z - framing->low.z, 2.f}) : 5.f;
             appearanceMesh = 0;
-            if (s.shop.open() && s.shop.page != ShopPage::Closed) {
+            if (s.purchase.blackView() || (s.purchasePlate && s.plateOpen)) {
+                drawPurchase(d,W,H,s,e,main);
+            } else if (s.shop.open() && s.shop.page != ShopPage::Closed) {
                 drawTransFender(d, W, H, s, e, main, parts);
                 spawnReviewDialog(d, W, H, s);
                 drawPlate(d, W, H, s);
@@ -3659,7 +3905,7 @@ namespace gt4
                 cam.forward = unit(mainFocus - cam.eye);
                 cam.right = unit(cross(cam.forward, {0, 0, 1}));
                 cam.up = cross(cam.right, cam.forward);
-                const double studioTime = s.ui.cinematic.active ? s.ui.cinematic.lightTime(s.clock) : s.clock;
+                const double studioTime = s.ui.cinematic.active ? s.ui.cinematic.lightTime(s.clock)-s.backdropPause : s.clock-s.backdropPause;
                 lastShadowPhase = float(studioTime) * .42f;
                 const Paint paint = appearancePaint(e, s, main);
                 const bool browseEntry = !s.enthusia && !s.viewer.active && !s.photo.active &&
@@ -3685,8 +3931,11 @@ namespace gt4
                         entrySessionStamp = s.opened;
                         entryRenderableAt = -1.;
                     }
-                    if (stagedEntry && entryRenderableAt < 0. && upload(d, *main)) {
-                        entryRenderableAt = s.clock;
+                    if (stagedEntry) {
+                        if(auto* gpu=upload(d,*main)) {
+                            if(entryRenderableAt<0.) entryRenderableAt=s.clock;
+                            if(occlusionQuality>0) prepareCavity(d,*main,*gpu,nullptr,0);
+                        }
                     }
                     const double revealAge = stagedEntry
                         ? (entryRenderableAt < 0. ? 0. : std::max(0., s.clock - entryRenderableAt))
@@ -3954,7 +4203,8 @@ namespace gt4
                     }
                     if (s.viewer.active) {
                         lightPhase = lastShadowPhase = s.viewer.shadowPhase(s.clock);
-                        if (main->paintMask || customStudio) {
+                        if (!inheritedRoom && s.viewer.settings.vehicleReflections && (main->paintMask || customStudio)) {
+                            studioEnvironment.resolution(1u << (5+s.viewer.settings.reflectionQuality));
                             updateStudioEnvironment(d, s.viewer, s.clock);
                         }
                         mainCam = s.photo.active ? viewerPhotoCamera(W, H, s.photo, s.viewer, s.clock)
@@ -3964,15 +4214,19 @@ namespace gt4
                         if (s.photo.active) {
                             mainCam = cinematicPhotoCamera(mainCam, s.photo);
                         }
+                    }
+                    if (!s.viewer.active || inheritedRoom) {
                         if (mainEnvironmentRequested != mainReflectionQuality) {
                             mainEnvironmentRequested = mainReflectionQuality;
                             mainEnvironmentResolution = 1u << (5 + std::clamp(mainReflectionQuality, 1, 4));
                             mainEnvironmentUnavailable = false;
                         }
-                        if (mainReflectionQuality > 0 && !mainEnvironmentUnavailable) {
+                        if (mainReflectionQuality > 0 && !mainEnvironmentUnavailable &&
+                            s.backgroundBlend[size_t(s.activeBackground())]>.999f &&
+                            std::abs(s.prologueMix-float(s.activeStyle()))<.001f) {
                             const double interval = 1. / (mainReflectionQuality == 1 ? 4 :
                                 mainReflectionQuality == 2 ? 8 : mainReflectionQuality == 3 ? 15 : 30);
-                            const uint64_t style = uint64_t(s.ui.backgroundStyle() + 1) + (studioBackgroundCount + 1) * uint64_t(s.ui.showroomStyle);
+                            const uint64_t style = uint64_t(s.activeBackground() + 1) + (studioBackgroundCount + 1) * uint64_t(s.activeStyle());
                             for (unsigned candidate = mainEnvironmentResolution; candidate >= 64; candidate >>= 1) {
                                 mainEnvironment.resolution(candidate);
                                 if (mainEnvironment.update(d, style, studioTime, {0, 0, .8f}, [&](const Camera& view) {
@@ -3988,6 +4242,8 @@ namespace gt4
                                 }
                             }
                         }
+                    }
+                    if (!s.viewer.active) {
                         backdropCamera = browseEntry ? browseBackdrop : mainCam;
                         if (!browseEntry && browseMix > 0.f) {
                             // Reframing the car should not move the floor during ordinary browsing
@@ -4034,7 +4290,10 @@ namespace gt4
                     carHit = {lowX, lowY, highX - lowX, highY - lowY};
                     const auto* vehicle = s.ui.cinematic.active ? &s.ui.vehicle : nullptr;
                     const float rideHeight = float(s.shop.confirmedRideHeight) * .025f;
-                    if (s.viewer.active) {
+                    if (inheritedRoom) {
+                        studio(d,browseBackdrop,studioTime,s.backgroundBlend);
+                        if(s.viewer.settings.reflections) shopMirror(d,*main,mainCam,angle,paint,materialOpacity,lastCarSize,rideHeight,s.shop.washed,s.viewer.settings.reflectionQuality,vehicle);
+                    } else if (s.viewer.active) {
                         viewerRoom(d,
                                    mainCam,
                                    s.viewer,
@@ -4078,7 +4337,7 @@ namespace gt4
                          false,
                          false,
                          vehicle,
-                         s.viewer.active,
+                         s.viewer.active && !inheritedRoom,
                          rideHeight,
                          customStudio,
                          s.shop.washed, false, origin);
@@ -4092,15 +4351,34 @@ namespace gt4
                 d->SetRenderState(D3DRS_ZENABLE, FALSE);
                 d->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
                 d->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
-                const bool hideBrowseUI = s.ui.footerHidden && s.page == Page::Cars && !s.viewer.active &&
-                                          !s.ui.cinematic.active && !s.photo.active && s.shop.page == ShopPage::Closed;
-                if (!s.photo.active && !hideBrowseUI) {
+                const bool modalUI = s.ui.menu.open || s.spawnReview!=SpawnReview::None || s.tutorialOpen() || s.informationOpen || s.plateOpen;
+                const float reveal = modalUI ? 1.f : ease(s.interfaceReveal);
+                const bool hideBrowseUI = reveal <= 0;
+                bool fadingUI=false;
+                if(reveal>0 && reveal<1) {
+                    if (!uiBackdrop || uiBackdropW!=width || uiBackdropH!=height) {
+                        if(uiBackdrop) { uiBackdrop->Release(); uiBackdrop=nullptr; }
+                        uiBackdropW=width; uiBackdropH=height;
+                        d->CreateTexture(width,height,1,D3DUSAGE_RENDERTARGET,D3DFMT_A8R8G8B8,D3DPOOL_DEFAULT,&uiBackdrop,nullptr);
+                    }
+                    IDirect3DSurface9* snapshot=nullptr;
+                    if(uiBackdrop && SUCCEEDED(uiBackdrop->GetSurfaceLevel(0,&snapshot))) {
+                        fadingUI=SUCCEEDED(d->StretchRect(antialiasing.surface ? antialiasing.surface : surface,nullptr,snapshot,nullptr,D3DTEXF_NONE));
+                        snapshot->Release();
+                    }
+                }
+                footerDrop=(1.f-reveal)*H*.093f;
+                if (s.plateOpen) {
+                    drawPlate(d, W, H, s);
+                    keyboardPanel(d,W,H,s);
+                    if (s.pointerVisible) cursor(d,s.pointerX*W,s.pointerY*H,scale*.85f,1);
+                } else if (!s.photo.active && (!hideBrowseUI || s.spawnReview != SpawnReview::None)) {
                     if (!s.ui.cinematic.active) {
-                        const float carStrip = (1 - s.paintMix) * (1 - s.ui.cinematic.mix),
-                                    paintStrip = s.paintMix * (1 - s.ui.cinematic.mix) *
-                                        (s.page == Page::Paint ? ease(float((s.clock - s.colorsReturned) / .20)) : 1.f);
-                        const float colorsOffset = s.page == Page::Paint
-                            ? -14 * scale * (1 - ease(float((s.clock - s.colorsReturned) / .20))) : 0;
+                        const float carStrip = (s.purchase.active() ? 0.f : 1.f) * (1-s.paintMix)*(1-s.ui.cinematic.mix);
+                        const float colorStrip = s.selectionPanelAlpha(Page::Paint)*(1-s.ui.cinematic.mix);
+                        const float liveryStrip = s.selectionPanelAlpha(Page::Livery)*(1-s.ui.cinematic.mix);
+                        const float colorsOffset=s.selectionPanelOffset(Page::Paint,scale);
+                        const float liveriesOffset=s.selectionPanelOffset(Page::Livery,scale);
                         const Carousel layout(W, H, s, entries.size());
                         for (int i = layout.first; i < layout.last; ++i) {
                             const auto box = layout.box(i);
@@ -4197,20 +4475,20 @@ namespace gt4
                             rect(d, bar.track.x, bar.track.y, bar.track.w, bar.track.h, color(0x171D1D, carStrip));
                             rect(d, bar.thumb.x, bar.thumb.y, bar.thumb.w, bar.thumb.h, color(0x737978, carStrip));
                         }
-                        if (paintStrip > .01f && s.page != Page::Livery && s.page != Page::Extras) {
+                        if (colorStrip > .01f) {
                             const size_t n = std::max(size_t(1), e.paints.size());
                             for (size_t i = 0; i < n; ++i) {
                                 const auto p = e.paints.empty() ? Paint{} : e.paints[i];
                                 auto box = paintBox(W, H, i, n);
                                 box.y += colorsOffset;
                                 if (prologueStyle < 1.f) {
-                                    drawSelectionChip(d, box, scale, paintStrip * (1.f - prologueStyle), i == s.paint,
+                                    drawSelectionChip(d, box, scale, colorStrip * (1.f - prologueStyle), i == s.paint,
                                                       &p, main ? paintSlotCount(main->paintMask) : 2, nullptr);
                                 }
                                 if (prologueStyle > 0.f) {
                                     auto circle = paintBox(W, H, i, n, 1.f);
                                     circle.y += colorsOffset;
-                                    prologuePaintChip(d, circle, p, i == s.paint, paintStrip * prologueStyle,
+                                    prologuePaintChip(d, circle, p, i == s.paint, colorStrip * prologueStyle,
                                                       s.clock, main ? main->paintMask : uint8_t(1));
                                 }
                             }
@@ -4226,17 +4504,18 @@ namespace gt4
                                   W * .5f,
                                   H * .830f + colorsOffset,
                                   fitted(paintLabel, 19 * scale, W * .8f),
-                                  paintStrip,
+                                  colorStrip,
                                   true, 0, false);
                         }
-                        if (paintStrip > .01f && s.page == Page::Livery) {
+                        if (liveryStrip > .01f) {
                             for (size_t i = 0; i < s.liveries.size(); ++i) {
-                                const auto b = liveryBox(W, H, i, s.liveries.size());
-                                drawSelectionChip(d, b, scale, paintStrip, i == s.livery, nullptr,
+                                auto b = liveryBox(W, H, i, s.liveries.size());
+                                b.y+=liveriesOffset;
+                                drawSelectionChip(d, b, scale, liveryStrip, i == s.livery, nullptr,
                                                   0, &s.liveries[i]);
                             }
                             const std::string name = s.livery == 0 ? "No Livery" : "Livery " + std::to_string(s.livery);
-                            label(d, name, W * .5f, H * .830f, 19 * scale, paintStrip, true);
+                            label(d, name, W * .5f, H * .830f + liveriesOffset, 19 * scale, liveryStrip, true);
                         }
                         auto logo = [&](bool brand, float centerX, float top, float maxW, float maxH, float alpha) {
                             unsigned iw = 0, ih = 0;
@@ -4300,7 +4579,7 @@ namespace gt4
                         if (!s.ui.favoritesOnly && !brandLogo) {
                             if (!collectionTried) {
                                 collectionTried = true;
-                                collectionLogo = VehicleLogos::load(d, collectionPath, 1024);
+                                collectionLogo = iconDictionary.load(d, assetPath(shopAssetRoot/L"icons.txd"), collectionPath.stem().wstring());
                             }
                             if (collectionLogo.texture && collectionLogo.width && collectionLogo.height) {
                                 const float fit = std::min(W * .34f / collectionLogo.width,
@@ -4318,7 +4597,7 @@ namespace gt4
                                 label(d, "motor collection", W * .80f, H * .128f, 13 * scale, s.titleMix(), true);
                             }
                         }
-                        const std::string controls =
+                        const std::string controls = s.purchase.active() ? (s.ui.controllerUsed ? "CROSS Accept" : "RETURN Accept") :
                             showroomControlHint(s.page, s.ui.controllerUsed, s.liveries.size() > 1,
                                                 s.hasExtras(), s.selectionHasColors,s.galleryFavorites);
                         std::string info = e.information;
@@ -4345,19 +4624,9 @@ namespace gt4
                         }
                         const auto help = contextualHelp(s, W, H, &e);
                         const bool describe = footerHelp.describe(help, s.ui.menu.focus(), s.clock);
-                        const bool handling = s.page != Page::Extras && help.empty() && s.status.empty() && !describe &&
-                                              std::fmod(std::max(0., s.clock - s.changed),
-                                                  5. + footerControlDuration(textWidth(controls, 18 * scale, false),
-                                                                             W * .76f, scale)) < 5.;
+                        const bool handling = help.empty() && s.status.empty() && !describe &&
+                                              std::fmod(std::max(0., s.clock - s.footerBegan), s.purchase.active() ? 10. : 15.) >= (s.purchase.active() ? 5. : 10.);
                         std::string message = controls;
-                        if (s.page == Page::Extras && s.ui.menu.monitorFooter < 0) {
-                            const int group = s.ui.menu.extraGroup(s.ui.menu.sortRow);
-                            if (group >= 0) {
-                                const auto& options = s.ui.menu.extras[size_t(group)];
-                                const size_t choice = size_t(std::clamp(s.ui.menu.extraChoice[size_t(group)], 0, int(options.size()) - 1));
-                                message = localized(options[choice]) + "    " + controls;
-                            }
-                        }
                         if (describe) {
                             message = help;
                         } else if (help.empty() && !s.status.empty()) {
@@ -4365,11 +4634,11 @@ namespace gt4
                         } else if (help.empty() && handling) {
                             message = info;
                         }
-                        const bool heavy = s.clock < s.heavyUntil;
+                        const bool heavy = !s.purchase.active() && s.clock < s.heavyUntil;
                         if (heavy) {
                             message = "Heavy. Why are things so heavy in the future? Is there a problem with the Earth's gravitational pull?";
                         }
-                        if (s.showDealerPrices && !s.ui.footerHidden && !entries.empty()) {
+                        if (s.showDealerPrices && s.interfaceReveal>0 && !entries.empty()) {
                             drawVehicleAccount(d, W, scale, e, paint, s.dealerBalance);
                             if (e.price >= 0) {
                                 const float x = 63 * scale;
@@ -4383,18 +4652,18 @@ namespace gt4
                             }
                         }
                         const bool emptyFavorites = s.ui.favoritesOnly && entries.empty();
-                        if (!s.ui.footerHidden || s.ui.menu.open) {
-                            rect(d, 0, H * .907f, W, H * .093f, 0xFF000000);
+                        if (s.interfaceReveal>0 || s.ui.menu.open) {
+                            rect(d, 0, H * .907f+footerDrop, W, H * .093f, 0xFF000000);
                         }
-                        if ((!s.ui.footerHidden || s.ui.menu.open) && !emptyFavorites) {
+                        if ((s.interfaceReveal>0 || s.ui.menu.open) && !emptyFavorites) {
                             drawFooterText(d, W, H, message, heavy || describe || handling || !s.status.empty(),
                                            s.clock, !heavy, !handling);
                             const FooterLayout footer(H);
-                            if (!heavy) {
+                            if (!heavy && s.page==Page::Cars && !s.purchase.active() && !(s.purchasePlate && s.plateOpen)) {
                                 label(d,
                                   std::to_string(entries.empty() ? 0 : s.selected + 1) + " / " +
                                       std::to_string(entries.size()),
-                                  W * .94f, footer.countY, footer.countHeight, 1, true);
+                                  W * .94f, footer.countY + footerDrop, footer.countHeight, 1, true);
                             }
                         }
                         const float cx = 63 * scale, cy = 47 * scale;
@@ -4444,15 +4713,16 @@ namespace gt4
                                   true);
                         }
                     }
-                    if (s.ui.cinematic.active && (!s.ui.footerHidden || s.ui.menu.open)) {
+                    if (s.ui.cinematic.active && (s.interfaceReveal>0 || s.ui.menu.open)) {
                         std::string controls = s.ui.controllerUsed ? "CIRCLE Return" : "BACKSPACE Return";
                         if (s.ui.menu.allowHotspots) {
                             controls += s.ui.controllerUsed ? "    L1+R1 Explode" : "    T Explode";
                         }
-                        controls += s.ui.controllerUsed ? "    L3 Hide UI" : "    H Hide UI";
+                        if (s.ui.vehicle.wheelsTurned()) controls += s.ui.controllerUsed ? "    SQUARE+L1 Reset" : "    R Reset";
+                        controls += s.ui.controllerUsed ? "    SELECT Settings    SQUARE+TRIANGLE Info    L3 Hide UI" : "    RMB Settings    I Info    H Hide UI";
                         const auto help = contextualHelp(s, W, H);
                         const bool describe = footerHelp.describe(help, s.ui.menu.focus(), s.clock);
-                        rect(d, 0, H * .907f, W, H * .093f, 0xFF000000);
+                        rect(d, 0, H * .907f+footerDrop, W, H * .093f, 0xFF000000);
                         drawFooterText(d, W, H, describe ? help : controls, describe, s.clock);
                     }
                     if (s.searching || s.searchOpacity() > .001f) {
@@ -4469,7 +4739,6 @@ namespace gt4
                         s.spawnReview == SpawnReview::None && !s.tutorialOpen()) {
                         drawHotspots(d, *main, s.ui.vehicle, s.carAlpha());
                     }
-                    drawPlate(d, W, H, s);
                     keyboardPanel(d, W, H, s);
                     studioMenu(d, W, H, s);
                     if (s.postSelectionCinematic && s.ui.cinematic.active && !s.appearanceReady && !s.ui.menu.open &&
@@ -4486,21 +4755,27 @@ namespace gt4
                               true);
                     }
                     spawnReviewDialog(d, W, H, s);
-                    if (s.pointerVisible && (!s.ui.cinematic.active || s.ui.menu.open ||
+                    if (!s.purchase.active() && s.pointerVisible && (!s.ui.cinematic.active || s.ui.menu.open ||
                                              s.spawnReview != SpawnReview::None || s.plateOpen ||
                                              s.clock - s.ui.pointerMoved < 2.5)) {
                         cursor(d, s.pointerX * W, s.pointerY * H, scale * .85f, 1);
                     }
-                } else if (s.photo.active) {
+                } else if (s.photo.active && reveal>0) {
                     drawViewerPhoto(d, W, H, s);
                 }
+                if(s.purchase.active() && s.purchase.studioView()) drawPurchase(d,W,H,s,e,main);
+                if(fadingUI) rect(d,0,0,W,H,color(0xffffff,1.f-reveal),uiBackdrop);
+                footerDrop=0;
             }
-            if (!(s.ui.footerHidden && s.page == Page::Cars && !s.viewer.active &&
-                  !s.ui.cinematic.active && !s.photo.active && s.shop.page == ShopPage::Closed)) {
+            if (s.informationOpen || s.tutorialOpen()) {
                 drawInformation(d, W, H, s);
+            }
+            if (s.photo.active && !s.photo.requested && s.clock - s.photo.flashBegan < .32) {
+                rect(d,0,0,W,H,color(0xFFFFFF,1.f-ease(float((s.clock-s.photo.flashBegan)/.32))));
             }
             const float blackout =
                 s.shop.page == ShopPage::Closed ? std::max(s.blackAlpha(), s.shop.fade(s.clock)) : s.blackAlpha();
+            if (s.fade.action==CloseAction::Spawn) rect(d,0,0,W,H,color(0));
             if (blackout > 0) {
                 rect(d, 0, 0, W, H, color(0x000000, blackout));
             }

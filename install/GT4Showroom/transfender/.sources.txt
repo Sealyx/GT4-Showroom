@@ -1,6 +1,0 @@
-TransFender logo derived from the GTA San Andreas TransFender mark
-menu.png: Gran Turismo 4-inspired GT Auto backdrop
-components.png, wheels.png and suspension.png: in-game vehicle detail artwork
-car-wash.png: water-droplet photograph; https://www.magnific.com/free-photos-vectors/water-drops
-stroke.png: original hand-drawn brushstroke artwork
-No additional redistribution license is assigned to third-party imagery or game assets

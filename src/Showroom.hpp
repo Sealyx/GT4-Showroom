@@ -16,6 +16,8 @@
 #include "SearchPanel.hpp"
 #include "LicensePlate.hpp"
 #include "InformationPanel.hpp"
+#include "PurchasePresentation.hpp"
+#include "SelectionPanelMotion.hpp"
 
 namespace gt4
 // main showroom controller
@@ -130,39 +132,16 @@ namespace gt4
         Prize
     };
 
-    inline const char* showroomControlHint(Page page, bool controller, bool liveries, bool extras = false, bool colors = true, bool favorites = true)
+    inline const char* showroomControlHint(Page page, bool controller, bool, bool = false, bool = true, bool favorites = true)
     {
-        if (page == Page::Cars && !favorites) return controller
-            ? "CROSS Paint    SELECT Menu    L3 Search    SQUARE+TRIANGLE Info    L1+R1 Hide UI"
-            : "ENTER Paint    RMB Menu    ` Search    I Info    H Hide UI";
-        if (page == Page::Extras) {
-            return controller ? "D-PAD Adjust Extras    CROSS Continue    CIRCLE Back"
-                              : "ARROWS Adjust Extras    ENTER Continue    BACKSPACE Back";
-        }
-        if (controller) {
-            if (page == Page::Cars) {
-                return "CROSS Paint    SQUARE Favorite    TRIANGLE Favorites    SELECT Menu    L3 Search    SQUARE+TRIANGLE Info    L1+R1 Hide UI";
-            }
-            if (page == Page::Livery) {
-                if (!colors) { return "CROSS Continue    CIRCLE Vehicles    SELECT Menu    L1+R1 Hide UI"; }
-                if (extras) { return "CROSS Extras    CIRCLE Colors    SELECT Menu    L1+R1 Hide UI"; }
-                return "CROSS Spawn    CIRCLE Colors    SELECT Menu    L1+R1 Hide UI";
-            }
-            if (!liveries && extras) { return "CROSS Extras    CIRCLE Vehicles    SELECT Menu    L1+R1 Hide UI"; }
-            return liveries ? "CROSS Liveries    CIRCLE Vehicles    SELECT Menu    L1+R1 Hide UI"
-                            : "CROSS Spawn    CIRCLE Vehicles    SELECT Menu    L1+R1 Hide UI";
-        }
-        if (page == Page::Cars) {
-            return "ENTER Paint    UP Favorite    F Favorites    RMB Menu    ` Search    I Info    H Hide UI";
-        }
-        if (page == Page::Livery) {
-            if (!colors) { return "ENTER Continue    BACKSPACE Vehicles    RMB Menu    H Hide UI"; }
-            if (extras) { return "ENTER Extras    BACKSPACE Colors    RMB Menu    H Hide UI"; }
-            return "ENTER Spawn    BACKSPACE Colors    RMB Menu    H Hide UI";
-        }
-        if (!liveries && extras) { return "ENTER Extras    BACKSPACE Vehicles    RMB Menu    H Hide UI"; }
-        return liveries ? "ENTER Liveries    BACKSPACE Vehicles    RMB Menu    H Hide UI"
-                        : "ENTER Spawn    BACKSPACE Vehicles    RMB Menu    H Hide UI";
+        if (page != Page::Cars) return controller
+            ? "CROSS Continue    CIRCLE / SELECT Return    L1+R1 Hide UI"
+            : "RETURN Continue    BACKSPACE / RMB Return    H Hide UI";
+        if (controller) return favorites
+            ? "CROSS Paint    SQUARE Favorite    TRIANGLE Favorites    SELECT Settings    L3 Search    SQUARE+TRIANGLE Info    L1+R1 Hide UI"
+            : "CROSS Paint    SELECT Settings    L3 Search    SQUARE+TRIANGLE Info    L1+R1 Hide UI";
+        return favorites ? "RETURN Paint    UP Favorite    F Favorites    RMB Settings    ` Search    I Info    H Hide UI"
+                        : "RETURN Paint    RMB Settings    ` Search    I Info    H Hide UI";
     }
     enum class Cue
     {
@@ -176,7 +155,8 @@ namespace gt4
         Error,
         Slider,
         WashSpin,
-        WashComplete
+        WashComplete,
+        Flash
     };
 
     enum class SpawnReview
@@ -217,7 +197,7 @@ namespace gt4
         return {left, panel.y + 114 * scale, buttonWidth, 25 * scale};
     }
 
-    enum class Tutorial { None, Cinematic, CinematicWithCustomization, CustomizationIntro, Viewer, Customization };
+    enum class Tutorial { None, Cinematic, CinematicWithCustomization, CustomizationIntro, Viewer, Customization, Photo };
 
     inline unsigned tutorialTopics(Tutorial tutorial)
     {
@@ -305,8 +285,33 @@ namespace gt4
             cue = Cue::Accept;
         }
 
+        std::array<SelectionPanelMotion,3> selectionPanels{};
+        static int selectionPanelIndex(Page page) {
+            return page==Page::Paint?0:page==Page::Livery?1:page==Page::Extras?2:-1;
+        }
+        void showSelectionPanels(Page next) {
+            selectionPanels[2].enterDuration=.12;
+            const int active=selectionPanelIndex(next);
+            for(int i=0;i<3;++i) selectionPanels[size_t(i)].show(i==active,clock);
+        }
+        float selectionPanelAlpha(Page page) const {
+            if(page==Page::Paint) {
+                if(this->page==Page::Livery || this->page==Page::Extras || purchase.active()) return 0;
+                return paintMix*(this->page==Page::Paint?ease(float((clock-colorsReturned)/.20)):1.f);
+            }
+            const int index=selectionPanelIndex(page);
+            return index<0?0:selectionPanels[size_t(index)].alpha(clock);
+        }
+        float selectionPanelOffset(Page page,float scale) const {
+            if(page==Page::Paint) return this->page==Page::Paint?-14.f*scale*(1-ease(float((clock-colorsReturned)/.20))):0;
+            const int index=selectionPanelIndex(page);
+            return index<0?0:selectionPanels[size_t(index)].offset(clock,scale);
+        }
+
         void setSelectionPage(Page next)
         {
+            if(next==page && (next==Page::Livery || next==Page::Extras))
+                selectionPanels[size_t(selectionPanelIndex(next))]={};
             if (next == Page::Cars) {
                 resetVehicleAppearance();
             } else if (next == Page::Paint || (next == Page::Livery && page == Page::Extras)) {
@@ -319,7 +324,9 @@ namespace gt4
                     liveryWhite = false;
                 }
             }
+            showSelectionPanels(next);
             page = next;
+            footerBegan = clock;
             stripChanged = clock;
             ui.menu.selectionExtras = next == Page::Extras;
             ui.menu.sliderDrag = -1;
@@ -361,7 +368,7 @@ namespace gt4
         double viewerBegan = 0;
         SpawnReview spawnReview = SpawnReview::None;
         ReviewMotion review;
-        bool plateOpen = false, plateEditing = false;
+        bool purchasePlate = false, plateOpen = false, plateEditing = false;
         int plateRow = 3, plateHover = -1;
         int plateAction = -1;
         SpawnReview plateReturn = SpawnReview::None;
@@ -475,8 +482,7 @@ namespace gt4
 
         float entryAudioGain() const
         {
-            const float viewerFade = viewer.entryAudio ? viewer.opacity(clock) : 0.f;
-            return 1.f - std::max(viewerFade, shop.fade(clock));
+            return 1.f - std::max(blackAlpha(), shop.fade(clock));
         }
 
         bool startCinematic()
@@ -514,6 +520,60 @@ namespace gt4
             return true;
         }
 
+        int activeStyle() const { return photo.active && !photo.viewerContext ? photo.style : ui.showroomStyle; }
+        int activeBackground() const { return photo.active && !photo.viewerContext ? photo.background : ui.backgroundStyle(); }
+
+        const char* photoVisualName(int index) const {
+            static constexpr const char* studio[]{"Preset","Background","Style","Animation","Rotation"};
+            static constexpr const char* room[]{"Preset","Background","Color","Floor","Lighting","Animation","Rotation"};
+            return photo.viewerContext ? room[index] : studio[index];
+        }
+        std::string photoVisualValue(int index) const {
+            if (!index) return std::to_string(photo.preset+1);
+            if (!photo.viewerContext) {
+                if (index==1) return photo.style ? "Prologue" : studioBackgroundNames[size_t(photo.background)];
+                if (index==2) return photo.style ? "Prologue":"Default";
+                if (index==3) return ui.cinematic.animate ? "On":"Off";
+                return ui.cinematic.paused ? "Paused":"On";
+            }
+            const auto& v=viewer.settings;
+            switch(index) {
+            case 1: return v.inheritStudio ? "Showroom" : viewerSceneNames[size_t(v.scene)];
+            case 2: return viewerSurfaceName(v.wallColor);
+            case 3: return viewerSurfaceName(v.floorColor);
+            case 4: return viewerPalettes[size_t(v.palette)].name;
+            case 5: return v.animate ? "On":"Off";
+            default: return viewer.paused ? "Paused":"On";
+            }
+        }
+        void adjustPhotoVisual(int index,int dir) {
+            const auto wrap=[dir](int value,int count){ return (value+dir+count)%count; };
+            if (!index) { photo.preset=wrap(photo.preset,3); return; }
+            if (!photo.viewerContext) {
+                if(index==1 && !photo.style) photo.background=wrap(photo.background,studioBackgroundCount);
+                if(index==2) photo.style=1-photo.style;
+                if(index==3) ui.cinematic.setAnimation(!ui.cinematic.animate,clock);
+                if(index==4) ui.cinematic.toggle(clock);
+                return;
+            }
+            auto& v=viewer.settings;
+            if(index==1) {
+                constexpr int scenes[]{-1,0,1,2,4};
+                int current=v.inheritStudio ? -1 : int(v.scene);
+                int next=scenes[wrap(int(std::find(std::begin(scenes),std::end(scenes),current)-std::begin(scenes)),5)];
+                v.inheritStudio=next<0;
+                if(next>=0) viewer.changeScene(ViewerScene(next),clock);
+            } else if(index<=4) {
+                v.inheritStudio=false;
+                if(v.scene==ViewerScene::Custom || (index==4 && v.scene==ViewerScene::Softbox))
+                    viewer.changeScene(ViewerScene::Wave,clock);
+                if(index==2) v.wallColor=wrap(v.wallColor+1,viewerWhite+2)-1;
+                if(index==3) v.floorColor=wrap(v.floorColor+1,viewerWhite+2)-1;
+                if(index==4) v.palette=wrap(v.palette,int(viewerPalettes.size()));
+            } else if(index==5) { v.animate=!v.animate; viewer.syncBackground(clock); }
+            else viewer.toggle(clock);
+        }
+
         void requestSpawn()
         {
             spawnReview = SpawnReview::None;
@@ -525,6 +585,21 @@ namespace gt4
 
         void beginPlate(SpawnReview previous)
         {
+            if (dealerPurchaseEnabled && page != Page::Prize) {
+                purchaseReturn = previous;
+                showSelectionPanels(Page::Cars);
+                purchase.begin(clock);
+                ui.dock = true;
+                footerBegan=clock;
+                cue=Cue::Accept;
+                return;
+            }
+            openPlate(previous);
+        }
+
+        void openPlate(SpawnReview previous)
+        {
+            purchasePlate = false;
             plateReturn = previous;
             plateOpen = true;
             plateEditing = true;
@@ -537,6 +612,9 @@ namespace gt4
             cue = Cue::Open;
         }
 
+        PlatePanel plateLayout(float w,float h) const {
+            return PlatePanel(w,h,ui.keyboard.open,plateMotion.offset(clock,h),plateReturn!=SpawnReview::None);
+        }
         bool plateBackNavigates(bool controller) const
         {
             return !plateEditing || controller || (plate.empty() && !ui.keyboard.open);
@@ -549,6 +627,7 @@ namespace gt4
             }
             if (!confirm) {
                 plateOpen = false;
+                footerBegan = clock;
                 skipSelectionExtras = false;
                 spawnReview = plateReturn;
                 review = plateMotion;
@@ -567,6 +646,7 @@ namespace gt4
         void returnToCarSelection(Page destination = Page::Cars)
         {
             shop = {};
+            purchase = {};
             shopExitArmed = shopReturnNavigation = false;
             photo = {};
             shopResetGroup = -1;
@@ -628,6 +708,7 @@ namespace gt4
             const auto review = spawnReview;
             spawnReview = SpawnReview::None;
             if (choice == ReviewChoice::Dismiss) {
+                if(review==SpawnReview::Initial && page==Page::Extras) showSelectionPanels(Page::Extras);
                 shopExitArmed = review == SpawnReview::ShopExit;
                 return;
             }
@@ -671,7 +752,8 @@ namespace gt4
                 return;
             }
             if (choice == ReviewChoice::Exit) {
-                shopExitArmed = review == SpawnReview::ShopExit;
+                if(review==SpawnReview::Initial && page==Page::Extras) showSelectionPanels(Page::Extras);
+                shopExitArmed = false;
                 cue = Cue::Back;
                 return;
             }
@@ -693,7 +775,53 @@ namespace gt4
         float dragGrip = 0;
         Page page = Page::Cars;
         size_t selected = 0, paint = 0;
-        bool showDealerPrices = false;
+        PurchasePresentation purchase;
+        PurchasePresentation purchasePlateScene;
+        SpawnReview purchaseReturn = SpawnReview::None;
+
+        void returnToCarSelectionStage(Page destination)
+        {
+            if (shop.open() || ui.cinematic.active || viewer.active) {
+                returnToCarSelection(destination);
+            }
+            footerBegan = clock;
+        }
+
+        void advancePurchase(bool cancel)
+        {
+            const auto step = purchase.step;
+            if(step==PurchaseStep::Invoice && (cancel || !purchase.choice)) {
+                purchase.show(PurchaseStep::Inspect,clock);
+                cue=Cue::Back;
+                return;
+            }
+            if (cancel || (step == PurchaseStep::Invoice && !purchase.choice) ||
+                (step == PurchaseStep::Offer && purchase.choice)) {
+                if(purchase.blackView() && purchase.leaving<0) { purchase.leaving=clock;cue=Cue::Back;return; }
+                const bool alreadySounded=purchase.leaving>=0;
+                purchase = {};
+                skipSelectionExtras = false;
+                const Page destination = postSelectionCinematic ? lastCompletedSelection : page;
+                returnToCarSelectionStage(destination);
+                pendingReviewChoice = -1;
+                cue = alreadySounded ? Cue::None : Cue::Back;
+                return;
+            }
+            if (step == PurchaseStep::Inspect) purchase.show(PurchaseStep::Invoice,clock);
+            else if (step == PurchaseStep::Invoice) purchase.show(PurchaseStep::Handoff,clock);
+            else if (step == PurchaseStep::Offer) purchase.show(PurchaseStep::Processing,clock);
+            else if (step == PurchaseStep::Complete) {
+                purchasePlateScene = purchase;
+                purchase = {};
+                openPlate(purchaseReturn);
+                purchasePlate = true;
+                plateMotion = {clock};
+            }
+            cue = Cue::Accept;
+        }
+
+        bool showDealerPrices = false, dealerPurchaseEnabled = false;
+        float interfaceReveal = 1.f;
         int dealerBalance = 0;
         bool allowRealBig = true;
         bool hasAvailableFavorites = false, galleryFavorites = true, galleryCustomization = true;
@@ -703,6 +831,8 @@ namespace gt4
         double colorsReturned = -10;
         bool cursorPressed = false;
         float cursorPressMix = 0;
+        double backdropPause = 0;
+        double footerBegan = 0;
         float prologueMix = 0;
         std::array<float, studioBackgroundCount> backgroundBlend{{1}};
         float scroll = 0, paintMix = 0;
@@ -886,14 +1016,16 @@ namespace gt4
             }
             count = total;
             shop = {};
+            purchase = {};
             shopExitArmed = shopReturnNavigation = false;
             photo = {};
             shopResetGroup = -1;
             beforeFavoritesModel = -1;
             ui.resetTransient();
+            interfaceReveal = 1.f;
             backgroundBlend.fill(0.f);
             backgroundBlend[size_t(ui.backgroundStyle())] = 1.f;
-            prologueMix = float(ui.showroomStyle == 1);
+            prologueMix = float(activeStyle() == 1);
             viewer.reset(clock);
             viewerSnapshot = postSelectionCinematic = false;
             spawnReview = SpawnReview::None;
@@ -942,6 +1074,14 @@ namespace gt4
         {
             seconds = std::isfinite(seconds) ? std::clamp(seconds, 0., 1.) : 0;
             clock += seconds;
+            if(purchase.blackView() || (purchasePlate && plateOpen)) backdropPause+=seconds;
+            if(purchase.leaving>=0 && clock-purchase.leaving>=.55) advancePurchase(true);
+            const auto previousPurchaseStep=purchase.step;
+            purchase.tick(clock);
+            if(previousPurchaseStep==PurchaseStep::Processing && purchase.step==PurchaseStep::Complete) cue=Cue::Accept;
+            const bool hidden = photo.active ? photo.hidden : ui.footerHidden;
+            const float step = float(seconds/.23);
+            interfaceReveal = std::clamp(interfaceReveal + (hidden ? -step : step),0.f,1.f);
             if (tutorialOpen() && tutorialMotion.finished(clock)) {
                 tutorial = Tutorial::None;
                 viewer.lastActivity = clock;
@@ -982,21 +1122,22 @@ namespace gt4
             }
             ui.cinematic.step(seconds);
             cursorPressMix += (float(cursorPressed) - cursorPressMix) * float(1 - std::exp(-seconds * 35));
-            prologueMix += (float(ui.showroomStyle == 1) - prologueMix) *
-                           float(1 - std::exp(-seconds * 6));
-            if (std::abs(prologueMix - float(ui.showroomStyle == 1)) < .001f) {
-                prologueMix = float(ui.showroomStyle == 1);
+            prologueMix += (float(activeStyle() == 1) - prologueMix) *
+                           float(1 - std::exp(-seconds * 22));
+            if (std::abs(prologueMix - float(activeStyle() == 1)) < .001f) {
+                prologueMix = float(activeStyle() == 1);
             }
-            const int style = ui.backgroundStyle();
+            const int style = activeBackground();
             for (int i = 0; i < studioBackgroundCount; ++i) {
                 backgroundBlend[size_t(i)] += (float(i == style) - backgroundBlend[size_t(i)]) *
-                                             float(1 - std::exp(-seconds * 7));
+                                             float(1 - std::exp(-seconds * 22));
+                if (std::abs(float(i == style) - backgroundBlend[size_t(i)]) < .001f) backgroundBlend[size_t(i)] = float(i == style);
             }
             ui.vehicle.step(seconds);
             ui.transition.step(clock);
             const bool viewerWasReady = viewer.active && !viewer.transitioning();
             viewer.step(clock,
-                        open && ui.cinematic.active && !ui.modal() && !shop.open() && !photo.active && !searching && !tutorialOpen() &&
+                        open && ui.cinematic.active && !ui.modal() && !shop.open() && !photo.active && !purchase.active() && !searching && !tutorialOpen() &&
                             spawnReview == SpawnReview::None && !plateOpen && fade.action == CloseAction::None &&
                             !ui.transition.active() && (!postSelectionCinematic || appearanceReady));
             if (!viewerWasReady && viewer.active && viewer.targetActive && !viewer.transitioning()) {
@@ -1014,7 +1155,7 @@ namespace gt4
                 ui.cinematic.lightBegan += clock - viewerBegan;
                 viewerSnapshot = false;
             }
-            scroll += (scrollTarget() - scroll) * float(1 - std::exp(-seconds * 14));
+            scroll += (scrollTarget() - scroll) * float(1 - std::exp(-seconds * 22));
             const float target = (page == Page::Paint || page == Page::Livery || page == Page::Extras) ? 1.f : 0.f;
             paintMix += (target - paintMix) * float(1 - std::exp(-seconds * 18));
         }
@@ -1029,6 +1170,7 @@ namespace gt4
             twoWheelerSelected = twoWheelerPreview(cars[index]);
             selectionAdvancePending = skipSelectionExtras = false;
             shop = {};
+            purchase = {};
             shopExitArmed = shopReturnNavigation = false;
             photo = {};
             shopResetGroup = -1;
@@ -1132,6 +1274,7 @@ namespace gt4
                 }
                 cue = Cue::Accept;
             } else if (page == Page::Extras) {
+                selectionPanels[2].show(false,clock);
                 ui.menu.sliderDrag = -1;
                 openReview(SpawnReview::Initial);
                 cue = Cue::Accept;
@@ -1409,7 +1552,7 @@ namespace gt4
             }
         } else if (model.page == Page::Livery) {
             for (size_t i = 0; i < model.liveries.size(); ++i) {
-                if (liveryBox(w, h, i, model.liveries.size()).contains(x, y)) {
+                if (liveryBox(w, h, i, model.liveries.size()).contains(x, y-model.selectionPanelOffset(Page::Livery,h/720.f))) {
                     if (model.livery == i) {
                         model.accept(cars);
                     } else {
@@ -1422,7 +1565,7 @@ namespace gt4
         } else {
             const size_t n = std::max(size_t(1), cars[model.selected].paints.size());
             for (size_t i = 0; i < n; ++i) {
-                if (paintBox(w, h, i, n, model.prologueMix).contains(x, y)) {
+                if (paintBox(w, h, i, n, model.prologueMix).contains(x, y-model.selectionPanelOffset(Page::Paint,h/720.f))) {
                     if (model.paint == i) {
                         model.accept(cars);
                     } else {
@@ -1476,7 +1619,7 @@ namespace gt4
             x = (box.x + box.w * .5f) / w;
             y = (box.y + box.h * .5f) / h;
         } else if (s.plateOpen) {
-            const PlatePanel panel(w, h, s.ui.keyboard.open, s.plateMotion.offset(s.clock, h), s.plateReturn != SpawnReview::None);
+            const auto panel=s.plateLayout(w,h);
             const auto box = s.ui.keyboard.open ? s.ui.keyboard.box(w, h, s.ui.keyboard.selected)
                                                : panel.target(s.plateRow);
             x = (box.x + box.w * .5f) / w;
@@ -1561,11 +1704,13 @@ namespace gt4
                 x = (b.x + b.w * .68f) / w;
                 y = (b.y + b.h * .68f) / h;
             } else if (s.page == Page::Paint) {
-                const auto b = paintBox(w, h, s.paint, std::max(size_t(1), cars[s.selected].paints.size()), s.prologueMix);
+                auto b = paintBox(w, h, s.paint, std::max(size_t(1), cars[s.selected].paints.size()), s.prologueMix);
+                b.y+=s.selectionPanelOffset(Page::Paint,h/720.f);
                 x = (b.x + b.w * .65f) / w;
                 y = (b.y + b.h * .62f) / h;
             } else if (s.page == Page::Livery) {
-                const auto b = liveryBox(w, h, s.livery, s.liveries.size());
+                auto b = liveryBox(w, h, s.livery, s.liveries.size());
+                b.y+=s.selectionPanelOffset(Page::Livery,h/720.f);
                 x = (b.x + b.w * .65f) / w;
                 y = (b.y + b.h * .62f) / h;
             } else {

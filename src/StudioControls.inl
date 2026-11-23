@@ -13,6 +13,16 @@ void finishSettings()
         }
         ui.dealerBackground = ui.menuDealerBackground;
     }
+    if (ui.menu.closeResult >= 0 && ui.menuStyleEdited && gallery==Gallery::Main) {
+        mainStyleChoice=ui.showroomStyle;
+        ui.showroomStyle=galleryStyle(ini.c_str(),gallery,mainStyleChoice);
+        saveStudioPreferences();
+    }
+    if (ui.menu.closeResult >= 0 && ui.menuStyleEdited && gallery != Gallery::Main) {
+        if (!WritePrivateProfileStringW(galleries[int(gallery)].section,L"StyleOverride",
+                ui.showroomStyle ? L"Prologue" : nullptr,ini.c_str())) log("Could not save dealership style override");
+        ui.showroomStyle = galleryStyle(ini.c_str(),gallery,0);
+    }
     if (ui.menu.closeResult < 0 && ui.menu.musicChoice != galleryOptions.music) {
         ui.menu.musicChoice = galleryOptions.music;
         audio.chooseMusic(galleryOptions.music,gameWindow(),base + L"GT4Showroom/audio/");
@@ -73,6 +83,7 @@ void openStudioSettings(float x, float y, bool keyboard)
         GetPrivateProfileStringW(galleries[int(gallery)].section, L"Background", L"", original, 512, ini.c_str());
         ui.menuDealerRaw = original;
     }
+    ui.menuStyleEdited = false;
     ui.menuPreferences = ui.preferences();
     readGameVolume(ui.menu.volume);
     ui.menuVolume = ui.menu.volume;
@@ -94,6 +105,7 @@ void closeStudioPhoto(float width, float height)
     auto& photo = state.photo;
     const auto panel = photo.panel(width, height);
     photo.end(state.viewer, state.clock);
+    if (photo.viewerContext) { state.viewer = photo.originalViewer; state.viewer.lastActivity=state.clock; }
     if (state.ui.cinematic.active || state.viewer.active) {
         openStudioSettings(panel.x / width, panel.y / height, true);
         state.ui.dock = true;
@@ -153,6 +165,7 @@ void requestStudioAction(StudioAction action)
         return;
     }
     if (action == StudioAction::ShowroomStyle) {
+        state.ui.menuStyleEdited=true;
         state.ui.showroomStyle = std::clamp(state.ui.menu.choice, 0, studioStyleCount - 1);
         state.ui.syncMenuPresentation();
         state.ui.menu.open = true;
@@ -237,6 +250,9 @@ void requestStudioAction(StudioAction action)
             } else {
                 state.photo.beginCinematic(state.clock);
             }
+            state.photo.originalViewer = state.viewer;
+            state.photo.background = state.ui.backgroundStyle();
+            state.photo.style = state.ui.showroomStyle;
             photoHide.blockUntilRelease();
             photoReset.blockUntilRelease();
             state.ui.vehicle.endWheelDrag();
@@ -277,15 +293,21 @@ void requestStudioAction(StudioAction action)
             viewer.settings.animate = value != 0;
             viewer.syncBackground(state.clock);
         } else if (action == StudioAction::ViewerScene) {
-            viewer.changeScene(ViewerScene(value), state.clock);
+            viewer.settings.inheritStudio = value < 0;
+            if(value>=0) viewer.changeScene(ViewerScene(value), state.clock);
         } else if (action == StudioAction::ViewerColor) {
+            viewer.settings.inheritStudio=false;
             viewer.settings.wallColor = value;
         } else if (action == StudioAction::ViewerFloor) {
+            viewer.settings.inheritStudio=false;
             viewer.settings.floorColor = value;
         } else if (action == StudioAction::ViewerPalette) {
+            viewer.settings.inheritStudio=false;
             viewer.settings.palette = value;
         } else if (action == StudioAction::ViewerReflections) {
-            viewer.settings.reflections = value != 0;
+            if (value==0 || value==1) viewer.settings.reflections = value != 0;
+            else if(value==2 || value==3) viewer.settings.vehicleReflections = value==3;
+            else viewer.settings.reflectionQuality=std::clamp(value-3,1,4);
         } else if (action == StudioAction::ViewerShadows) {
             viewer.settings.shadows = value != 0;
         } else if (viewer.paused != (value != 0)) {
@@ -427,6 +449,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
 {
     if (!entries.empty() && state.selected < entries.size()) {
         state.ui.vehicle.bind(entries[state.selected].id);
+        state.ui.vehicle.rearSteeringAllowed = entries[state.selected].handlingDrive != '4';
     }
     applyViewTransition();
     if (state.shopResetGroup >= 0) {
@@ -506,6 +529,30 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
                              downPress || search || favoritesPress || add || previousHotspot || nextHotspot ||
                              pauseView || togglePanels || wheel || pad.orbitX || pad.orbitY || pad.zoom;
     const bool information = informationKey.poll(key('I') || (pad.add && pad.favorites), tick);
+    if (state.purchase.active()) {
+        auto& scene = state.purchase;
+        if(scene.leaving>=0) return;
+        const int count = scene.buttons();
+        if (!count) return;
+        if (count == 2 && (leftPress || rightPress)) {
+            scene.choice = 1 - scene.choice;
+            state.ui.dock = true;
+            state.cue = Cue::Move;
+        }
+        bool clicked = false;
+        for (int i = 0; i < count; ++i) {
+            if ((moved || click) && scene.button(i,W,H).contains(state.pointerX*W-scene.entryOffset(state.clock,W),state.pointerY*H)) {
+                scene.choice = i;
+                clicked = click;
+                state.ui.dock = false;
+            }
+        }
+        if (accept || clicked || goBack || context) {
+            state.advancePurchase(goBack || context);
+            blockActions();
+        }
+        return;
+    }
     if (state.tutorialOpen()) {
         if (state.tutorialMotion.leaving >= 0.) { return; }
         const auto button = renderer.tutorialButton(W, H, state);
@@ -553,6 +600,16 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         }
         return;
     }
+    if (information && !state.photo.requested && !state.ui.menu.open && !state.plateOpen && state.spawnReview == SpawnReview::None &&
+        (state.photo.active || state.shop.open() || state.viewer.active || state.ui.cinematic.active)) {
+        state.tutorial = state.photo.active ? Tutorial::Photo : state.shop.open() ? Tutorial::Customization :
+                         state.viewer.active ? Tutorial::Viewer : Tutorial::Cinematic;
+        state.tutorialMotion = {state.clock};
+        state.tutorialFocus = true;
+        state.cue = Cue::Open;
+        blockActions();
+        return;
+    }
     if (information && !modal && state.page == Page::Cars && !state.ui.cinematic.active && !state.busy()) {
         state.informationOpen = true;
         state.informationChoice = 3;
@@ -573,55 +630,94 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
             key(VK_OEM_MINUS)) {
             state.ui.controllerUsed = false;
         }
+        const bool heldSettings=rDown || pad.view;
+        if(context && heldSettings) { photo.settingsPressed=true; photo.settingsTravel=0; }
+        if(heldSettings && photo.settingsPressed) photo.settingsTravel+=std::abs(dx)+std::abs(dy)+10.f*(std::abs(pad.orbitX)+std::abs(pad.orbitY));
+        const bool settingsTap=(context && !heldSettings) || (!heldSettings && photo.settingsPressed && photo.settingsTravel<3.f);
+        if(!heldSettings) photo.settingsPressed=false;
+        if (photo.requested || state.clock < photo.flashBegan + .35) {
+            photo.dragging = photo.movingPanel = false;
+            return;
+        }
+        const auto tools=photo.visualPanel(W,H);
+        const float px=state.pointerX*W, py=state.pointerY*H;
+        if (photo.dragging) {
+            if (!lDown) photo.dragging=false;
+            else if(photo.draggingVisual) {
+                photo.visualX=std::clamp(px-photo.dragX,0.f,std::max(0.f,W-tools.w))/W;
+                photo.visualY=std::clamp(py-photo.dragY,0.f,std::max(0.f,H*.907f-tools.h))/H;
+            } else photo.place(px-photo.dragX,py-photo.dragY,W,H);
+            return;
+        }
+        if (!photo.hidden && click && !rDown) {
+            if(tools.contains(px,py)) {
+                photo.visuals=true;
+                if(py<tools.y+21*ViewerPhoto::uiScale(W,H)) {
+                    photo.dragging=true; photo.draggingVisual=true;
+                    photo.dragX=px-tools.x;photo.dragY=py-tools.y;photo.row=0;return;
+                }
+            } else if(photo.panel(W,H).contains(px,py)) {
+                if(photo.visuals) photo.row=ViewerPhoto::captureRow;
+                photo.visuals=false;
+                if(photo.header(W,H).contains(px,py)) {
+                    auto box=photo.panel(W,H);photo.dragging=true;photo.draggingVisual=false;
+                    photo.dragX=px-box.x;photo.dragY=py-box.y;return;
+                }
+            }
+        }
+        if (photo.visuals && (goBack || settingsTap)) {
+            photo.visuals=false; photo.row=ViewerPhoto::captureRow;
+            blockActions(); return;
+        }
         if ((!state.ui.cinematic.active && !state.viewer.active) || goBack) {
             closeStudioPhoto(W, H);
             return;
         }
-        if (photo.requested) {
+        if (settingsTap && !photo.hidden) {
+            photo.visuals=true; photo.row=0; state.cue=Cue::Open; blockActions(); return;
+        }
+        if (photoHide.poll(key('H') || pad.search,tick)) {
+            photo.hidden=!photo.hidden; blockActions(); return;
+        }
+        if (accept && key(VK_SPACE)) {
+            photo.triggerCapture(state.clock);
+            state.cue = Cue::Flash;
             photo.dragging = photo.movingPanel = false;
+            blockActions();
             return;
         }
-        if (photoHide.poll(key('H') || pad.search, tick)) {
-            photo.hidden = !photo.hidden;
-            state.cue = photo.hidden ? Cue::Back : Cue::Open;
-            blockActions();
+        if (photo.visuals && !photo.hidden) {
+            const int count=photo.visualCount();
+            if(upPress || downPress) photo.row=(photo.row+int(downPress)-int(upPress)+count)%count;
+            int direction=int(rightPress)-int(leftPress);
+            bool selected=accept;
+            if(moved || click) for(int i=0;i<count;++i) {
+                const auto b=photo.visualItem(W,H,i);
+                if(b.contains(state.pointerX*W,state.pointerY*H)) {
+                    photo.row=i;
+                    if(click) { selected=true; direction=state.pointerX*W<b.x+b.w*.58f ? -1:1; }
+                    break;
+                }
+            }
+            if((selected || direction) && photo.row<count) state.adjustPhotoVisual(photo.row,direction?direction:1);
+            if(selected || direction) { state.cue=Cue::Slider; blockActions(); }
             return;
         }
         if (photoReset.poll(key('R') || pad.favorites, tick)) {
             const float panelX = photo.panelX, panelY = photo.panelY;
+            auto retainedViewer = photo.originalViewer;
+            const int retainedStyle=photo.style, retainedBackground=photo.background;
             if (state.viewer.active) {
                 photo.begin(state.viewer, state.clock, false);
             } else {
                 photo.beginCinematic(state.clock, false);
             }
+            photo.originalViewer = retainedViewer;
+            photo.style=retainedStyle; photo.background=retainedBackground;
             photo.panelX = panelX;
             photo.panelY = panelY;
             state.cue = Cue::Accept;
             blockActions();
-            return;
-        }
-        if (accept && key(VK_SPACE)) {
-            photo.requested = true;
-            photo.dragging = photo.movingPanel = false;
-            blockActions();
-            return;
-        }
-        if (photo.dragging) {
-            if (lDown) {
-                photo.place(state.pointerX * W - photo.dragX, state.pointerY * H - photo.dragY, W, H);
-            } else {
-                photo.dragging = false;
-            }
-            state.ui.dock = false;
-            return;
-        }
-        if (!photo.hidden && !rDown && click && photo.header(W, H).contains(state.pointerX * W, state.pointerY * H)) {
-            const auto box = photo.panel(W, H);
-            photo.dragX = state.pointerX * W - box.x;
-            photo.dragY = state.pointerY * H - box.y;
-            photo.dragging = true;
-            state.ui.dock = false;
-            state.cue = Cue::Move;
             return;
         }
         const float seconds = float(std::clamp(dt, 0., .1));
@@ -637,12 +733,12 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
             state.ui.dock = false;
         }
         photo.movingPanel = movePanel;
-        if (!movePanel && (upPress || downPress)) {
+        if (!photo.hidden && !movePanel && (upPress || downPress)) {
             photo.row = (photo.row + int(downPress) - int(upPress) + ViewerPhoto::rowCount) % ViewerPhoto::rowCount;
             state.cue = Cue::Move;
         }
         const int direction = int(rightPress) - int(leftPress);
-        if (!movePanel && direction) {
+        if (!photo.hidden && !movePanel && direction) {
             if (photo.row < ViewerPhoto::settingCount) {
                 state.cue = photo.adjust(direction) ? Cue::Slider : Cue::Error;
             } else {
@@ -675,7 +771,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         if (!pad.zoomFromShoulders && pad.zoom) {
             photo.zoom = std::clamp(photo.zoom * std::exp(pad.zoom * seconds), .3f, 3.f);
         }
-        bool activate = accept;
+        bool activate = accept && !photo.hidden;
         int clickedDirection = 0;
         if (!photo.hidden && !rDown && (moved || click)) {
             const int hit = photo.hit(W, H, state.pointerX * W, state.pointerY * H, clickedDirection);
@@ -707,7 +803,8 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
                 state.cue = loaded ? Cue::Accept : Cue::Error;
                 blockActions();
             } else if (photo.row == ViewerPhoto::captureRow) {
-                photo.requested = true;
+                photo.triggerCapture(state.clock);
+                state.cue = Cue::Flash;
                 blockActions();
             } else if (photo.row == ViewerPhoto::backRow) {
                 closeStudioPhoto(W, H);
@@ -732,6 +829,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
     if (state.shop.open() && state.spawnReview == SpawnReview::None) {
         state.viewer.activity(state.clock);
         const bool wheelLeft = wheel && game::at<uint8_t>(rawMouse + 3);
+        if (context && state.shop.page==ShopPage::Menu) state.shopExitArmed=false;
         processShopInput(leftPress || wheelLeft,
                          rightPress || (wheel && !wheelLeft),
                          upPress,
@@ -812,6 +910,11 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         return;
     }
     if (state.page == Page::Extras && !state.ui.cinematic.active) {
+        if (photoHide.poll(key('H') || pad.togglePanels,tick)) {
+            state.ui.footerHidden = !state.ui.footerHidden;
+            blockActions();
+            return;
+        }
         auto& m = state.ui.menu;
         const auto rows = m.items(1);
         const int count = int(rows.size());
@@ -821,7 +924,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
             return;
         }
         const float x = state.pointerX * W, y = state.pointerY * H;
-        if (count && m.monitorSlide(x, y, W, H, lDown, click)) {
+        if (count && !state.ui.footerHidden && m.monitorSlide(x, y, W, H, lDown, click)) {
             const int group = m.extraGroup(m.sortRow);
             if (m.sliderChanged && group >= 0) {
                 const int wanted = m.sliderValue(m.sortRow);
@@ -832,7 +935,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
             state.ui.dock = false;
             return;
         }
-        if (moved || click) {
+        if (!state.ui.footerHidden && (moved || click)) {
             m.monitorKeyboard = false;
             m.monitorHover = true;
             m.monitorHoverLevel = m.monitorHoverIndex = m.monitorFooter = -1;
@@ -868,7 +971,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
                 state.cue = selectStudioExtra(group, wanted) ? Cue::Slider : Cue::Error;
             }
         }
-        if (accept || (click && m.monitorFooter >= 0)) {
+        if (accept || (!state.ui.footerHidden && click && m.monitorFooter >= 0)) {
             if (m.monitorFooter == 0) { state.back(); }
             else { state.accept(entries); }
             blockActions();
@@ -915,6 +1018,11 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
     }
 
     if (context && state.ui.favoritesOnly && !state.hasAvailableFavorites && !state.ui.menu.open) {
+        blockActions();
+        return;
+    }
+    if (context && !state.ui.cinematic.active && (state.page == Page::Paint || state.page == Page::Livery)) {
+        state.back();
         blockActions();
         return;
     }
@@ -1033,14 +1141,19 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         if (togglePanels && mesh && state.ui.menu.allowHotspots) {
             v.togglePanels(mesh->cinematic);
         }
-        const bool hasHotspots = mesh && state.hotspotsEnabled() && mesh->cinematic.any();
+        const bool hasHotspots = !state.ui.footerHidden && mesh && state.hotspotsEnabled() && mesh->cinematic.any();
         if (hasHotspots && (previousHotspot || nextHotspot)) {
             const auto points = renderer.hotspots(*mesh, v);
             v.focus = points.cycle(v.focus, previousHotspot ? -1 : 1);
             state.ui.dock = true;
             state.ui.pointerMoved = state.clock;
         }
-        const bool wheelFocused = hasHotspots && v.focus >= 6 && mesh->cinematic.supported(v.focus);
+        if (photoReset.poll(key('R') || (pad.add && pad.previousHotspot), tick) && v.wheelsTurned()) {
+            v.resetWheelTargets();
+            state.cue = Cue::Accept;
+            return;
+        }
+        const bool wheelFocused = hasHotspots && v.canSteer(v.focus) && mesh->cinematic.supported(v.focus);
         const auto toggleRotation = [&] {
             if (viewer.active) {
                 viewer.toggle(state.clock);
@@ -1154,7 +1267,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         const float scale = H / 720.f;
         const float x = state.pointerX * W, y = state.pointerY * H;
         const auto& entry = entries[state.selected];
-        if (click && entry.country != Country::Unknown &&
+        if (click && !state.ui.footerHidden && entry.country != Country::Unknown &&
             UIRect{46 * scale, 33 * scale, 34 * scale, 28 * scale}.contains(x, y)) {
             auto& ui = state.ui;
             ui.beginCountryShortcut(entry.country, entry.id);
@@ -1207,7 +1320,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
     if (downPress) {
         favoriteSelection(false);
     }
-    pointerButton(state, entries, W, H, lDown, click);
+    if (!state.ui.footerHidden) pointerButton(state, entries, W, H, lDown, click);
     if (!state.dragging) {
         if (game::at<uint8_t>(rawMouse + 3)) {
             state.move(-1, entries);

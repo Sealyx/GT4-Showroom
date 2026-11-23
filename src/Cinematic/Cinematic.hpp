@@ -171,6 +171,7 @@ namespace gt4
     struct CinematicVehicleState
     {
         bool hotspots = true;
+        bool rearSteeringAllowed = true;
         std::array<float, 6> doors{}, doorTargets{};
         float steering = 0, steeringTarget = 0;
         float rearSteering = 0, rearSteeringTarget = 0;
@@ -232,6 +233,22 @@ namespace gt4
             return steering;
         }
 
+        bool wheelsTurned() const
+        {
+            return steering != 0 || steeringTarget != 0 || rearSteering != 0 || rearSteeringTarget != 0;
+        }
+
+        void resetWheelTargets()
+        {
+            steeringTarget = rearSteeringTarget = 0;
+            endWheelDrag();
+        }
+
+        bool canSteer(int component) const
+        {
+            return component >= 6 && (component < int(CinematicComponent::RearLeftWheel) || rearSteeringAllowed);
+        }
+
         void centerWheels()
         {
             steering = steeringTarget = 0;
@@ -270,7 +287,7 @@ namespace gt4
 
         bool beginWheelDrag(int component, const CinematicCapabilities& caps, float x)
         {
-            if (component < 6 || !caps.supported(component) || !std::isfinite(x)) {
+            if (!canSteer(component) || !caps.supported(component) || !std::isfinite(x)) {
                 return false;
             }
             wheelDrag = focus = component;
@@ -295,7 +312,7 @@ namespace gt4
 
         void steer(float direction, double dt)
         {
-            if (std::isfinite(direction) && std::isfinite(dt) && dt > 0) {
+            if (canSteer(focus) && std::isfinite(direction) && std::isfinite(dt) && dt > 0) {
                 auto& target = steeringGoal(focus);
                 target = std::clamp(target + direction * float(std::min(dt, .1)) * 1.2f, -.52f, .52f);
             }

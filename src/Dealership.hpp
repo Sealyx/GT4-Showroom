@@ -44,6 +44,16 @@ inline GalleryClass galleryClass(const Entry& e) {
     static constexpr GalleryClass classes[]{Normal,Poor,Rich,Executive,Worker,Big,Taxi,Moped,Motorbikes,Boats,Boats,Bikes,Special};
     return classes[classIndex(e.classId)];
 }
+inline int galleryStyle(const wchar_t* ini, Gallery gallery, int mainPreference)
+{
+    const auto section = galleries[int(gallery)].section;
+    wchar_t value[32]{};
+    GetPrivateProfileStringW(section, L"Style", L"Default", value, 32, ini);
+    const int preset = !_wcsicmp(value, L"Prologue") ? 1 : 0;
+    if (gallery == Gallery::Main) return mainPreference ? mainPreference : preset;
+    GetPrivateProfileStringW(section, L"StyleOverride", L"", value, 32, ini);
+    return !_wcsicmp(value,L"Prologue") ? 1 : preset;
+}
 inline int galleryBackground(const wchar_t* ini, Gallery gallery) {
     const int fallback = gallery == Gallery::Coutt ? AgedConcreteBackground :
                          gallery == Gallery::Verdant ? DarkGrayBackground : gallery == Gallery::Grotti ? RedBackground : DefaultBackground;

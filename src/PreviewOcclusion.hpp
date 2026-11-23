@@ -254,7 +254,7 @@ float4 compositePixel(float2 uv : TEXCOORD0) : COLOR0
             return result;
         }
 
-        bool bindGeometry(IDirect3DDevice9 *device, bool textured, bool cavity = false)
+        bool bindGeometry(IDirect3DDevice9 *device, bool textured, float cavity = 0)
         {
             D3DMATRIX world{}, view{}, projection{};
             if (FAILED(device->GetTransform(D3DTS_WORLD, &world)) || FAILED(device->GetTransform(D3DTS_VIEW, &view)) ||
@@ -264,7 +264,7 @@ float4 compositePixel(float2 uv : TEXCOORD0) : COLOR0
             }
             const auto worldView = multiply(world, view);
             const auto matrix = multiply(worldView, projection);
-            const float material[]{textured ? 1.f : 0.f, cavity ? 1.f : 0.f, 0, 0};
+            const float material[]{textured ? 1.f : 0.f, std::clamp(cavity,0.f,1.f), 0, 0};
             return SUCCEEDED(device->SetVertexShader(vertex)) && SUCCEEDED(device->SetPixelShader(geometry)) &&
                    SUCCEEDED(device->SetVertexShaderConstantF(0, &matrix.m[0][0], 4)) &&
                    SUCCEEDED(device->SetVertexShaderConstantF(4, &worldView.m[0][0], 4)) &&

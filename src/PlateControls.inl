@@ -33,7 +33,7 @@ void processStudioPlate(const PadActions& pad, float width, float height, double
         blockActions();
         return;
     }
-    const PlatePanel panel(width, height, kb.open, state.plateMotion.offset(state.clock, height), state.plateReturn != SpawnReview::None);
+    const auto panel=state.plateLayout(width,height);
     const float x = state.pointerX * width, y = state.pointerY * height;
     if (moved || click || (!state.ui.dock && !state.ui.controllerUsed)) {
         state.ui.dock = false;

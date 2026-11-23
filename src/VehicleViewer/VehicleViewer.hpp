@@ -79,7 +79,8 @@ namespace gt4
         int wallColor = -1;
         int floorColor = -1;
         bool animate = true;
-        bool reflections = true, shadows = true;
+        bool reflections = true, shadows = true, vehicleReflections = true, inheritStudio = true;
+        int reflectionQuality = 3;
 
         const ViewerPalette& lighting() const
         {
