@@ -10,6 +10,7 @@
 #include "PreviewMotion.hpp"
 #include "Countries.hpp"
 #include "StudioUI.hpp"
+#include "CountryPicker.hpp"
 #include "CinematicStudio.hpp"
 #include "TransFender.hpp"
 #include "StudioViewPhoto.hpp"
@@ -512,7 +513,7 @@ namespace gt4
 
         bool busy() const
         {
-            return fade.action != CloseAction::None || ui.transition.active() || studioView.transitioning() ||
+            return countryPicker.open || fade.action != CloseAction::None || ui.transition.active() || studioView.transitioning() ||
                    (page == Page::Paint && clock - colorsReturned < .20);
         }
 
@@ -867,6 +868,7 @@ namespace gt4
             cue = Cue::Accept;
         }
 
+        CountryPicker countryPicker;
         bool open = false, spawn = false, dragging = false;
         float dragGrip = 0;
         Page page = Page::Cars;
@@ -1107,6 +1109,7 @@ namespace gt4
 
         void begin(size_t total)
         {
+            countryPicker={};
             plateOpen = plateEditing = false;
             plate.clear();
             plateAction = -1;

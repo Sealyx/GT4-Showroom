@@ -489,12 +489,14 @@ namespace gt4
 
     constexpr DWORD format = D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1;
 
+    inline float uiFade = 1.f;
+
     inline DWORD color(uint32_t rgb, float a = 1, float light = 1)
     {
         auto c = [&](int shift) {
             return DWORD(std::clamp(float((rgb >> shift) & 255) * light, 0.f, 255.f));
         };
-        return (DWORD(std::clamp(a, 0.f, 1.f) * 255) << 24) | (c(16) << 16) | (c(8) << 8) | c(0);
+        return (DWORD(std::clamp(a * uiFade, 0.f, 1.f) * 255) << 24) | (c(16) << 16) | (c(8) << 8) | c(0);
     }
 
     class Renderer
@@ -944,7 +946,7 @@ namespace gt4
                 return;
             }
             if (FAILED(d->CreateTexture(
-                    UINT(countryCount * 128), 128, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &flags, nullptr))) {
+                    UINT(16 * 128), UINT(((countryCount+15)/16)*128), 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &flags, nullptr))) {
                 return;
             }
             D3DLOCKED_RECT l{};
@@ -955,15 +957,16 @@ namespace gt4
             }
             for (int n = 0; n < int(countryCount); ++n) {
 #ifndef GT4_ICON_EXPORT
-                std::string name=countryKeys[n];
+                const std::string key=countryKeys[size_t(n)];
+                std::string name=n==1?"usa":key=="UnitedKingdom"?"uk":key;
                 for(char& ch:name) ch=char(std::tolower(static_cast<unsigned char>(ch)));
-                const std::string filename="flag-"+name+".png";
+                const std::string filename=n>=int(builtInCountryCount)?"0flag-custom"+std::to_string(n-int(builtInCountryCount)+1)+".png":"flag-"+name+".png";
                 auto& png=iconImage(d,std::wstring(filename.begin(),filename.end()).c_str());
                 D3DLOCKED_RECT source{};
                 if(png.texture && png.width==128 && png.height==128 &&
                    SUCCEEDED(png.texture->LockRect(0,&source,nullptr,D3DLOCK_READONLY))) {
                     for(unsigned y=0;y<128;++y) std::memcpy(
-                        static_cast<uint8_t*>(l.pBits)+y*l.Pitch+n*128*4,
+                        static_cast<uint8_t*>(l.pBits)+(y+(n/16)*128)*l.Pitch+(n%16)*128*4,
                         static_cast<const uint8_t*>(source.pBits)+y*source.Pitch,128*4);
                     png.texture->UnlockRect(0);
                     continue;
@@ -972,7 +975,7 @@ namespace gt4
                 for (int y = 0; y < 128; ++y) {
                     for (int x = 0; x < 128; ++x) {
                         uint32_t out = flagPixel(Country(n), x, y, 128);
-                        reinterpret_cast<uint32_t*>(static_cast<uint8_t*>(l.pBits) + y * l.Pitch)[n * 128 + x] = out;
+                        reinterpret_cast<uint32_t*>(static_cast<uint8_t*>(l.pBits) + (y+(n/16)*128) * l.Pitch)[(n%16) * 128 + x] = out;
                     }
                 }
             }
@@ -1309,9 +1312,9 @@ namespace gt4
             if (collectionLogo.texture) { collectionLogo.texture->Release(); collectionLogo = {}; }
             collectionTried = false;
             galleryTitle = gallery ? title : "";
-            collectionPath = assetPath(root / (gallery == 1 ? L"showroom/wangcars.png" : L"showroom/collection.png"));
-            if (!gallery && !std::filesystem::exists(collectionPath)) collectionPath = assetPath(root / L"collection.png");
-            if (gallery > 1) collectionTried = true;
+            constexpr int slots[]{0,1,3,6,4,2,5};
+            collectionPath=gallery?assetPath(root/L"logos"/(L"dealership-"+std::to_wstring(slots[gallery])+L".png")):assetPath(root/L"showroom/collection.png");
+            if(!gallery&&!std::filesystem::exists(collectionPath))collectionPath=assetPath(root/L"collection.png");
         }
 
         void setShopLogo(const std::filesystem::path& path)
@@ -3685,6 +3688,7 @@ namespace gt4
 
 #include "TransFenderRenderer.inl"
 #include "SearchRenderer.inl"
+#include "CountryPickerRenderer.inl"
 
         bool compositeStudioTexture(IDirect3DDevice9* d, const D3DVIEWPORT9& viewport, const Model& model)
         {
@@ -4655,13 +4659,16 @@ namespace gt4
                                   style);
                         }
                         const bool brandLogo =
-                            !s.ui.favoritesOnly && galleryTitle.empty() && s.ui.brandLogo && logo(true, W * .80f, H * .065f, W * .30f, H * .12f, s.titleMix());
+                            !s.ui.favoritesOnly && !(s.ui.dealershipLogo&&!galleryTitle.empty()) && s.ui.brandLogo && logo(true, W * .80f, H * .065f, W * .30f, H * .12f, s.titleMix());
                         if (!s.ui.favoritesOnly && !brandLogo) {
                             if (!collectionTried) {
                                 collectionTried = true;
-                                collectionLogo = iconDictionary.load(d, assetPath(shopAssetRoot/L"icons.txd"), collectionPath.stem().wstring());
+                                collectionLogo = galleryTitle.empty()?iconDictionary.load(d, assetPath(shopAssetRoot/L"icons.txd"), collectionPath.stem().wstring()):VehicleLogos::load(d,collectionPath);
                             }
-                            if (collectionLogo.texture && collectionLogo.width && collectionLogo.height) {
+                            if(!galleryTitle.empty() && collectionLogo.texture) {
+                                D3DLOCKED_RECT pixels{};if(SUCCEEDED(collectionLogo.texture->LockRect(0,&pixels,nullptr,D3DLOCK_READONLY))){bool visible=false;for(unsigned y=0;y<collectionLogo.height&&!visible;++y){const auto* row=static_cast<const uint8_t*>(pixels.pBits)+y*pixels.Pitch;for(unsigned x=0;x<collectionLogo.width;++x)if(row[4*x+3]){visible=true;break;}}collectionLogo.texture->UnlockRect(0);if(!visible){collectionLogo.texture->Release();collectionLogo={};}}
+                            }
+                            if ((galleryTitle.empty()||s.ui.dealershipLogo) && collectionLogo.texture && collectionLogo.width && collectionLogo.height) {
                                 const float fit = std::min(W * .34f / collectionLogo.width,
                                                            H * .15f / collectionLogo.height);
                                 rect(d, W * .79f - collectionLogo.width * fit * .5f, H * .065f,
@@ -4725,9 +4732,9 @@ namespace gt4
                                 const float y = (s.ui.classFilter >= 0 || s.ui.countryFilter >= 0 ? 112 : 91) * scale;
                                 shopPriceMark(d, x, y, scale, true);
                                 const std::string price = shopMoney(e.price);
-                                text(d, price, x + 30 * scale, y - 17 * scale, 34.667f * scale,
+                                text(d, price, 104 * scale, y - 17 * scale, 34.667f * scale,
                                      color(0x21150D, .8f), false, 0, true);
-                                text(d, price, x + 29 * scale, y - 19 * scale, 34.667f * scale,
+                                text(d, price, 103 * scale, y - 19 * scale, 34.667f * scale,
                                      color(0xFFFFFF), false, 0, true);
                             }
                         }
@@ -4756,10 +4763,10 @@ namespace gt4
                                  26.52f * scale,
                                  0xFFFFFFFF,
                                  flags,
-                                 index / float(countryCount),
-                                 0,
-                                 (index + 1) / float(countryCount),
-                                 1);
+                                 std::fmod(index,16.f)/16.f,
+                                 std::floor(index/16.f)/float((countryCount+15)/16),
+                                 (std::fmod(index,16.f)+1)/16.f,
+                                 (std::floor(index/16.f)+1)/float((countryCount+15)/16));
                         }
                         if (!emptyFavorites) {
                             label(d, e.category, 104 * scale, 19 * scale, 26 * scale);
@@ -4835,6 +4842,7 @@ namespace gt4
                               true);
                     }
                     spawnReviewDialog(d, W, H, s);
+                    drawCountryPicker(d,W,H,s);
                     if (!s.purchase.active() && s.pointerVisible && (!s.ui.cinematic.active || s.ui.menu.open ||
                                              s.spawnReview != SpawnReview::None || s.plateOpen ||
                                              s.clock - s.ui.pointerMoved < 2.5)) {

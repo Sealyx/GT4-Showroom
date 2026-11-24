@@ -1,0 +1,53 @@
+# UTF-8 country names - stable COUNTRY IDs, one readable entry per line
+# IDs 24-48 are custom slots. Replace the localized Empty name to register a slot.
+# Country IDs stay fixed; INI country keys are sorted alphabetically.
+EMPTY_NAME Vacío
+COUNTRY0 Sin asignar
+COUNTRY1 Estados Unidos
+COUNTRY2 Japón
+COUNTRY3 Italia
+COUNTRY4 Francia
+COUNTRY5 Reino Unido
+COUNTRY6 Alemania
+COUNTRY7 Suecia
+COUNTRY8 China
+COUNTRY9 Corea del Sur
+COUNTRY10 Canadá
+COUNTRY11 Australia
+COUNTRY12 Rusia
+COUNTRY13 Dinamarca
+COUNTRY14 Brasil
+COUNTRY15 Indonesia
+COUNTRY16 Malasia
+COUNTRY17 Países Bajos
+COUNTRY18 Bélgica
+COUNTRY19 España
+COUNTRY20 Serbia
+COUNTRY21 República Checa
+COUNTRY22 Rumanía
+COUNTRY23 Turquía
+COUNTRY24 Vacío
+COUNTRY25 Vacío
+COUNTRY26 Vacío
+COUNTRY27 Vacío
+COUNTRY28 Vacío
+COUNTRY29 Vacío
+COUNTRY30 Vacío
+COUNTRY31 Vacío
+COUNTRY32 Vacío
+COUNTRY33 Vacío
+COUNTRY34 Vacío
+COUNTRY35 Vacío
+COUNTRY36 Vacío
+COUNTRY37 Vacío
+COUNTRY38 Vacío
+COUNTRY39 Vacío
+COUNTRY40 Vacío
+COUNTRY41 Vacío
+COUNTRY42 Vacío
+COUNTRY43 Vacío
+COUNTRY44 Vacío
+COUNTRY45 Vacío
+COUNTRY46 Vacío
+COUNTRY47 Vacío
+COUNTRY48 Vacío

@@ -12,6 +12,7 @@
 #include <unordered_set>
 #include <vector>
 #include "LanguageKeys.hpp"
+#include "LanguageIds.hpp"
 
 namespace gt4
 {
@@ -44,6 +45,44 @@ namespace gt4
         char key[10]{};
         std::snprintf(key, sizeof(key), "T%08lX", static_cast<unsigned long>(hash));
         return key;
+    }
+
+    inline const std::unordered_map<std::string, std::string> &languageIdMap()
+    {
+        static const auto map = [] {
+            std::unordered_map<std::string, std::string> values;
+            for (const auto &entry : languageIds)
+            {
+                values.emplace(entry.first, entry.second);
+            }
+            return values;
+        }();
+        return map;
+    }
+
+    inline const std::unordered_map<std::string, std::string> &languageHashMap()
+    {
+        static const auto map = [] {
+            std::unordered_map<std::string, std::string> values;
+            for (const auto &entry : languageIds)
+            {
+                values.emplace(languageKey(entry.second), entry.second);
+            }
+            return values;
+        }();
+        return map;
+    }
+
+    // readable ids are preferred; the hashed form stays valid for existing packs
+    inline std::string languageSourceFor(const std::string &token)
+    {
+        const auto id = languageIdMap().find(token);
+        if (id != languageIdMap().end())
+        {
+            return id->second;
+        }
+        const auto hashed = languageHashMap().find(token);
+        return hashed == languageHashMap().end() ? std::string{} : hashed->second;
     }
 
     struct Localization
@@ -121,13 +160,19 @@ namespace gt4
                         continue;
                     }
                     const size_t split = line.find_first_of(" \t");
-                    if (split == std::string::npos || split != 9)
+                    if (split == std::string::npos)
+                    {
+                        return false;
+                    }
+                    const std::string token = line.substr(0, split);
+                    const std::string source = languageSourceFor(token);
+                    if (source.empty())
                     {
                         return false;
                     }
                     const size_t first = line.find_first_not_of(" \t", split);
                     const auto value = first == std::string::npos ? std::string{} : line.substr(first);
-                    if (!validLanguageText(value) || !values.emplace(line.substr(0, split), value).second)
+                    if (!validLanguageText(value) || !values.emplace(source, value).second)
                     {
                         return false;
                     }
@@ -144,9 +189,9 @@ namespace gt4
             std::unordered_map<std::string, std::string> result;
             for (const auto *source : languageSourceStrings)
             {
-                auto found = values.find(languageKey(source));
+                auto found = values.find(source);
                 if (found == values.end() && std::string_view(source) == "Photo Lab" &&
-                    values.count(languageKey("Photo Mode"))) {
+                    values.count("Photo Mode")) {
                     result.emplace(source, "Photo Lab");
                     continue;
                 }

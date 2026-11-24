@@ -21,6 +21,7 @@
 #include "FixedCameraBridge.hpp"
 #include "RecoveryFade.hpp"
 #include "SearchInput.hpp"
+#include "CountryRegistryIni.hpp"
 #include "Controller.hpp"
 #include "PaintSources.hpp"
 #include "SecretFeatures.hpp"
@@ -37,6 +38,8 @@ namespace gt4
 {
     HMODULE module = nullptr;
     std::wstring base, logFile, ini;
+    bool readDealershipLogoSetting();
+    void saveDealershipLogoSetting(bool enabled);
     Model state;
     int extrasModel = -1, dirtyExtraModel = -1, extrasFramingModel = -1;
     std::shared_ptr<const Mesh> extrasFraming;
@@ -109,7 +112,7 @@ namespace gt4
     std::set<int> excluded;
     ExclusionConfig exclusionConfig;
     CountryConfig countryConfig;
-    SearchInput searchInput;
+    SearchInput searchInput, countrySearchInput;
     float mouseSensitivity = 1;
     bool suspended = true;
     uint64_t frameSerial = 0, updatedFrame = UINT64_MAX;
@@ -119,9 +122,7 @@ namespace gt4
     bool dealerShopVisited = false;
     bool allowedHere(const Entry& entry)
     {
-        return !excluded.count(entry.id) && (gallery == Gallery::Main ||
-            (gallery == Gallery::Grotti ? std::find(galleryOptions.models.begin(),galleryOptions.models.end(),entry.id)!=galleryOptions.models.end() :
-             (entry.kind != 6 && (galleryOptions.allowed & classBit(galleryClass(entry))) != 0)));
+        return !excluded.count(entry.id) && galleryAccepts(gallery,galleryOptions,entry);
     }
     bool canCustomizeSelected()
     {
@@ -277,6 +278,8 @@ namespace gt4
 
     void reloadSettings()
     {
+        loadCountryRegistry(std::filesystem::path(base)/L"GT4Showroom/languages");
+        updateCountryIni(ini);
         auto savedPreferences = state.ui.preferences();
         if (loadStudioPreferences(std::filesystem::path(base) / L"GT4Showroom/settings.ini", savedPreferences)) {
             state.ui.applyPreferences(savedPreferences);
@@ -286,6 +289,8 @@ namespace gt4
         galleryOptions = readGallery(ini.c_str(), gallery);
         state.allowRealBig = gallery == Gallery::Main || gallery == Gallery::Wang;
         state.ui.menu.categoriesEnabled = gallery != Gallery::Grotti;
+        state.ui.menu.dealershipContext=gallery!=Gallery::Main;
+        state.ui.dealershipLogo=readDealershipLogoSetting();
         state.ui.dealerBackground = gallery == Gallery::Main ? -1 : galleryBackground(ini.c_str(), gallery);
         state.ui.showroomStyle = galleryStyle(ini.c_str(), gallery, mainStyleChoice);
         state.ui.menu.musicChoice = galleryOptions.music;
@@ -409,6 +414,8 @@ namespace gt4
             galleryOptions = readGallery(ini.c_str(), gallery);
             state.allowRealBig = gallery == Gallery::Main || gallery == Gallery::Wang;
             state.ui.menu.categoriesEnabled = gallery != Gallery::Grotti;
+        state.ui.menu.dealershipContext=gallery!=Gallery::Main;
+        state.ui.dealershipLogo=readDealershipLogoSetting();
             state.ui.showroomStyle = galleryStyle(ini.c_str(), gallery, mainStyleChoice);
         state.ui.menu.musicChoice = galleryOptions.music;
         state.ui.mainDefaultBackground = galleryBackground(ini.c_str(), Gallery::Main);
@@ -1066,6 +1073,8 @@ namespace gt4
         hotkey = keys.vk;
         ctrl = keys.ctrl;
         openKey.blockUntilRelease();
+        loadCountryRegistry(std::filesystem::path(base)/L"GT4Showroom/languages");
+        updateCountryIni(ini);
         auto savedPreferences = state.ui.preferences();
         if (loadStudioPreferences(std::filesystem::path(base) / L"GT4Showroom/settings.ini", savedPreferences)) {
             state.ui.applyPreferences(savedPreferences);
@@ -1075,6 +1084,8 @@ namespace gt4
         galleryOptions = readGallery(ini.c_str(), gallery);
         state.allowRealBig = gallery == Gallery::Main || gallery == Gallery::Wang;
         state.ui.menu.categoriesEnabled = gallery != Gallery::Grotti;
+        state.ui.menu.dealershipContext=gallery!=Gallery::Main;
+        state.ui.dealershipLogo=readDealershipLogoSetting();
         state.ui.dealerBackground = gallery == Gallery::Main ? -1 : galleryBackground(ini.c_str(), gallery);
         state.ui.showroomStyle = galleryStyle(ini.c_str(), gallery, mainStyleChoice);
         state.ui.menu.musicChoice = galleryOptions.music;
@@ -1086,7 +1097,7 @@ namespace gt4
         diagnostics.begin(logFile);
         localization.load(std::filesystem::path(base) / L"GT4Showroom/languages");
         localization.select(state.ui.language);
-        state.ui.language = localization.selected;
+        state.ui.language = localization.selected;countryLanguage=state.ui.language;
         reloadSettings();
         for (auto& e : catalog) {
             void* mi = gta::modelInfo(e.id);
@@ -1195,6 +1206,23 @@ namespace gt4
     }
 
 #include "StudioExtras.inl"
+
+    // DealershipLogo lives in settings.ini so the keyboard showroom keeps a single settings file
+    bool readDealershipLogoSetting()
+    {
+        StudioPreferences saved;
+        const auto path=std::filesystem::path(base)/L"GT4Showroom/settings.ini";
+        return loadStudioPreferences(path,saved)&&saved.dealershipLogo;
+    }
+
+    void saveDealershipLogoSetting(bool enabled)
+    {
+        StudioPreferences saved;
+        const auto path=std::filesystem::path(base)/L"GT4Showroom/settings.ini";
+        if(!loadStudioPreferences(path,saved))saved=state.ui.preferences();
+        saved.dealershipLogo=enabled;
+        if(!saveStudioPreferences(path,saved))log("Dealership logo setting could not be saved; current session setting remains active");
+    }
 
     void saveStudioPreferences()
     {
@@ -1361,7 +1389,7 @@ namespace gt4
             reloadExclusions();
             renderer.setGalleryBrand(std::filesystem::path(base)/L"GT4Showroom",int(gallery),galleries[int(gallery)].name);
             state.dealerPurchaseEnabled = galleryChargesVehicle(gallery);
-            state.showDealerPrices = gallery == Gallery::Coutt || gallery == Gallery::Verdant || gallery == Gallery::Grotti;
+            state.showDealerPrices = galleryChargesVehicle(gallery);
             state.galleryFavorites = galleries[int(gallery)].fullService;
             openIntent.clear();
             if (!entries.empty()) {
@@ -1538,7 +1566,7 @@ namespace gt4
                                 if (error.empty() &&
                                     (spawned = game::spawn(spawnEntryModel, state.paint, error, clearance, claimingPrize,
                                         gallery == Gallery::Main ? nullptr : dealerShopVisited ? &galleries[int(gallery)].shopSpawn : &galleries[int(gallery)].spawn,
-                                        gallery == Gallery::Wang ? (dealerShopVisited ? 1.5708f : pi) : gallery == Gallery::Coutt ? .785398f : 2.51327f))) {
+                                        gallery == Gallery::Wang ? (dealerShopVisited ? 1.5708f : pi) : galleries[int(gallery)].heading))) {
                                     bool installedParts = !customized;
                                     const bool prepared = game::finalizeVehicleAppearance(
                                         spawned, spawnEntryModel, state.paint,
@@ -2205,6 +2233,8 @@ namespace gt4
         base = (directory / L"").wstring();
         logFile = assetPath(directory / L"GT4Showroom.log").wstring();
         ini = assetPath(directory / L"GT4Showroom.ini").wstring();
+        loadCountryRegistry(directory/L"GT4Showroom/languages");
+        updateCountryIni(ini);
         state.ui.audioLevels = readAudioLevels(std::filesystem::path(base) / L"GT4Showroom/audio.dat");
         auto preferences = state.ui.preferences();
         migrateStudioPreferences(std::filesystem::path(base) / L"GT4Showroom/settings.ini",
@@ -2212,7 +2242,7 @@ namespace gt4
         state.ui.applyPreferences(preferences);
         localization.load(std::filesystem::path(base) / L"GT4Showroom/languages");
         localization.select(state.ui.language);
-        state.ui.language = localization.selected;
+        state.ui.language = localization.selected;countryLanguage=state.ui.language;
         diagnostics.reload(ini, L"GT4Showroom");
         syncCaptureDiagnostics();
         diagnostics.begin(logFile);
@@ -2226,6 +2256,8 @@ namespace gt4
         HMODULE pin;
         GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
                            reinterpret_cast<LPCWSTR>(&initialize), &pin);
+        loadCountryRegistry(std::filesystem::path(base)/L"GT4Showroom/languages");
+        updateCountryIni(ini);
         auto savedPreferences = state.ui.preferences();
         if (loadStudioPreferences(std::filesystem::path(base) / L"GT4Showroom/settings.ini", savedPreferences)) {
             state.ui.applyPreferences(savedPreferences);
@@ -2235,6 +2267,8 @@ namespace gt4
         galleryOptions = readGallery(ini.c_str(), gallery);
         state.allowRealBig = gallery == Gallery::Main || gallery == Gallery::Wang;
         state.ui.menu.categoriesEnabled = gallery != Gallery::Grotti;
+        state.ui.menu.dealershipContext=gallery!=Gallery::Main;
+        state.ui.dealershipLogo=readDealershipLogoSetting();
         state.ui.dealerBackground = gallery == Gallery::Main ? -1 : galleryBackground(ini.c_str(), gallery);
         state.ui.showroomStyle = galleryStyle(ini.c_str(), gallery, mainStyleChoice);
         state.ui.menu.musicChoice = galleryOptions.music;

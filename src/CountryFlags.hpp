@@ -36,6 +36,21 @@ namespace gt4
     {
         constexpr uint32_t white = 0xFFFFFF, red = 0xC8102E, blue = 0x16366C;
         switch (country) {
+            case Country::Netherlands:return y<-.333f?0xAE1C28:y>.333f?0x21468B:white;
+            case Country::Belgium:return x<-.333f?0x111111:x>.333f?0xEF3340:0xFDDA24;
+            case Country::Romania:return x<-.333f?0x002B7F:x>.333f?0xCE1126:0xFCD116;
+            case Country::Czech:return x<-std::abs(y)?0x11457E:y<0?white:0xD7141A;
+            case Country::Spain:{
+                if(std::abs(y)>.5f)return 0xAA151B;
+                if(x>-.56f&&x<-.26f&&y>-.18f&&y<.26f){if(y>.12f&&std::abs(x+.41f)>.12f-(y-.12f)*.5f)return 0xF1BF00;return (x<-.41f)==(y<.04f)?0xAA151B:0xF4E5BD;}
+                if(x>-.56f&&x<-.26f&&y>-.25f&&y<-.20f)return 0xAA151B;
+                return 0xF1BF00;
+            }
+            case Country::Serbia:return y<-.333f?0xC6363C:y>.333f?white:0x0C4076;
+            case Country::Turkey:{
+                const float a=(x+.22f)*(x+.22f)+y*y,b=(x+.10f)*(x+.10f)+y*y;
+                return (a<.19f&&b>.135f)||flagStar(x,y,.35f,0,.22f)?white:0xE30A17;
+            }
             case Country::Unknown:
                 return white;
             case Country::Japan:

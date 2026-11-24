@@ -1,0 +1,53 @@
+# UTF-8 country names - stable COUNTRY IDs, one readable entry per line
+# IDs 24-48 are custom slots. Replace the localized Empty name to register a slot.
+# Country IDs stay fixed; INI country keys are sorted alphabetically.
+EMPTY_NAME 비어 있음
+COUNTRY0 미지정
+COUNTRY1 미국
+COUNTRY2 일본
+COUNTRY3 이탈리아
+COUNTRY4 프랑스
+COUNTRY5 영국
+COUNTRY6 독일
+COUNTRY7 스웨덴
+COUNTRY8 중국
+COUNTRY9 대한민국
+COUNTRY10 캐나다
+COUNTRY11 호주
+COUNTRY12 러시아
+COUNTRY13 덴마크
+COUNTRY14 브라질
+COUNTRY15 인도네시아
+COUNTRY16 말레이시아
+COUNTRY17 네덜란드
+COUNTRY18 벨기에
+COUNTRY19 스페인
+COUNTRY20 세르비아
+COUNTRY21 체코
+COUNTRY22 루마니아
+COUNTRY23 튀르키예
+COUNTRY24 비어 있음
+COUNTRY25 비어 있음
+COUNTRY26 비어 있음
+COUNTRY27 비어 있음
+COUNTRY28 비어 있음
+COUNTRY29 비어 있음
+COUNTRY30 비어 있음
+COUNTRY31 비어 있음
+COUNTRY32 비어 있음
+COUNTRY33 비어 있음
+COUNTRY34 비어 있음
+COUNTRY35 비어 있음
+COUNTRY36 비어 있음
+COUNTRY37 비어 있음
+COUNTRY38 비어 있음
+COUNTRY39 비어 있음
+COUNTRY40 비어 있음
+COUNTRY41 비어 있음
+COUNTRY42 비어 있음
+COUNTRY43 비어 있음
+COUNTRY44 비어 있음
+COUNTRY45 비어 있음
+COUNTRY46 비어 있음
+COUNTRY47 비어 있음
+COUNTRY48 비어 있음

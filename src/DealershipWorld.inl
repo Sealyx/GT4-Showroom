@@ -1,4 +1,4 @@
-std::array<int,std::size(galleries)> galleryBlips{{-1,-1,-1,-1,-1}};
+std::array<int,std::size(galleries)> galleryBlips=[] {std::array<int,std::size(galleries)> handles{};handles.fill(-1);return handles;}();
 std::array<bool,std::size(galleries)> galleryEnabled{};
 Gallery approaching = Gallery::Main;
 constexpr double galleryHalfFade = 1.0;
@@ -41,6 +41,17 @@ bool wangOwned()
         if (!gta::read(script,script)) break;
     }
     return false;
+}
+
+bool testDriveActive() {
+    uintptr_t script=0;if(!gta::read(0xA8B42C,script))return false;
+    for(int i=0;script&&i<256;++i){std::array<char,8> name{};if(!gta::read(script+8,name))break;if(!_strnicmp(name.data(),"STEAL2",7))return true;if(!gta::read(script,script))break;}
+    return false;
+}
+bool galleryStoryAvailable(Gallery context) {
+    if(context!=Gallery::Ottos&&context!=Gallery::AutoBahn&&context!=Gallery::Verdant)return true;
+    const float cities=reinterpret_cast<float(__cdecl*)(unsigned short)>(0x558E40)(181);
+    return galleryStoryAllows(context,cities,context==Gallery::Ottos&&testDriveActive());
 }
 
 void removeGalleryBlips()
@@ -96,7 +107,7 @@ bool galleryCapturesVehicleEntry()
         game::at<int>(0xB72914) != 0) return false;
     const V3 player = game::position(game::player());
     for (int i=1;i<int(std::size(galleries));++i) {
-        if (!galleryEnabled[i] || (Gallery(i)==Gallery::Wang && !wangOwned())) continue;
+        if (!galleryEnabled[i] || !galleryStoryAvailable(Gallery(i)) || (Gallery(i)==Gallery::Wang && !wangOwned())) continue;
         const V3 delta = player-galleries[i].entry;
         if (dot(delta,delta)<=10.f) return true;
     }
@@ -132,7 +143,7 @@ void updateGalleryMarkers(const game::OpenState& gate, bool confirm, uint64_t ti
     Gallery nearest = Gallery::Main;
     for (int i=1;i<int(std::size(galleries));++i) {
         auto& handle = galleryBlips[i];
-        if (!galleryEnabled[i]) {
+        if (!galleryEnabled[i] || !galleryStoryAvailable(Gallery(i))) {
             if (handle != -1) reinterpret_cast<void(__cdecl*)(int)>(0x587CE0)(handle);
             handle = -1;
             continue;

@@ -282,6 +282,7 @@ inline std::string ContextMenu::monitorValue(int level, int index) const
         if (branch == MenuBranch::Shadows) {
             return shadows ? "On" : "Off";
         }
+        if(branch==MenuBranch::DealershipLogo)return dealershipLogo?"On":"Off";
         if (branch == MenuBranch::BrandLogo) {
             return brandLogo ? "On" : "Off";
         }
@@ -330,6 +331,7 @@ inline std::string ContextMenu::help() const
     }
     const auto item = rows[size_t(index)];
     if(item.action==StudioAction::StudioViewType) return "Choose animated or static studio backgrounds";
+    if(item.child==MenuBranch::DealershipLogo||item.action==StudioAction::DealershipLogo)return "Dealership logo replaces the manufacturer regardless of the Manufacturer option; shared by dealerships only";
     const auto branch = item.child;
     if (branch == MenuBranch::CinematicAnimation || item.action == StudioAction::CinematicAnimation) {
         return "Pause or resume the studio background and shadow animation";

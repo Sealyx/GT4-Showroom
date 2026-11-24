@@ -31,12 +31,16 @@ void finishSettings()
             galleryOptions.music = ui.menu.musicChoice;
         }
     }
+    if(ui.menu.closeResult<0 && ui.dealershipLogo!=ui.menuDealershipLogo) {
+        ui.dealershipLogo=ui.menuDealershipLogo;
+        saveDealershipLogoSetting(ui.dealershipLogo);
+    }
     if (ui.menu.closeResult < 0) {
         ui.cinematic = ui.menuCinematic;
         ui.vehicle = ui.menuVehicle;
         const bool changed = ui.preferences() != ui.menuPreferences;
         ui.applyPreferences(ui.menuPreferences);
-        localization.select(ui.language);
+        localization.select(ui.language);countryLanguage=ui.language;
         if (changed) {
             saveStudioPreferences();
         }
@@ -74,6 +78,7 @@ void openStudioSettings(float x, float y, bool keyboard)
         const auto& entry = entries[state.selected];
         ui.menu.setVehicleKind(entry.kind, entry.classId);
     }
+    ui.menuDealershipLogo=ui.dealershipLogo;
     state.menuInspection=state.inspection;
     state.menuStudioView = state.studioView;
     ui.menuCinematic = ui.cinematic;
@@ -141,7 +146,7 @@ void requestStudioAction(StudioAction action)
     }
     if (action == StudioAction::Language) {
         if (localization.select(state.ui.menu.choice)) {
-            state.ui.language = localization.selected;
+            state.ui.language = localization.selected;countryLanguage=state.ui.language;
             state.cue = Cue::Accept;
         } else {
             state.cue = Cue::Back;
@@ -245,9 +250,9 @@ void requestStudioAction(StudioAction action)
             mask = 0;
         } else {
             if (!mask && legacy >= 0) {
-                mask = 1u << legacy;
+                mask = uint64_t(1) << legacy;
             }
-            mask ^= 1u << choice;
+            mask ^= uint64_t(1) << choice;
         }
         legacy = -1;
         ui.syncMenuPresentation();
@@ -344,6 +349,14 @@ void requestStudioAction(StudioAction action)
         state.cue = Cue::Accept;
         blockActions();
         return;
+    }
+    if(action==StudioAction::DealershipLogo) {
+        if(gallery==Gallery::Main)return;
+        const bool enabled=state.ui.menu.choice!=0;
+        saveDealershipLogoSetting(enabled);
+        state.ui.dealershipLogo=enabled;
+        state.cue=Cue::Accept;
+        state.ui.menu.dealershipLogo=state.ui.dealershipLogo;state.ui.menu.open=true;blockActions();return;
     }
     if (action == StudioAction::Shadows || action == StudioAction::CarLogo || action == StudioAction::BrandLogo ||
         action == StudioAction::DisplayModelId || action == StudioAction::DisplayModelName) {
@@ -468,6 +481,7 @@ void submitStudioSearch()
 }
 
 #include "SearchControls.inl"
+#include "CountryPickerControls.inl"
 #include "PlateControls.inl"
 
 void interaction(const PadActions& pad, float W, float H, double dt, uint64_t tick)
@@ -526,12 +540,12 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
     const bool search = searchKey.poll(key(VK_OEM_3) || pad.search, tick);
     const bool leftPress = left.poll(key(VK_LEFT) || pad.left, tick, true),
                rightPress = right.poll(key(VK_RIGHT) || pad.right, tick, true);
-    const bool modal = state.ui.menu.open || state.shop.open() || state.photo.active || state.searching ||
+    const bool modal = state.countryPicker.open || state.ui.menu.open || state.shop.open() || state.photo.active || state.searching ||
                        state.spawnReview != SpawnReview::None || state.plateOpen || state.informationOpen || state.tutorialOpen() ||
                        state.page == Page::Extras || state.selectionAdvancePending;
     const bool upPress = up.poll(key(VK_UP) || pad.up, tick, modal),
                downPress = down.poll(key(VK_DOWN) || pad.down, tick, modal);
-    const bool editingText = (state.plateOpen && state.plateEditing) || (state.searching && state.searchEditing);
+    const bool editingText = (state.countryPicker.open&&state.countryPicker.editing) || (state.plateOpen && state.plateEditing) || (state.searching && state.searchEditing);
     const bool accept = enter.poll(key(VK_RETURN) || (!editingText && key(VK_SPACE)) || pad.accept, tick),
                goBack = backspace.poll(key(VK_BACK) || pad.back, tick);
     const bool add = addFavorite.poll(pad.add, tick),
@@ -561,6 +575,42 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
                              downPress || search || favoritesPress || add || previousHotspot || nextHotspot ||
                              pauseView || togglePanels || wheel || pad.orbitX || pad.orbitY || pad.zoom;
     const bool information = informationKey.poll(key('I') || (pad.add && pad.favorites), tick);
+    if(state.countryPicker.open) {
+        auto& picker=state.countryPicker;auto& keyboard=state.ui.keyboard;
+        picker.clock=state.clock;
+        const int selectionBefore=picker.selected;
+        const float px=state.pointerX*W,py=state.pointerY*H,scale=H/720.f;const auto box=picker.panel(W,H);picker.clamp();
+        const auto closePicker=[&]{picker.open=false;keyboard.open=false;state.cue=Cue::Back;blockActions();};
+        if(context||(goBack&&pad.back)){closePicker();return;}
+        if(keyboard.open) {
+            keyboard.changeCharacters(pad.previousHotspot,pad.nextHotspot,tick);
+            if(leftPress||rightPress)keyboard.move(int(rightPress)-int(leftPress),0);if(upPress||downPress)keyboard.move(0,int(downPress)-int(upPress));
+            int action=0;if(accept&&pad.accept)action=keyboard.type(picker.query);
+            if(click)for(int i=0;i<40;++i)if(keyboard.box(W,H,i).contains(px,py)){keyboard.selected=i;action=keyboard.type(picker.query);break;}
+            if(action){keyboard.open=false;picker.editing=false;blockActions();}picker.clamp();return;
+        }
+        if(search&&pad.search){keyboard.open=true;keyboard.selected=0;picker.editing=true;blockActions();return;}
+        if(upPress||downPress||leftPress||rightPress)picker.move(int(rightPress)-int(leftPress),int(downPress)-int(upPress));
+        if(wheel){picker.firstRow=std::clamp(picker.firstRow+(game::at<uint8_t>(rawMouse+3)?-1:1),0,picker.maxRow(picker.matches().size()));picker.editing=false;}
+        const auto input=countrySearchInput.poll([](int vk){return key(vk);},tick,picker.query,picker.editing,80);
+        if(input==SearchAction::Cancel){closePicker();return;}
+        if(input==SearchAction::Submit){picker.editing=false;blockActions();}
+        if(!lDown){picker.dragging=picker.scrolling=false;}
+        if(moved&&!picker.editing){auto list=picker.matches();for(int i=picker.firstRow*4;i<int(list.size())&&i<(picker.firstRow+4)*4;++i)if(picker.cell(W,H,i).contains(px,py)){picker.selected=i;break;}}
+        if(click){
+            if(UIRect{box.x,box.y,box.w,22*scale}.contains(px,py)){picker.dragging=true;picker.dragX=px-box.x;picker.dragY=py-box.y;}
+            else if(UIRect{box.x+box.w*.5f-70*scale,box.y+box.h-34*scale,140*scale,22*scale}.contains(px,py)){closePicker();return;}
+            else if(UIRect{box.x,box.y+22*scale,box.w,34*scale}.contains(px,py)){picker.editing=true;countrySearchInput.quarantine();}
+            else if(picker.scrollTrack(W,H).contains(px,py)){picker.scrolling=true;}
+            else {auto list=picker.matches();for(int i=picker.firstRow*4;i<int(list.size())&&i<(picker.firstRow+4)*4;++i)if(picker.cell(W,H,i).contains(px,py)){picker.selected=i;picker.editing=false;assignPickerCountry(list[size_t(i)]);return;}}
+        }
+        if(picker.dragging&&lDown){picker.x=(px-picker.dragX)/W;picker.y=(py-picker.dragY)/H;}
+        if(picker.scrolling&&lDown){auto track=picker.scrollTrack(W,H);picker.firstRow=std::clamp(int(std::lround((py-track.y)/track.h*picker.maxRow(picker.matches().size()))),0,picker.maxRow(picker.matches().size()));}
+        if(accept&&!picker.editing&&!picker.dragging&&!picker.scrolling&&input!=SearchAction::Submit){auto list=picker.matches();if(!list.empty())assignPickerCountry(list[size_t(picker.selected)]);}
+        picker.clamp();
+        if(picker.selected!=selectionBefore){picker.previous=selectionBefore;picker.changedAt=state.clock;}
+        return;
+    }
     if (state.purchase.active()) {
         auto& scene = state.purchase;
         if(scene.leaving>=0) return;
@@ -1296,6 +1346,8 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         const float scale = H / 720.f;
         const float x = state.pointerX * W, y = state.pointerY * H;
         const auto& entry = entries[state.selected];
+        if(click&&!state.ui.footerHidden&&entry.country==Country::Unknown&&UIRect{46*scale,33*scale,34*scale,28*scale}.contains(x,y)){openCountryPicker();return;}
+        if(pad.add&&accept&&entry.country==Country::Unknown){openCountryPicker();return;}
         if (click && !state.ui.footerHidden && entry.country != Country::Unknown &&
             UIRect{46 * scale, 33 * scale, 34 * scale, 28 * scale}.contains(x, y)) {
             auto& ui = state.ui;

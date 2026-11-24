@@ -1,355 +1,357 @@
-# GT4 Showroom UTF-8 FXT v1
-TA4DC16C8 Showroom Settings
-TE8D285CF Cinematic Settings
-TAA867D57 Cinematic
-TE64A63FE Sort by
-TFFB0FF72 Format
-T9A73DB9B Language
-T5A05D9B5 Display
-T8D006582 Display Settings
-T6AFD176B Logos
-TE20CF4F6 Shadows
-T8DC6BC15 Reflections
-T8F63F06C Anti-Aliasing
-T0AA4B01E Ambient Occlusion
-T5EA410BD Floor
-TA27663CF Vehicle
-TCB691D8E Extras
-T869E00C1 Extras 1
-T839DFC08 Extras 2
-TCAE29992 VehFuncs Extras
-TC04CEE0E Cinematic
-T74F576AF Volume
-T584A1D74 Music
-T52F943DC SFX
-TBAFC0ABD Background
-TE5B43CF8 Color
-T2397CCE9 Lighting
-T41E389FD Animation
-T0232777F Rotation
-T25356EFD Hotspots
-T2181B996 Customization
-T97CDF498 Photo Lab
-T4B058728 Settings
-TAFF863AD Enter
-T60E47DF0 On
-T0DC6B4AA Off
-T0016AB68 Standard
-TB1DD9521 Low
-T09BE5F96 Medium
-TBE0A061D High
-TBE6BE395 Ultra
-T126BEFB6 Auto
-TB70C1321 Metric
-TD4E8F09C Imperial
-T19DC307E Default
-T47E1A68C Dark Gray
-TA37F187C Red
-T6CEB2D06 White
-T79F6AD0A Pure White
-T2B043744 Black
-TE9DD1FED Blue
-TD6696D39 Mint
-TA953C75C Green
-T8BB8038D Pink
-TD9CDEC69 Yellow
-T727B390B Orange
-TB682BA1F Purple
-TB4FE9ED4 Softbox Studio
-TE6F0C381 Ribbon Studio
-T9DF529F2 Wave Studio
-T9B534AF8 Custom Studio
-TC54C6E41 Ascending
-TD611415B Descending
-T50F97D9F Class
-T2062DC6D Countries
-T04F4FE71 Country
-TDEF5DA1F Top Speed
-T491BDB50 All Classes
-TBBCE7E06 All Countries
-TD594F3E0 Selected Classes
-T01734A36 Selected Countries
-T58DE2772 Normal
-TF6BD0D7D Poor
-T9280B647 Rich
-TC2C9D551 Executive
-TDE5C1A77 Worker
-TB9D577E0 Heavy
-T91052CC9 Taxi
-T4FA194FE Moped
-T4D71310F Motorbike
-T081BF8BA Bicycle
-T256E043A Leisure Boat
-T1B3373DE Work Boat
-TDFEC80D0 Special
-TE6D211DF Vehicle Classes
-T0FE07306 Name
-T1CF8D66D Model Name
-T917545B3 Model ID
-TDA27E88F Car Name Logo
-TCF4C4967 Manufacturer Logo
-T7897BED0 Manufacturer
-TFDB25855 Information
-T8FE1E625 Info
-T1A5EE459 Configuration
-TC646A2C9 Search
-TA04D5396 Search By
-TCDE1C7A4 Keyword
-T14412D02 Search Result
-T812E97CA Model Found
-TE718B07B Model Not Found
-TF111F78D Vehicle Information
-T82428606 Not Assigned
-T36C5F782 Unassigned
-TDA4BAAA9 Unavailable
-T1C808AF8 License Plate
-T3E142D5E Text
-T4115D182 Random
-T1738B8F0 Spawn Now
-T668FE098 Enter Cinematic
-T732553E2 Back to Cinematic
-T68155A61 Return to Cinematic
-T548FE29E Return to Cinematic
-TF9521B2B Keep this Color
-T9842C327 Switch to White
-T4782FE62 Livery Warning
-T886D3D8D Keep Cinematic
-T34CE44A5 Exit
-TC2954BC2 Back
-T35AFCA3B Cancel
-T85E4B82F OK
-TA183C9EF Confirm
-TCE00444E Search by model ID, e.g. 411.
-TC5D31CB8 Search by model name, e.g. infernus.
-T987D79CC Add model name or ID to GT4Showroom.ini
-T3EB1ED38 Enter up to 8 characters for your license plate.
-T9AB64D92 Are you sure you would like to spawn the vehicle now?
-T9B35B0DB You can enter Cinematic to inspect and customize your vehicle.
-T7ED8A2D3 This vehicle has liveries and it's recommended to switch its color to white.
-T937B2C60 Would you like the switch or would you rather keep your chosen color?
-T65AB88D7 Return to Cinematic or exit to the vehicle selection?
-T46245844 Return to your previous view or exit to the vehicle selection.
-T2182EACC Use Back to return to the previous view.
-TD63546A9 Return the wheels or body components to stock?
-T04F49AE6 Choose the parts you would like to reset.
-T3F71CDB4 Reset Wheels
-T4087BC94 Reset Components
-T66FD0C3D Wheels
-T5C6C0389 Components
-T38457DCC Suspension
-TCC2B59EC Car Wash
-T69958EF9 Spoiler
-T4324037B Front Bumper
-T70187AC2 Rear Bumper
-T0B8FDA9B Bonnet
-TAF29706F Roof
-TF596BF31 Skirts
-T67C7F535 Stock
-TA2FE7692 Original
-TC5AF67FA Providing cheap car services since 1986
-T2FEA3E00 Browse compatible body parts and preview them before fitting
-T566D5F82 Browse compatible bodywork and confirm to select
-T96275A1F Browse compatible wheels and preview their fit on your vehicle
-T4ED81135 Choose a set of wheels to suit your vehicle
-T60E50E02 Choose a wheel to install
-TC0EF9A1F Choose compatible bodywork for the vehicle
-T5D52A35C Adjust the ride height and confirm your setting
-TC834F771 Adjust the ride height and preview your suspension setting
-TC7B39C21 Adjust the ride height and see the change on the car
-T93F9D068 Wash away dirt and prepare your vehicle before taking it out
-T94D9D401 Wash the vehicle before taking it out
-TFDD62521 Wash complete
-TB20A3F58 Washing vehicle...
-T30410B73 Start the wash
-T5A9E5C62 Insufficient funds
-TB50CBD40 Install
-TFD424BA0 charged when you spawn the car
-T02FD8BF9 Choose the order of the vehicle list
-T597DF04C Choose Windows measurement units, metric units or imperial units
-TB849B5F9 Choose the menu and description language
-T884B8109 Choose a background for this vehicle category without changing other categories
-TCF283DA8 Choose the information beside the vehicle name below the thumbnails
-TD41C1B4F Choose the manufacturer and car name logo display
-TB804D572 Choose the studio surrounding the vehicle
-T8FA0E24F Change the studio background color
-TE5F5F291 Change the studio floor color
-T79CFBB1B Choose the lighting color for the animated studio
-T6F484BF6 Show interactive hotspots on the vehicle
-T0972BF1B Show or hide the vehicle reflection on the studio floor
-T8498A59E Show or hide the vehicle shadow in the studio
-TAF230D8F Switch the studio vehicle shadow on or off
-T49B9C24A Pause or resume vehicle rotation without changing the selected studio
-TF971DA69 Pause or resume vehicle rotation without changing the studio animation
-TC3F26DA9 Pause or resume the studio background and shadow animation
-T7CFC75AC Keep the studio animation and shadows moving while vehicle rotation is paused
-T888F6293 Keep the studio shadows moving while vehicle rotation is paused
-T3A0E1F67 Frame and photograph the animated studio
-TD5981429 Open TransFender to preview and select parts
-T8D805C42 Orbit and zoom around the selected vehicle
-T4395A4B2 View the vehicle in animated studios with adjustable backgrounds, reflections and camera controls
-T687D7346 Adjust the game's radio/music and sound effects volume
-TCE7D754B Drag a slider to preview and select an available extra configuration
-T55DA0B10 Preview and apply one VehFuncs extra configuration
-TFC45542D Preview and apply this native extra category
-TD64FC8B2 Show the model ID beside the vehicle name below the thumbnails
-T59415C14 Show the model name beside the vehicle name below the thumbnails
-T38887A82 Use a supplied car name logo when available
-T2378641A Use a supplied manufacturer logo when available
-T56171C1D Show vehicles from the selected class
-TC47073B3 Show vehicles from the selected country
-TDD722D25 Order vehicles by model ID
-TBA979C16 Order vehicles by name from A to Z
-TB0C1D414 Order vehicles by name from Z to A
-T9E7FB52D Order vehicles by their top speed
-T3C19D687 Switch between favorites and the complete vehicle list
-T6DF7A910 Wait for the preview to finish loading
-T4C372B85 Adjust separate floor mirrors and masked vehicle reflections; quality adapts to supported render targets
-TBF2197F7 Smooth rendered edges with capability-tested multisampling and bounded render-target memory
-T0C5DACAB Shade nearby surfaces independently of cast shadows; High and Ultra use private depth and normals when supported
-TDF450AD5 Playing
-TDE281FEB Paused
-T61AE3B47 Take Image
-T99B58508 Take Picture
-T62399752 Zoom
-TF3CDA0FC FOV
-T972B893E Roll
-T39C493B8 Angle
-T66CD9024 Ratio
-TC91EB13E Preset
-TBB0B1187 Save Preset
-TFBF649AC Load Preset
-T247E2FD9 Preset saved
-TD59920C3 Preset loaded
-T03FC2E7F Preset is empty
-TAC047322 Cannot save preset
-TCC01B1DF Return
-T3E892B4D Select
-T0AC8A560 Reset
-T36B37BD3 Paint
-TA7A7B5DA Livery
-T7C6C19ED Favorite
-T7C2C53BA Favorites
-T00C6075A Menu
-T31CBA666 Explode
-T91A73E7D Hide UI
-TB45AEF8C Pan
-T7F2C2A34 Move
-T69960BB6 Look
-T1BD13562 Height
-T99F0D384 Faster
-TD74F0A9E Adjust
-TC2C76CB1 Edit
-TCD86ACC3 Close
-T4D2D5D68 Save
-T5797EA6A Delete
-TF6F22637 Controls
-T6A3ACE0E Descriptions
-T9202088E Links
-T7EA3C788 My Twitter
-T41546712 My YouTube
-T70AD7706 Check for updates
-TF17E78EC Version 3.0
-T543FE4C1 Welcome to my Gran Turismo-inspired showroom!
-T0C8C6481 This project had been in plans and worked on for the past 3 years. I hope you enjoyed all the hard work I've poured into making this!
-TCD7ADAFE All the available controls are displayed in the footer at the bottom of the screen, please check it out if you're confused on which button does what.
-T6EB910BF You can highlight a setting to view its description in the footer, this applies to all the setting boxes!
-T966BD5C8 USA
-TA28F44FB Japan
-T3415F00C Italy
-T7B2E4BBA France
-T7DF3B621 UK
-T263D0C7E Germany
-TC06B954D Sweden
-T65E98669 Australia
-T0A0C11E8 South Korea
-T94DA8330 China
-TE6D1E3EE Spain
-T44101A4C Russia
-T64B61F6B Netherlands
-T5CF10BFB Canada
-T95EADAC2 Softbox
-TB9840B4E Ribbons
-T2C96CCF4 Wave
-T9525B78E Custom
-TE116F8F5 Type:
-T88238591 Mass:
-TE297F4AA Limit:
-T545F4307 Gears:
-T61B1BBA5 Warm White
-T15903060 Amber
-TC98F325A Cyan
-TF03BDF12 Violet
-T25BB4ED1 Colors
-T15554CF6 Cars
-TC6929D38 Spawn
-TD917ACEA Liveries
-T7D662FAF Reset Camera
-T92548670 Drag Title Bar
-TB8BEC55A Move Panel
-T05DCBF88 Keyboard/Fields
-T3C329992 NORMAL
-T38F953DD POOR
-T10440B27 RICH
-T9D215351 EXECUTIVE
-TA8BC6FD7 WORKER
-TF454ABA0 HEAVY
-TD3DF43E9 TAXI
-T4D92C8FE MOPED
-T52BAB8CF MOTORBIKE
-T5A84109A LEISURE BOAT
-T41CA219E WORK BOAT
-TA2F2D03A BICYCLE
-T5B6CFA10 SPECIAL
-T1C6FAEF4 Preset could not be saved
-T49624FAD This preset is empty
-TFB42BA5A FIND
-T8F96A703 CLOSE
-T540F0F6A DEL
-TF733B490 MODEL FOUND:
-T7EF796FB MODEL NOT FOUND
-TD1571F8E Empty
-TC832E449 No Livery
-T732A0F1B NONE
-T8F9AA8B4 Congratulations
-TED10CF71 PREPARING PRIZE CAR
-TBDEA34B5 Selection
-T4FAA1A17 Filter the vehicle list by its assigned country
-TD08F4430 Vehicles are grouped into classes according to their type and role
-T699AFFD5 Wheels reset to stock
-TCFB01CE1 Components reset to stock
-TCB92098F Some parts could not be reset
-T3486FC9D Selected Charged when you spawn the car
-T61497226 This vehicle has no compatible wheels
-TFE92889E This vehicle has no compatible components
-TC640EB47 Ride height selected
-T026AFC6B Wash already selected
-TE2A2DFBA FAVORITES
-T0A0D6422 UNASSIGNED
-T9FF8DC4E NO FAVORITES YET - UP / SQUARE ADDS A CAR
-TB91236F4 NO CARS IN THIS FILTER - RMB / SELECT CHANGES FILTER
-TF9A0F244 Preparing customization preview...
-T072DAE84 Customization preview unavailable Change the part or choose Stock
-T57F55CF7 Photo could not be saved
-T1FF93B93 Hood
-T18112C23 Hood vents
-TB2D89B78 Right hood vent
-T4B3C6E2A Side skirts
-T9F712107 Right side skirt
-TDDDA4DCC Front bull bar
-T2E565449 Rear bull bar
-TB427BD9A Headlights
-T0191355F Nitrous
-T81B5D37F Hydraulics
-TF94FFE6D Stereo
-TD3B9825F Chassis
-TFD0EF65B Front bumper
-TB62BF4E2 Rear bumper
-T0ADEB45A Accessories 1
-T09DEB2C7 Accessories 2
-T08DEB134 Accessories 3
-T94F01954 Power:
-T4566F93B Torque:
-TDAC9FBB8 R-STICK
-T9AB6C8CA L-STICK
-T6120D7CC Backspace
-T3AFBDB82 Purchase
+# GT4 Showroom UTF-8 FXT v2 - english
+SETTINGS1 Showroom Settings
+MISC1 Wash complete. Texture-painted dirt may remain.
+TRANSFENDER1 Providing cheap car services since 1986. We're not like Pay n' Spray, we provide more services at a discounted rate and we make sure we have no such things as 'Snitches'. Operating in San Andreas is already driving us insane, so please be nice to us.
+MISC2 Cinematic Settings
+SETTINGS2 Cinematic
+MISC3 Sort by
+SETTINGS3 Format
+SETTINGS4 Language
+SETTINGS5 Display
+SETTINGS6 Display Settings
+SETTINGS7 Logos
+SETTINGS8 Shadows
+SETTINGS9 Reflections
+SETTINGS10 Anti-Aliasing
+SETTINGS11 Ambient Occlusion
+SETTINGS12 Floor
+SETTINGS13 Vehicle
+SETTINGS14 Extras
+SETTINGS15 Extras 1
+SETTINGS16 Extras 2
+SETTINGS17 VehFuncs Extras
+SETTINGS18 Cinematic
+SETTINGS19 Volume
+SETTINGS20 Music
+SETTINGS21 SFX
+SETTINGS22 Background
+SETTINGS23 Color
+SETTINGS24 Lighting
+SETTINGS25 Animation
+SETTINGS26 Rotation
+SETTINGS27 Hotspots
+SETTINGS28 Customization
+SETTINGS29 Photo Lab
+SETTINGS30 Settings
+SETTINGS31 Enter
+SETTINGS32 On
+SETTINGS33 Off
+SETTINGS34 Standard
+SETTINGS35 Low
+SETTINGS36 Medium
+SETTINGS37 High
+SETTINGS38 Ultra
+SETTINGS39 Auto
+SETTINGS40 Metric
+SETTINGS41 Imperial
+SETTINGS42 Default
+MISC4 Dark Gray
+SETTINGS43 Red
+SETTINGS44 White
+MISC5 Pure White
+SETTINGS45 Black
+SETTINGS46 Blue
+MISC6 Mint
+MISC7 Green
+MISC8 Pink
+MISC9 Yellow
+MISC10 Orange
+MISC11 Purple
+MISC12 Softbox Studio
+MISC13 Ribbon Studio
+MISC14 Wave Studio
+MISC15 Custom Studio
+SETTINGS47 Ascending
+SETTINGS48 Descending
+SETTINGS49 Class
+SETTINGS50 Countries
+SETTINGS51 Country
+SETTINGS52 Top Speed
+SETTINGS53 All Classes
+SETTINGS54 All Countries
+SETTINGS55 Selected Classes
+SETTINGS56 Selected Countries
+SETTINGS57 Normal
+SETTINGS58 Poor
+SETTINGS59 Rich
+SETTINGS60 Executive
+SETTINGS61 Worker
+SETTINGS62 Heavy
+SETTINGS63 Taxi
+SETTINGS64 Moped
+SETTINGS65 Motorbike
+SETTINGS66 Bicycle
+SETTINGS67 Leisure Boat
+SETTINGS68 Work Boat
+SETTINGS69 Special
+SETTINGS70 Vehicle Classes
+SETTINGS71 Name
+SETTINGS72 Model Name
+SETTINGS73 Model ID
+SETTINGS74 Car Name Logo
+SETTINGS75 Manufacturer Logo
+SETTINGS76 Manufacturer
+MISC16 Information
+MISC17 Info
+SEARCH1 Configuration
+PICKER1 Search
+SEARCH2 Search By
+SEARCH3 Keyword
+SEARCH4 Search Result
+SEARCH5 Model Found
+SEARCH6 Model Not Found
+SEARCH7 Vehicle Information
+SEARCH8 Not Assigned
+SETTINGS77 Unassigned
+MISC18 Unavailable
+SEARCH9 License Plate
+MISC19 Text
+MISC20 Random
+MISC21 Spawn Now
+MISC22 Enter Cinematic
+MISC23 Back to Cinematic
+MISC24 Return to Cinematic
+MISC25 Return to Cinematic
+MISC26 Keep this Color
+MISC27 Switch to White
+MISC28 Livery Warning
+MISC29 Keep Cinematic
+MISC30 Exit
+SETTINGS78 Back
+MISC31 Cancel
+MISC32 OK
+DEALER1 Confirm
+SEARCH10 Search by model ID, e.g. 411.
+SEARCH11 Search by model name, e.g. infernus.
+SEARCH12 Click the white icon on the top left to assign it.
+SEARCH13 Enter up to 8 characters for your license plate.
+MISC33 Are you sure you would like to spawn the vehicle now?
+MISC34 You can enter Cinematic to inspect and customize your vehicle.
+MISC35 This vehicle has liveries and it's recommended to switch its color to white.
+MISC36 Would you like the switch or would you rather keep your chosen color?
+MISC37 Return to Cinematic or exit to the vehicle selection?
+MISC38 Return to your previous view or exit to the vehicle selection.
+MISC39 Use Back to return to the previous view.
+MISC40 Return the wheels or body components to stock?
+MISC41 Choose the parts you would like to reset.
+MISC42 Reset Wheels
+MISC43 Reset Components
+MISC44 Wheels
+MISC45 Components
+INFO1 Suspension
+INFO2 Car Wash
+MISC46 Spoiler
+MISC47 Front Bumper
+MISC48 Rear Bumper
+CINEMATIC1 Bonnet
+RENDERER1 Roof
+MISC49 Skirts
+MISC50 Stock
+MISC51 Original
+TRANSFENDER2 Providing cheap car services since 1986
+TRANSFENDER3 Browse compatible body parts and preview them before fitting
+TRANSFENDER4 Browse compatible bodywork and confirm to select
+TRANSFENDER5 Browse compatible wheels and preview their fit on your vehicle
+TRANSFENDER6 Choose a set of wheels to suit your vehicle
+TRANSFENDER7 Choose a wheel to install
+TRANSFENDER8 Choose compatible bodywork for the vehicle
+TRANSFENDER9 Adjust the ride height and confirm your setting
+TRANSFENDER10 Adjust the ride height and preview your suspension setting
+TRANSFENDER11 Adjust the ride height and see the change on the car
+TRANSFENDER12 Wash away dirt and prepare your vehicle before taking it out
+TRANSFENDER13 Wash the vehicle before taking it out
+MISC52 Wash complete
+TRANSFENDER14 Washing vehicle...
+TRANSFENDER15 Start the wash
+MISC53 Insufficient funds
+MISC54 Install
+TRANSFENDER16 charged when you spawn the car
+SETTINGS79 Choose the order of the vehicle list
+SETTINGS80 Choose Windows measurement units, metric units or imperial units
+SETTINGS81 Choose the menu and description language
+MISC55 Choose a background for this vehicle category without changing other categories
+SETTINGS82 Choose the information beside the vehicle name below the thumbnails
+SETTINGS83 Choose the manufacturer and car name logo display
+SETTINGS84 Choose the studio surrounding the vehicle
+SETTINGS85 Change the studio background color
+SETTINGS86 Change the studio floor color
+SETTINGS87 Choose the lighting color for the animated studio
+SETTINGS88 Show interactive hotspots on the vehicle
+SETTINGS89 Show or hide the vehicle reflection on the studio floor
+SETTINGS90 Show or hide the vehicle shadow in the studio
+SETTINGS91 Switch the studio vehicle shadow on or off
+SETTINGS92 Pause or resume vehicle rotation without changing the selected studio
+SETTINGS93 Pause or resume vehicle rotation without changing the studio animation
+SETTINGS94 Pause or resume the studio background and shadow animation
+SETTINGS95 Keep the studio animation and shadows moving while vehicle rotation is paused
+SETTINGS96 Keep the studio shadows moving while vehicle rotation is paused
+SETTINGS97 Frame and photograph the animated studio
+SETTINGS98 Open TransFender to preview and select parts
+SETTINGS99 Orbit and zoom around the selected vehicle
+MISC56 View the vehicle in animated studios with adjustable backgrounds, reflections and camera controls
+SETTINGS100 Adjust the game's radio/music and sound effects volume
+SETTINGS101 Drag a slider to preview and select an available extra configuration
+SETTINGS102 Preview and apply one VehFuncs extra configuration
+SETTINGS103 Preview and apply this native extra category
+SETTINGS104 Show the model ID beside the vehicle name below the thumbnails
+SETTINGS105 Show the model name beside the vehicle name below the thumbnails
+SETTINGS106 Use a supplied car name logo when available
+SETTINGS107 Use a supplied manufacturer logo when available
+SETTINGS108 Show vehicles from the selected class
+SETTINGS109 Show vehicles from the selected country
+SETTINGS110 Order vehicles by model ID
+SETTINGS111 Order vehicles by name from A to Z
+SETTINGS112 Order vehicles by name from Z to A
+SETTINGS113 Order vehicles by their top speed
+SETTINGS114 Switch between favorites and the complete vehicle list
+TRANSFENDER17 Wait for the preview to finish loading
+SETTINGS115 Adjust separate floor mirrors and masked vehicle reflections; quality adapts to supported render targets
+SETTINGS116 Smooth rendered edges with capability-tested multisampling and bounded render-target memory
+SETTINGS117 Shade nearby surfaces independently of cast shadows; High and Ultra use private depth and normals when supported
+SETTINGS118 Playing
+SETTINGS119 Paused
+MISC57 Take Image
+MISC58 Take Picture
+MISC59 Zoom
+MISC60 FOV
+MISC61 Roll
+MISC62 Angle
+RENDERER2 Ratio
+SETTINGS120 Preset
+RENDERER3 Save Preset
+RENDERER4 Load Preset
+SETTINGS121 Preset saved
+SETTINGS122 Preset loaded
+MISC63 Preset is empty
+MISC64 Cannot save preset
+MISC65 Return
+SETTINGS123 Select
+MISC66 Reset
+MISC67 Paint
+MISC68 Livery
+SETTINGS124 Favorite
+SETTINGS125 Favorites
+SETTINGS126 Menu
+RENDERER5 Explode
+MISC69 Hide UI
+SETTINGS127 Pan
+SETTINGS128 Move
+MISC70 Look
+SETTINGS129 Height
+MISC71 Faster
+INFO3 Adjust
+SETTINGS130 Edit
+MISC72 Close
+DEALER2 Save
+MISC73 Delete
+MISC74 Controls
+INFO4 Descriptions
+MISC75 Links
+INFO5 My Twitter
+INFO6 My YouTube
+INFO7 Check for updates
+INFO8 Version 3.0
+INFO9 Welcome to my Gran Turismo-inspired showroom!
+INFO10 This project had been in plans and worked on for the past 3 years. I hope you enjoyed all the hard work I've poured into making this!
+INFO11 All the available controls are displayed in the footer at the bottom of the screen, please check it out if you're confused on which button does what.
+INFO12 You can highlight a setting to view its description in the footer, this applies to all the setting boxes!
+MISC76 USA
+SETTINGS131 Japan
+MISC77 Italy
+MISC78 France
+MISC79 UK
+MISC80 Germany
+MISC81 Sweden
+MISC82 Australia
+MISC83 South Korea
+MISC84 China
+MISC85 Spain
+MISC86 Russia
+MISC87 Netherlands
+MISC88 Canada
+SETTINGS132 Softbox
+MISC89 Ribbons
+MISC90 Wave
+SETTINGS133 Custom
+MISC91 Type:
+MISC92 Mass:
+RENDERER6 Limit:
+MISC93 Gears:
+MISC94 Warm White
+MISC95 Amber
+MISC96 Cyan
+MISC97 Violet
+MISC98 Colors
+RENDERER7 Vehicles
+MISC99 Spawn
+MISC100 Liveries
+MISC101 Reset Camera
+MISC102 Drag Title Bar
+MISC103 Move Panel
+MISC104 Keyboard/Fields
+MISC105 NORMAL
+SHOWROOM1 POOR
+SHOWROOM2 RICH
+SHOWROOM3 EXECUTIVE
+SHOWROOM4 WORKER
+PRIZE1 HEAVY
+SHOWROOM5 TAXI
+SHOWROOM6 MOPED
+SHOWROOM7 MOTORBIKE
+SHOWROOM8 LEISURE BOAT
+SHOWROOM9 WORK BOAT
+SHOWROOM10 BICYCLE
+SHOWROOM11 SPECIAL
+SETTINGS134 Preset could not be saved
+SETTINGS135 This preset is empty
+SETTINGS136 FIND
+SETTINGS137 CLOSE
+SETTINGS138 DEL
+SHOWROOM12 MODEL FOUND:
+SHOWROOM13 MODEL NOT FOUND
+MISC106 Empty
+MISC107 No Livery
+MISC108 NONE
+RENDERER8 Congratulations
+RENDERER9 PREPARING PRIZE CAR
+SETTINGS139 Selection
+RENDERER10 Filter the vehicle list by its assigned country
+RENDERER11 Vehicles are grouped into classes according to their type and role
+TRANSFENDER18 Wheels reset to stock
+TRANSFENDER19 Components reset to stock
+TRANSFENDER20 Some parts could not be reset
+TRANSFENDER21 Selected Charged when you spawn the car
+TRANSFENDER22 This vehicle has no compatible wheels
+TRANSFENDER23 This vehicle has no compatible components
+TRANSFENDER24 Ride height selected
+TRANSFENDER25 Wash already selected
+RENDERER12 FAVORITES
+RENDERER13 UNASSIGNED
+MISC109 NO FAVORITES YET - UP / SQUARE ADDS A CAR
+RENDERER14 NO CARS IN THIS FILTER - RMB / SELECT CHANGES FILTER
+MISC110 Preparing customization preview...
+MISC111 Customization preview unavailable Change the part or choose Stock
+MISC112 Photo could not be saved
+CINEMATIC2 Hood
+MISC113 Hood vents
+MISC114 Right hood vent
+MISC115 Side skirts
+MISC116 Right side skirt
+MISC117 Front bull bar
+MISC118 Rear bull bar
+MISC119 Headlights
+MISC120 Nitrous
+MISC121 Hydraulics
+MISC122 Stereo
+MISC123 Chassis
+MISC124 Front bumper
+MISC125 Rear bumper
+MISC126 Accessories 1
+MISC127 Accessories 2
+MISC128 Accessories 3
+RENDERER15 Power:
+RENDERER16 Torque:
+MISC129 R-STICK
+MISC130 L-STICK
+INFO13 Backspace
+MISC131 Purchase

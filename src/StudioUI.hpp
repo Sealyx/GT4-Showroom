@@ -42,6 +42,7 @@ namespace gt4
         Shadows,
         CarLogo,
         BrandLogo,
+        DealershipLogo,
         Extra1,
         Extra2,
         VehFuncsExtra,
@@ -172,6 +173,7 @@ namespace gt4
         Shadows,
         Logos,
         BrandLogo,
+        DealershipLogo,
         CarLogo,
         Extras,
         Extra1,
@@ -274,6 +276,7 @@ namespace gt4
         std::array<bool, 3> monitorPlaced{};
         double monitorChanged = 0;
         int closeResult = 0, sliderDrag = -1;
+        bool dealershipContext=false, dealershipLogo=false;
         bool sliderChanged = false, typeChanged=false;
         int typeSide=1;
         std::array<int, 2> volume{{64, 64}};
@@ -302,7 +305,7 @@ namespace gt4
         bool shadows = true, carLogo = false, brandLogo = false,
              displayModelId = false, displayModelName = false;
         int order = 0, countryFilter = -1, classFilter = -1;
-        uint32_t countryMask = 0, classMask = 0;
+        uint64_t countryMask = 0, classMask = 0;
         int musicChoice = 1;
         int unitFormat = 0, backgroundChoice = 0, styleChoice = 0;
         bool japaneseCategory = false, bikeCategory = false;
@@ -372,7 +375,7 @@ namespace gt4
             counts = c;
             available = {-1};
             for (size_t i = 0; i < countryCount; ++i) {
-                if (c[i]) {
+                if (c[i] && countryRegistered[i]) {
                     available.push_back(int(i));
                 }
             }
@@ -402,7 +405,7 @@ namespace gt4
             classCounts = c;
             classes = {-1};
             for (size_t i = 0; i < classCount; ++i) {
-                if (c[i]) {
+                if (c[i] && countryRegistered[i]) {
                     classes.push_back(int(i));
                 }
             }
@@ -597,7 +600,7 @@ namespace gt4
                         if (c >= 0) {
                             label += "  (" + std::to_string(counts[size_t(c)]) + ")";
                         }
-                        r.push_back({label, StudioAction::FilterCountry, c, MenuBranch::None, (countryMask ? (c >= 0 && (countryMask & (1u << c))) : countryFilter == c)});
+                        r.push_back({label, StudioAction::FilterCountry, c, MenuBranch::None, (countryMask ? (c >= 0 && (countryMask & (uint64_t(1) << c))) : countryFilter == c)});
                     }
                     return r;
                 }
@@ -608,7 +611,7 @@ namespace gt4
                         if (c >= 0) {
                             label += "  (" + std::to_string(classCounts[size_t(c)]) + ")";
                         }
-                        r.push_back({label, StudioAction::FilterClass, c, MenuBranch::None, (classMask ? (c >= 0 && (classMask & (1u << c))) : classFilter == c)});
+                        r.push_back({label, StudioAction::FilterClass, c, MenuBranch::None, (classMask ? (c >= 0 && (classMask & (uint64_t(1) << c))) : classFilter == c)});
                     }
                     return r;
                 }
@@ -673,9 +676,11 @@ namespace gt4
                 case MenuBranch::Shadows:
                     return {{"On", StudioAction::Shadows, 1, MenuBranch::None, shadows},
                             {"Off", StudioAction::Shadows, 0, MenuBranch::None, !shadows}};
-                case MenuBranch::Logos:
-                    return {{"Manufacturer", StudioAction::None, -1, MenuBranch::BrandLogo, brandLogo},
-                            {"Name", StudioAction::None, -1, MenuBranch::CarLogo, carLogo}};
+                case MenuBranch::Logos: {
+                    std::vector<MenuItem> rows{{"Manufacturer",StudioAction::None,-1,MenuBranch::BrandLogo,brandLogo},{"Name",StudioAction::None,-1,MenuBranch::CarLogo,carLogo}};
+                    if(dealershipContext)rows.push_back({"Dealership",StudioAction::None,-1,MenuBranch::DealershipLogo,dealershipLogo});return rows;
+                }
+                case MenuBranch::DealershipLogo:return {{"On",StudioAction::DealershipLogo,1,MenuBranch::None,dealershipLogo},{"Off",StudioAction::DealershipLogo,0,MenuBranch::None,!dealershipLogo}};
                 case MenuBranch::BrandLogo:
                     return {{"On", StudioAction::BrandLogo, 1, MenuBranch::None, brandLogo},
                             {"Off", StudioAction::BrandLogo, 0, MenuBranch::None, !brandLogo}};
@@ -1089,8 +1094,9 @@ namespace gt4
         ViewTransition transition;
         bool favoritesOnly = false, controllerUsed = false, footerHidden = false;
         int sortMode = 5, countryFilter = -1, classFilter = -1;
-        uint32_t countryMask = 0, classMask = 0;
+        uint64_t countryMask = 0, classMask = 0;
         std::wstring menuDealerRaw;
+        bool dealershipLogo=false,menuDealershipLogo=false;
         bool dealerBackgroundWritten = false, menuStyleEdited = false;
         int mainDefaultBackground=DefaultBackground;
         int dealerBackground = -1, menuDealerBackground = -1;
@@ -1157,6 +1163,7 @@ namespace gt4
 
         void syncMenuPresentation()
         {
+            menu.dealershipLogo=dealershipLogo;
             menu.backgroundChoice = backgroundStyle();
             menu.styleChoice = showroomStyle;
             menu.floorReflections = floorReflections();
@@ -1222,9 +1229,9 @@ namespace gt4
         bool accepts(Country country, int category) const
         {
             const int index = classIndex(category);
-            const bool hasCountry = countryMask ? (countryMask & (1u << unsigned(country))) != 0
+            const bool hasCountry = countryMask ? (countryMask & (uint64_t(1) << unsigned(country))) != 0
                                                : countryFilter < 0 || countryFilter == int(country);
-            const bool hasClass = classMask ? (classMask & (1u << index)) != 0
+            const bool hasClass = classMask ? (classMask & (uint64_t(1) << index)) != 0
                                            : classFilter < 0 || classFilter == index;
             return hasCountry && hasClass;
         }
@@ -1232,7 +1239,7 @@ namespace gt4
         double pointerMoved = 0;
         bool countryShortcut = false, shortcutPresentationPriority = false;
         int shortcutCountry = -1, shortcutOrder = 5, shortcutModel = -1;
-        uint32_t shortcutMask = 0;
+        uint64_t shortcutMask = 0;
 
         void beginCountryShortcut(Country country, int model)
         {

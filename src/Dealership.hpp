@@ -8,7 +8,7 @@
 #include <cerrno>
 
 namespace gt4 {
-enum class Gallery { Main, Wang, Coutt, Verdant, Grotti };
+enum class Gallery { Main, Wang, Coutt, Verdant, Grotti, Ottos, AutoBahn };
 inline bool galleryChargesVehicle(Gallery context) {
     return context != Gallery::Main && context != Gallery::Wang;
 }
@@ -20,18 +20,27 @@ struct GalleryProfile {
     int music;
     unsigned classes;
     bool fullService;
+    float heading;
 };
 enum GalleryClass { Poor, Normal, Rich, Executive, Taxi, Moped, Motorbikes, Bikes, Big, Worker, Planes, Helicopters, Boats, RC, Special };
 constexpr unsigned classBit(GalleryClass group) { return 1u << unsigned(group); }
 inline constexpr unsigned basicCars = classBit(Poor) | classBit(Normal);
 inline constexpr unsigned twoWheels = classBit(Moped) | classBit(Motorbikes) | classBit(Bikes);
 inline constexpr GalleryProfile galleries[]{
-    {L"GT4Showroom","San Andreas Motor Collection","", {}, {}, {}, 1, 0x7fff, true},
-    {L"WangCars","Wang Cars","Press ~k~~VEHICLE_ENTER_EXIT~ to view the Wang Cars vehicle gallery.", {-1954,293,41},{-1928,269,40},{-1937,231,34},2,basicCars|classBit(Rich)|classBit(Moped)|classBit(Motorbikes),true},
-    {L"CouttandSchutz","Coutt and Schutz","Press ~k~~VEHICLE_ENTER_EXIT~ to view the Coutt and Schutz gallery.",{2132,-1148,24},{2132,-1128,25},{2132,-1128,25},2,basicCars,false},
-    {L"VerdantBikes","Verdant Bikes","Press ~k~~VEHICLE_ENTER_EXIT~ to view the Verdant Bikes gallery.",{538,2364,30},{538,2353,31},{538,2353,31},3,twoWheels,false},
-    {L"GrottiDealership","Grotti Dealership","Press ~k~~VEHICLE_ENTER_EXIT~ to view the Grotti Dealership gallery.",{543,-1292,17},{529,-1321,17},{529,-1321,17},2,0,false}
+    {L"GT4Showroom","San Andreas Motor Collection","", {}, {}, {}, 1, 0x7fff, true, 0.f},
+    {L"WangCars","Wang Cars","Press ~k~~VEHICLE_ENTER_EXIT~ to view the Wang Cars vehicle gallery.", {-1954,293,41},{-1928,269,40},{-1937,231,34},2,basicCars|classBit(Rich)|classBit(Moped)|classBit(Motorbikes),true,pi},
+    {L"CouttandSchutz","Coutt and Schutz","Press ~k~~VEHICLE_ENTER_EXIT~ to view the Coutt and Schutz gallery.",{2132,-1148,24},{2132,-1128,25},{2132,-1128,25},2,basicCars,false,.785398f},
+    {L"VerdantBikes","Verdant Bikes","Press ~k~~VEHICLE_ENTER_EXIT~ to view the Verdant Bikes gallery.",{538,2364,30},{538,2353,31},{538,2353,31},3,twoWheels,false,2.51327f},
+    {L"GrottiDealership","Grotti Showroom","Press ~k~~VEHICLE_ENTER_EXIT~ to view the Grotti Dealership gallery.",{543,-1292,17},{529,-1321,17},{529,-1321,17},2,0,false,2.51327f},
+    {L"OttosAutos","Otto's Autos","Press ~k~~VEHICLE_ENTER_EXIT~ to view Otto's Autos' vehicle gallery.",{-1660,1209,21},{-1648,1223,6},{-1648,1223,6},2,classBit(Rich)|classBit(Executive)|classBit(Motorbikes),false,-2.4279f},
+    {L"AutoBahn","Auto Bahn","Press ~k~~VEHICLE_ENTER_EXIT~ to view Auto Bahn's vehicle gallery.",{2200,1391,10},{2168,1409,10},{2168,1409,10},2,0x7fff,false,-1.06f}
 };
+inline int galleryLogoNumber(Gallery gallery) {constexpr int slots[]{0,1,3,6,4,2,5};return slots[int(gallery)];}
+inline bool galleryStoryAllows(Gallery gallery,float cities,bool testDrive) {
+    if(gallery==Gallery::Ottos)return cities>=1.f&&!testDrive;
+    if(gallery==Gallery::AutoBahn||gallery==Gallery::Verdant)return cities>=2.f;
+    return true;
+}
 inline GalleryClass galleryClass(const Entry& e) {
     switch(e.id) {
         case 441: case 464: case 465: case 501: case 564: case 594: return RC;
@@ -58,7 +67,7 @@ inline int galleryStyle(const wchar_t* ini, Gallery gallery, int mainPreference)
     return !_wcsicmp(value,L"Prologue") ? 1 : preset;
 }
 inline int galleryBackground(const wchar_t* ini, Gallery gallery) {
-    const int fallback = gallery == Gallery::Coutt ? AgedConcreteBackground :
+    const int fallback = gallery == Gallery::Ottos ? WeatheredSlateBackground : gallery == Gallery::AutoBahn ? VerticalBrushedBackground : gallery == Gallery::Coutt ? AgedConcreteBackground :
                          gallery == Gallery::Verdant ? DarkGrayBackground : gallery == Gallery::Grotti ? RedBackground : DefaultBackground;
     wchar_t value[128]{};
     GetPrivateProfileStringW(galleries[int(gallery)].section, L"Background", L"", value, 128, ini);
@@ -78,6 +87,7 @@ struct GalleryOptions {
     bool enabled = true;
     unsigned allowed = 0;
     int music = 1;
+    uint64_t countries=0;
     std::vector<int> models;
 };
 inline GalleryOptions readGallery(const wchar_t* ini, Gallery gallery) {
@@ -88,6 +98,11 @@ inline GalleryOptions readGallery(const wchar_t* ini, Gallery gallery) {
     options.music = std::clamp(int(GetPrivateProfileIntW(profile.section,L"Music",profile.music,ini)),1,3);
     if (gallery == Gallery::Main) return options;
     options.enabled = GetPrivateProfileIntW(profile.section,L"Enable",1,ini) != 0;
+    if(gallery==Gallery::AutoBahn) {
+        if(GetPrivateProfileIntW(profile.section,L"AllCountries",0,ini)) options.countries=allCountryBits;
+        else for(auto country:{Country::UK,Country::Germany,Country::Netherlands,Country::Belgium,Country::Italy,Country::Czech})options.countries|=uint64_t(1)<<unsigned(country);
+        return options;
+    }
     if (gallery == Gallery::Grotti) {
         std::vector<wchar_t> list(32768);
         GetPrivateProfileStringW(profile.section,L"Models",L"415,451",list.data(),DWORD(list.size()),ini);
@@ -104,12 +119,20 @@ inline GalleryOptions readGallery(const wchar_t* ini, Gallery gallery) {
         }
         return options;
     }
+    if(gallery==Gallery::Ottos)return options;
     if (GetPrivateProfileIntW(profile.section,L"AllClass",0,ini)) { options.allowed = 0x7fff; return options; }
     constexpr const wchar_t* keys[]{L"EnablePoor",L"EnableNormal",L"EnableRich",L"EnableExecutive",L"EnableTaxi",L"EnableMoped",L"EnableMotorbikes",L"EnableBikes",L"EnableBig",L"EnableWorker",L"EnablePlanes",L"EnableHelicopters",L"EnableBoats",L"EnableRC",L"EnableSpecial"};
     for (unsigned i=0;i<std::size(keys);++i) {
         if (!(profile.classes & (1u<<i)) && GetPrivateProfileIntW(profile.section,keys[i],0,ini)) options.allowed |= 1u<<i;
     }
     return options;
+}
+inline bool galleryAccepts(Gallery context,const GalleryOptions& options,const Entry& entry) {
+    if(context==Gallery::Main)return true;
+    if(context==Gallery::Grotti)return std::find(options.models.begin(),options.models.end(),entry.id)!=options.models.end();
+    if(entry.kind==6)return false;
+    if(context==Gallery::AutoBahn)return (options.countries&(uint64_t(1)<<unsigned(entry.country)))!=0;
+    return (options.allowed&classBit(galleryClass(entry)))!=0;
 }
 inline bool galleryCustomizes(Gallery context,const Entry& entry) {
     if (!galleries[int(context)].fullService || entry.kind==11) return false;

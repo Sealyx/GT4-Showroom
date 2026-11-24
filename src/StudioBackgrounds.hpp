@@ -28,18 +28,18 @@ namespace gt4
         return style == 0 && (background == DefaultBackground || background == DarkGrayBackground || background == IndustrialGarageBackground) ? 0 : 3;
     }
 
-    inline bool studioCountrySelected(uint32_t mask, int filter, Country country)
+    inline bool studioCountrySelected(uint64_t mask, int filter, Country country)
     {
-        return mask ? mask == (1u << unsigned(country)) : filter == int(country);
+        return mask ? mask == (uint64_t(1) << unsigned(country)) : filter == int(country);
     }
 
     inline bool studioBikeSelected(uint32_t mask, int filter)
     {
-        constexpr uint32_t bikes = (1u << 7) | (1u << 8) | (1u << 11);
+        constexpr uint32_t bikes = (uint64_t(1) << 7) | (uint64_t(1) << 8) | (uint64_t(1) << 11);
         return mask ? (mask & ~bikes) == 0
-                    : filter >= 0 && filter <= 12 && (bikes & (1u << filter)) != 0;
+                    : filter >= 0 && filter <= 12 && (bikes & (uint64_t(1) << filter)) != 0;
     }
-    inline int studioBackgroundForFilters(uint32_t countryMask, int countryFilter, uint32_t classMask, int classFilter)
+    inline int studioBackgroundForFilters(uint64_t countryMask, int countryFilter, uint32_t classMask, int classFilter)
     {
         if (studioBikeSelected(classMask, classFilter)) { return DarkGrayBackground; }
         if (studioCountrySelected(countryMask, countryFilter, Country::Japan)) { return RedBackground; }

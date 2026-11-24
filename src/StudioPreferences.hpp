@@ -51,19 +51,19 @@ namespace gt4
         if(key==favoritesPresentationContext)return true;
         for(const auto country:{Country::Japan,Country::Germany,Country::SouthKorea,Country::UK,Country::Australia,Country::Russia,Country::France,Country::Italy,Country::China,Country::Brazil,Country::Sweden,Country::USA,Country::Denmark,Country::Malaysia,Country::Indonesia})
             if(key==(uint64_t(1u)<<unsigned(country)))return true;
-        for(unsigned category:{7u,8u,11u})if(key==(uint64_t(1u)<<(32+category)))return true;
+        for(unsigned category:{7u,8u,11u})if(key==(uint64_t(1u)<<(countryContextBits+category)))return true;
         return false;
     }
 
-    inline uint64_t presentationContextKey(uint32_t countries, int country, uint32_t classes, int category)
+    inline uint64_t presentationContextKey(uint64_t countries, int country, uint64_t classes, int category)
     {
-        const auto normalized = [](uint32_t mask, int selected, unsigned count) {
-            const uint32_t all = ~uint32_t(0) >> (32 - count);
-            mask = mask ? mask : selected >= 0 && unsigned(selected) < count ? 1u << selected : 0;
-            return mask == all ? 0u : mask;
+        const auto normalized = [](uint64_t mask, int selected, unsigned count) {
+            const uint64_t all = (uint64_t(1)<<count)-1;
+            mask = mask ? mask : selected >= 0 && unsigned(selected) < count ? uint64_t(1) << selected : 0;
+            return mask == all ? uint64_t(0) : mask;
         };
         return uint64_t(normalized(countries, country, countryCount)) |
-               (uint64_t(normalized(classes, category, 13)) << 32);
+               (uint64_t(normalized(classes, category, 13)) << countryContextBits);
     }
 
     struct PresentationContext
@@ -93,7 +93,7 @@ namespace gt4
             auto& context=item->second;
             if(predefinedPresentationContext(item->first)) {
                 const auto key=item->first;
-                if(context.backgroundSelection==(key==favoritesPresentationContext?IndustrialGarageBackground:studioBackgroundForFilters(uint32_t(key),-1,uint32_t(key>>32),-1)))
+                if(context.backgroundSelection==(key==favoritesPresentationContext?IndustrialGarageBackground:studioBackgroundForFilters(key & allCountryBits,-1,uint32_t(key>>countryContextBits),-1)))
                     context.backgroundOverridden=false;
                 if(!context.backgroundOverridden&&samePresentationPresets(context.presets,{})) {
                     item=contexts.erase(item);continue;
@@ -108,7 +108,7 @@ namespace gt4
     struct StudioPreferences
     {
         int sortMode = 5, countryFilter = -1, classFilter = -1;
-        uint32_t countryMask = 0, classMask = 0;
+        uint64_t countryMask = 0, classMask = 0;
         int backgroundSelection = 0, showroomStyle = 0;
         int unitFormat = 0;
         int antialiasing = 2, ambientOcclusion = 2;
@@ -118,7 +118,7 @@ namespace gt4
         std::map<uint64_t, PresentationContext> contexts;
         bool countryPresentationPriority = false;
         int language = 0;
-        bool carLogo = false, brandLogo = false, displayModelId = false, displayModelName = false;
+        bool carLogo = false, brandLogo = false, dealershipLogo = false, displayModelId = false, displayModelName = false;
         // bytes keep existing settings readable. playback uses gta's sliders
         AudioLevels audio;
 
@@ -127,8 +127,8 @@ namespace gt4
             return contexts.size() <= 4096 &&
                    std::all_of(contexts.begin(), contexts.end(), [](const auto& item) {
                        const uint64_t key = item.first;
-                       return key == favoritesPresentationContext ? item.second.valid() : key != 0 && presentationContextKey(uint32_t(key), -1, uint32_t(key >> 32), -1) == key &&
-                           (uint32_t(key) >> countryCount) == 0 && (key >> 45) == 0 && item.second.valid();
+                       return key == favoritesPresentationContext ? item.second.valid() : key != 0 && presentationContextKey(key & allCountryBits, -1, uint32_t(key >> countryContextBits), -1) == key &&
+                           (key >> (countryContextBits+13)) == 0 && item.second.valid();
                    }) &&
                    showroomStyle >= 0 && showroomStyle < studioStyleCount && backgroundSelection >= 0 && backgroundSelection < studioBackgroundCount && sortMode >= 0 && sortMode <= 5 && countryFilter >= -1 && countryFilter < int(countryCount) &&
                    classFilter >= -1 && classFilter <= 12 && unitFormat >= 0 && unitFormat <= 2 &&
@@ -153,7 +153,7 @@ namespace gt4
                    backgroundOverridden == other.backgroundOverridden &&
                    countryPresentationPriority == other.countryPresentationPriority &&
                    canonicalPresentationContexts(contexts) == canonicalPresentationContexts(other.contexts) && samePresentationPresets(presets,other.presets) && sortMode == other.sortMode && countryFilter == other.countryFilter &&
-                   classFilter == other.classFilter && carLogo == other.carLogo && brandLogo == other.brandLogo &&
+                   classFilter == other.classFilter && carLogo == other.carLogo && brandLogo == other.brandLogo && dealershipLogo == other.dealershipLogo &&
                    displayModelId == other.displayModelId && displayModelName == other.displayModelName &&
                    audio == other.audio && countryMask == other.countryMask && classMask == other.classMask &&
                    unitFormat == other.unitFormat &&
@@ -170,7 +170,7 @@ namespace gt4
     inline uint64_t preferredPresentationContext(uint64_t key, bool countryPriority)
     {
         if(key==favoritesPresentationContext)return key;
-        const uint64_t countries=uint32_t(key), classes=key&0xFFFFFFFF00000000ull;
+        const uint64_t countries=key&allCountryBits,classes=key&~allCountryBits;
         return countries && classes ? (countryPriority ? countries : classes) : key;
     }
 
@@ -183,7 +183,7 @@ namespace gt4
         const auto fallback=settings.contexts.find(fallbackKey);
         if(fallback!=settings.contexts.end()&&fallback->second.backgroundOverridden)return fallback->second.backgroundSelection;
         if(key==favoritesPresentationContext)return IndustrialGarageBackground;
-        return studioBackgroundForFilters(uint32_t(fallbackKey),-1,uint32_t(fallbackKey>>32),-1);
+        return studioBackgroundForFilters(fallbackKey&allCountryBits,-1,uint32_t(fallbackKey>>countryContextBits),-1);
     }
 
     inline bool decodeLegacyStudioPreferences(const std::vector<uint8_t>& bytes, StudioPreferences& result)
@@ -313,7 +313,7 @@ namespace gt4
                 uint32_t country = 0;
                 for (unsigned b = 0; b < 4; ++b) { country |= uint32_t(bytes[offset + b]) << (8 * b); }
                 const uint32_t category = uint32_t(bytes[offset + 4]) | (uint32_t(bytes[offset + 5]) << 8);
-                const uint64_t key = uint64_t(country) | (uint64_t(category) << 32);
+                const uint64_t key = uint64_t(country) | (uint64_t(category) << countryContextBits);
                 PresentationContext context;
                 context.backgroundSelection = bytes[offset + 6];
                 if (bytes[offset + 7] > 1) { return false; }
@@ -357,19 +357,19 @@ inline std::string presentationSection(uint64_t key)
     if(!key)return "Main";
     if(key==favoritesPresentationContext)return "Favorites";
     std::string name;
-    const auto append=[&](uint32_t mask,const char* prefix,const auto& names){
+    const auto append=[&](uint64_t mask,const char* prefix,const auto& names){
         if(!mask)return;
         if(!name.empty())name+='.';
         name+=prefix;bool first=true;
-        for(size_t i=0;i<std::size(names);++i)if(mask&(1u<<i)){
+        for(size_t i=0;i<std::size(names);++i)if(mask&(uint64_t(1)<<i)){
             if(!first)name+='+';
             const std::string token=names[i];
             name+=token=="Motorbike"?"Motorbikes":token=="Moped"?"Mopeds":token=="Bicycle"?"Bicycles":token;
             first=false;
         }
     };
-    append(uint32_t(key),"Countries.",countryKeys);
-    append(uint32_t(key>>32),"Classes.",presentationClassKeys);
+    append(key & allCountryBits,"Countries.",countryKeys);
+    append(key>>countryContextBits,"Classes.",presentationClassKeys);
     return name;
 }
 
@@ -395,7 +395,8 @@ inline bool saveStudioPreferences(const std::filesystem::path& path,const Studio
         <<"; Prologue and other customized backgrounds use independent Presets.<name> sections.\n"
         <<"; Main root floor settings describe its current Style; a matching Presets section overrides them.\n\n"
         <<"[Settings]\n; File format version - leave at 1\nFormatVersion=1\n; 0=None, 1=Manufacturer only, 2=Vehicle name only, 3=Both\nLogos="<<int(preferences.brandLogo | (preferences.carLogo << 1))
-        <<"\n; Vehicle order: 1=Z-A, 2=A-Z, 3=Highest speed, 4=Country, 5=Model ID, 0=A-Z fallback\nSortMode="<<preferences.sortMode<<"\n; Last country filter: -1=All, 0=Unassigned, 1=USA, 2=Japan, 3=Italy, 4=France, 5=UK, 6=Germany, 7=Sweden, 8=China, 9=South Korea, 10=Canada, 11=Australia, 12=Russia, 13=Denmark, 14=Brazil, 15=Indonesia, 16=Malaysia\nCountryFilter="<<preferences.countryFilter<<"\n; Last class filter: -1=All, 0=Normal, 1=Poor, 2=Rich, 3=Executive, 4=Worker, 5=Heavy, 6=Taxi, 7=Mopeds, 8=Motorbikes, 9=Leisure boats, 10=Work boats, 11=Bicycles, 12=Special\nClassFilter="<<preferences.classFilter
+        <<"\n; 1=Dealership logo replaces the manufacturer in dealerships only, 0=Normal rules\nDealershipLogo="<<int(preferences.dealershipLogo)
+        <<"\n; Vehicle order: 1=Z-A, 2=A-Z, 3=Highest speed, 4=Country, 5=Model ID, 0=A-Z fallback\nSortMode="<<preferences.sortMode<<"\n; Last country filter: -1=All, 0=Unassigned, 1=United States, 2=Japan, 3=Italy, 4=France, 5=United Kingdom, 6=Germany, 7=Sweden, 8=China, 9=South Korea, 10=Canada, 11=Australia, 12=Russia, 13=Denmark, 14=Brazil, 15=Indonesia, 16=Malaysia, 17=Netherlands, 18=Belgium, 19=Spain, 20=Serbia, 21=Czech, 22=Romania, 23=Turkey, 24-48=Custom slots\nCountryFilter="<<preferences.countryFilter<<"\n; Last class filter: -1=All, 0=Normal, 1=Poor, 2=Rich, 3=Executive, 4=Worker, 5=Heavy, 6=Taxi, 7=Mopeds, 8=Motorbikes, 9=Leisure boats, 10=Work boats, 11=Bicycles, 12=Special\nClassFilter="<<preferences.classFilter
         <<"\n; Multi-country filter bitmask - 0 uses CountryFilter; bit N selects country N above\nCountryMask="<<preferences.countryMask<<"\n; Multi-class filter bitmask - 0 uses ClassFilter; bit N selects class N above\nClassMask="<<preferences.classMask
         <<"\n; Country or Class - the last filter changed supplies an untouched combined preset\nLastFilter="<<(preferences.countryPresentationPriority?"Country":"Class")
         <<"\n; 0=Auto by country, 1=Metric, 2=Imperial\nUnitFormat="<<preferences.unitFormat<<"\n; Shared edge smoothing quality: 0=Off, 1=Standard, 2=High, 3=Ultra\nAntialiasing="<<preferences.antialiasing
@@ -417,7 +418,7 @@ inline bool saveStudioPreferences(const std::filesystem::path& path,const Studio
         if(!key)text<<"; Keyboard showroom style: Default or Prologue - applies to its countries and classes\nStyle="<<(preferences.showroomStyle?"Prologue":"Default")<<"\n";
         text<<"; Background for this context; Recommended keeps its original or inherited default\nBackground=";
         if(context.backgroundOverridden)text<<studioBackgroundNames[size_t(context.backgroundSelection)];
-        else if(!configured&&key)text<<studioBackgroundNames[size_t(key==favoritesPresentationContext?IndustrialGarageBackground:studioBackgroundForFilters(uint32_t(key),-1,uint32_t(key>>32),-1))];
+        else if(!configured&&key)text<<studioBackgroundNames[size_t(key==favoritesPresentationContext?IndustrialGarageBackground:studioBackgroundForFilters(key & allCountryBits,-1,uint32_t(key>>countryContextBits),-1))];
         else text<<"Recommended";
         text<<"\n";
         const auto active=reflectionPreset(key?0:preferences.showroomStyle,presentationBackground(preferences,key));
@@ -433,7 +434,7 @@ inline bool saveStudioPreferences(const std::filesystem::path& path,const Studio
     auto contexts=preferences.contexts;
     contexts.try_emplace(favoritesPresentationContext);
     for(const auto country:{Country::Japan,Country::Germany,Country::SouthKorea,Country::UK,Country::Australia,Country::Russia,Country::France,Country::Italy,Country::China,Country::Brazil,Country::Sweden,Country::USA,Country::Denmark,Country::Malaysia,Country::Indonesia})contexts.try_emplace(uint64_t(1u<<unsigned(country)));
-    for(unsigned category:{7u,8u,11u})contexts.try_emplace(uint64_t(1u<<category)<<32);
+    for(unsigned category:{7u,8u,11u})contexts.try_emplace(uint64_t(1u<<category)<<countryContextBits);
     for(const auto& item:contexts)section(item.first,item.second,preferences.contexts.count(item.first)!=0);
     std::error_code error;std::filesystem::create_directories(path.parent_path(),error);
     if(error)return false;
@@ -563,21 +564,21 @@ inline bool loadStudioPreferences(const std::filesystem::path& path,StudioPrefer
        !number("showroom","classfilter",loaded.classFilter)||!number("showroom","unitformat",loaded.unitFormat)||
        !number("showroom","antialiasing",loaded.antialiasing)||!number("showroom","ambientocclusion",loaded.ambientOcclusion)||
        !number("showroom","vehiclereflections",loaded.vehicleReflections)||!number("showroom","language",loaded.language)||
-       !flag("carlogo",loaded.carLogo)||!flag("brandlogo",loaded.brandLogo)||!flag("displaymodelid",loaded.displayModelId)||
+       !flag("carlogo",loaded.carLogo)||!flag("brandlogo",loaded.brandLogo)||!flag("dealershiplogo",loaded.dealershipLogo)||!flag("displaymodelid",loaded.displayModelId)||
        !flag("displaymodelname",loaded.displayModelName)||!number("audio","master",loaded.audio.value[0])||
        !number("audio","music",loaded.audio.value[1])||!number("audio","effects",loaded.audio.value[2]))return false;
-    for(const auto item:std::array<std::pair<const char*,uint32_t*>,2>{{{"countrymask",&loaded.countryMask},{"classmask",&loaded.classMask}}}){
+    for(const auto item:std::array<std::pair<const char*,uint64_t*>,2>{{{"countrymask",&loaded.countryMask},{"classmask",&loaded.classMask}}}){
         const auto found=global.find(item.first);if(found==global.end())continue;
-        try{size_t used=0;const auto value=std::stoull(found->second,&used,0);if(used!=found->second.size()||value>UINT32_MAX)return false;*item.second=uint32_t(value);}catch(...){return false;}
+        try{size_t used=0;const auto value=std::stoull(found->second,&used,0);if(used!=found->second.size()||value>allCountryBits)return false;*item.second=uint64_t(value);}catch(...){return false;}
     }
-    const auto mask=[](const std::string& list,const auto& names,uint32_t& result){
+    const auto mask=[](const std::string& list,const auto& names,uint64_t& result){
         std::istringstream parts(list);std::string token;result=0;
         while(std::getline(parts,token,'+')){
             if(token=="motorbikes"||token=="motorcycles")token="motorbike";
             if(token=="mopeds")token="moped";
             if(token=="bicycles"||token=="bikes")token="bicycle";
-            bool found=false;for(size_t i=0;i<std::size(names);++i)if(token==settingFold(names[i])){
-                if(result&(1u<<i))return false;result|=1u<<i;found=true;break;
+            bool found=false;for(size_t i=0;i<std::size(names);++i)if(token==settingFold(names[i])||(std::size(names)==countryCount&&i==1&&token=="usa")){
+                if(result&(uint64_t(1)<<i))return false;result|=uint64_t(1)<<i;found=true;break;
             }
             if(!found)return false;
         }
@@ -589,14 +590,14 @@ inline bool loadStudioPreferences(const std::filesystem::path& path,StudioPrefer
         uint64_t key=0;const auto suffix=item.first.substr(7);
         if(suffix=="favorites")key=favoritesPresentationContext;
         else if(suffix!="main"){
-            uint32_t countries=0,classes=0;auto names=suffix;
+            uint64_t countries=0,classes=0;auto names=suffix;
             if(names.rfind("country.",0)==0){
                 const auto split=names.find(".class.");const auto country=names.substr(8,split==std::string::npos?std::string::npos:split-8);
                 if(!mask(country,countryKeys,countries))return false;
                 if(split!=std::string::npos&&!mask(names.substr(split+7),presentationClassKeys,classes))return false;
             }else if(names.rfind("class.",0)==0){if(!mask(names.substr(6),presentationClassKeys,classes))return false;}
             else return false;
-            key=uint64_t(countries)|(uint64_t(classes)<<32);
+            key=uint64_t(countries)|(uint64_t(classes)<<countryContextBits);
         }
         sectionKeys[item.first]=key;
         PresentationContext context;bool configured=false;
@@ -616,7 +617,7 @@ inline bool loadStudioPreferences(const std::filesystem::path& path,StudioPrefer
                 const auto name=settingFold(value.second);if(name=="recommended")continue;
                 bool found=false;for(int i=0;i<studioBackgroundCount;++i)if(name==settingFold(studioBackgroundNames[size_t(i)])||(i==WarmBackground&&name=="warm")){
                     context.backgroundSelection=i;
-                    context.backgroundOverridden=configured||!predefinedPresentationContext(key)||i!=(key==favoritesPresentationContext?IndustrialGarageBackground:studioBackgroundForFilters(uint32_t(key),-1,uint32_t(key>>32),-1));
+                    context.backgroundOverridden=configured||!predefinedPresentationContext(key)||i!=(key==favoritesPresentationContext?IndustrialGarageBackground:studioBackgroundForFilters(key & allCountryBits,-1,uint32_t(key>>countryContextBits),-1));
                     found=true;break;
                 }
                 if(!found)return false;continue;

@@ -142,7 +142,7 @@ void drawCountryNotice(IDirect3DDevice9* device, float width, float height)
     const UIRect box{(width - 620 * scale) * .5f, height * .43f, 620 * scale, 98 * scale};
     messageWindow(device, box, "Vehicle Information", scale, 1);
     messageRow(device, box, 0, "Country", "Not Assigned", scale, 1);
-    messageRow(device, box, 1, "Configuration", "Add model name or ID to GT4Showroom.ini", scale, 1, true, true);
+    messageRow(device, box, 1, "Configuration", "Click the white icon on the top left to assign it.", scale, 1, true, true);
 }
 
 void drawPlate(IDirect3DDevice9* device, float width, float height, const Model& model)

@@ -1,0 +1,53 @@
+# UTF-8 country names - stable COUNTRY IDs, one readable entry per line
+# IDs 24-48 are custom slots. Replace the localized Empty name to register a slot.
+# Country IDs stay fixed; INI country keys are sorted alphabetically.
+EMPTY_NAME Kosong
+COUNTRY0 Belum ditetapkan
+COUNTRY1 Amerika Serikat
+COUNTRY2 Jepang
+COUNTRY3 Italia
+COUNTRY4 Prancis
+COUNTRY5 Britania Raya
+COUNTRY6 Jerman
+COUNTRY7 Swedia
+COUNTRY8 Tiongkok
+COUNTRY9 Korea Selatan
+COUNTRY10 Kanada
+COUNTRY11 Australia
+COUNTRY12 Rusia
+COUNTRY13 Denmark
+COUNTRY14 Brasil
+COUNTRY15 Indonesia
+COUNTRY16 Malaysia
+COUNTRY17 Belanda
+COUNTRY18 Belgia
+COUNTRY19 Spanyol
+COUNTRY20 Serbia
+COUNTRY21 Republik Ceko
+COUNTRY22 Rumania
+COUNTRY23 Turki
+COUNTRY24 Kosong
+COUNTRY25 Kosong
+COUNTRY26 Kosong
+COUNTRY27 Kosong
+COUNTRY28 Kosong
+COUNTRY29 Kosong
+COUNTRY30 Kosong
+COUNTRY31 Kosong
+COUNTRY32 Kosong
+COUNTRY33 Kosong
+COUNTRY34 Kosong
+COUNTRY35 Kosong
+COUNTRY36 Kosong
+COUNTRY37 Kosong
+COUNTRY38 Kosong
+COUNTRY39 Kosong
+COUNTRY40 Kosong
+COUNTRY41 Kosong
+COUNTRY42 Kosong
+COUNTRY43 Kosong
+COUNTRY44 Kosong
+COUNTRY45 Kosong
+COUNTRY46 Kosong
+COUNTRY47 Kosong
+COUNTRY48 Kosong

@@ -1,0 +1,53 @@
+# UTF-8 country names - stable COUNTRY IDs, one readable entry per line
+# IDs 24-48 are custom slots. Replace the localized Empty name to register a slot.
+# Country IDs stay fixed; INI country keys are sorted alphabetically.
+EMPTY_NAME Пусто
+COUNTRY0 Не назначено
+COUNTRY1 США
+COUNTRY2 Япония
+COUNTRY3 Италия
+COUNTRY4 Франция
+COUNTRY5 Великобритания
+COUNTRY6 Германия
+COUNTRY7 Швеция
+COUNTRY8 Китай
+COUNTRY9 Южная Корея
+COUNTRY10 Канада
+COUNTRY11 Австралия
+COUNTRY12 Россия
+COUNTRY13 Дания
+COUNTRY14 Бразилия
+COUNTRY15 Индонезия
+COUNTRY16 Малайзия
+COUNTRY17 Нидерланды
+COUNTRY18 Бельгия
+COUNTRY19 Испания
+COUNTRY20 Сербия
+COUNTRY21 Чехия
+COUNTRY22 Румыния
+COUNTRY23 Турция
+COUNTRY24 Пусто
+COUNTRY25 Пусто
+COUNTRY26 Пусто
+COUNTRY27 Пусто
+COUNTRY28 Пусто
+COUNTRY29 Пусто
+COUNTRY30 Пусто
+COUNTRY31 Пусто
+COUNTRY32 Пусто
+COUNTRY33 Пусто
+COUNTRY34 Пусто
+COUNTRY35 Пусто
+COUNTRY36 Пусто
+COUNTRY37 Пусто
+COUNTRY38 Пусто
+COUNTRY39 Пусто
+COUNTRY40 Пусто
+COUNTRY41 Пусто
+COUNTRY42 Пусто
+COUNTRY43 Пусто
+COUNTRY44 Пусто
+COUNTRY45 Пусто
+COUNTRY46 Пусто
+COUNTRY47 Пусто
+COUNTRY48 Пусто

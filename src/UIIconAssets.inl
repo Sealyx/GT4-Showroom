@@ -3,7 +3,7 @@ VehicleLogos::Image& iconImage(IDirect3DDevice9* device,const wchar_t* name)
     const std::wstring key(name);
     auto found=iconImages.find(key);
     if(found!=iconImages.end()) return found->second;
-    const bool flag=key.compare(0,5,L"flag-")==0;
+    const bool flag=key.compare(0,5,L"flag-")==0||key.compare(0,12,L"0flag-custom")==0;
     auto image=iconDictionary.load(device,assetPath(shopAssetRoot/L"icons.txd"),std::filesystem::path(key).stem().wstring());
     if(image.texture && !flag) {
         // Premultiplied GPU data keeps the transparent edges clean when icons are scaled or faded
