@@ -2,7 +2,7 @@
 #include "StudioUI.hpp"
 namespace gt4 {
 struct CountryPicker {
-    bool open=false,editing=true,dragging=false,scrolling=false;
+    bool open=false,editing=true,dragging=false,scrolling=false,cancelHot=false;
     double clock=0,openedAt=0,changedAt=0;
     int previous=-1;
     float x=.15f,y=.12f,dragX=0,dragY=0;

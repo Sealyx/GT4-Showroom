@@ -1759,6 +1759,21 @@ namespace gt4
             } else {
                 return;
             }
+        } else if (s.countryPicker.open) {
+            const auto& picker = s.countryPicker;
+            if (picker.dragging || picker.scrolling) {
+                return;
+            }
+            const float scale = h / 720.f;
+            if (picker.cancelHot) {
+                const auto panel = picker.panel(w, h);
+                x = (panel.x + panel.w * .5f) / w;
+                y = (panel.y + panel.h - 23 * scale) / h;
+            } else {
+                const auto cell = picker.cell(w, h, picker.selected);
+                x = (cell.x + cell.w * .5f) / w;
+                y = (cell.y + 33 * scale) / h;
+            }
         } else if (s.ui.menu.open) {
             if (s.ui.menu.monitorDragLevel >= 0) {
                 return;

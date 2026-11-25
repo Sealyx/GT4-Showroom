@@ -590,25 +590,42 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
             if(action){keyboard.open=false;picker.editing=false;blockActions();}picker.clamp();return;
         }
         if(search&&pad.search){keyboard.open=true;keyboard.selected=0;picker.editing=true;blockActions();return;}
-        if(upPress||downPress||leftPress||rightPress)picker.move(int(rightPress)-int(leftPress),int(downPress)-int(upPress));
-        if(wheel){picker.firstRow=std::clamp(picker.firstRow+(game::at<uint8_t>(rawMouse+3)?-1:1),0,picker.maxRow(picker.matches().size()));picker.editing=false;}
+        if(upPress||downPress||leftPress||rightPress){
+            if(picker.cancelHot){if(upPress){picker.cancelHot=false;state.cue=Cue::Move;}}
+            else{
+                const int before=picker.selected;
+                picker.move(int(rightPress)-int(leftPress),int(downPress)-int(upPress));
+                if(picker.selected!=before)state.cue=Cue::Move;
+                else if(downPress&&picker.selected==int(picker.matches().size())-1){picker.cancelHot=true;state.cue=Cue::Move;}
+            }
+        }
+        if(wheel){picker.firstRow=std::clamp(picker.firstRow+(game::at<uint8_t>(rawMouse+3)?-1:1),0,picker.maxRow(picker.matches().size()));picker.editing=false;state.cue=Cue::Move;}
         const auto input=countrySearchInput.poll([](int vk){return key(vk);},tick,picker.query,picker.editing,80);
         if(input==SearchAction::Cancel){closePicker();return;}
         if(input==SearchAction::Submit){picker.editing=false;blockActions();}
         if(!lDown){picker.dragging=picker.scrolling=false;}
-        if(moved&&!picker.editing){auto list=picker.matches();for(int i=picker.firstRow*4;i<int(list.size())&&i<(picker.firstRow+4)*4;++i)if(picker.cell(W,H,i).contains(px,py)){picker.selected=i;break;}}
+        if(moved){
+            const UIRect cancel{box.x+box.w*.5f-70*scale,box.y+box.h-34*scale,140*scale,22*scale};
+            if(!picker.editing&&cancel.contains(px,py)){if(!picker.cancelHot){picker.cancelHot=true;state.cue=Cue::Move;}}
+            else if(!picker.editing){auto list=picker.matches();for(int i=picker.firstRow*4;i<int(list.size())&&i<(picker.firstRow+4)*4;++i)if(picker.cell(W,H,i).contains(px,py)){if(picker.selected!=i){picker.selected=i;state.cue=Cue::Move;}picker.cancelHot=false;break;}}
+        }
         if(click){
             if(UIRect{box.x,box.y,box.w,22*scale}.contains(px,py)){picker.dragging=true;picker.dragX=px-box.x;picker.dragY=py-box.y;}
             else if(UIRect{box.x+box.w*.5f-70*scale,box.y+box.h-34*scale,140*scale,22*scale}.contains(px,py)){closePicker();return;}
             else if(UIRect{box.x,box.y+22*scale,box.w,34*scale}.contains(px,py)){picker.editing=true;countrySearchInput.quarantine();}
-            else if(picker.scrollTrack(W,H).contains(px,py)){picker.scrolling=true;}
+            else if(picker.scrollTrack(W,H).contains(px,py)){picker.scrolling=true;picker.editing=false;}
             else {auto list=picker.matches();for(int i=picker.firstRow*4;i<int(list.size())&&i<(picker.firstRow+4)*4;++i)if(picker.cell(W,H,i).contains(px,py)){picker.selected=i;picker.editing=false;assignPickerCountry(list[size_t(i)]);return;}}
         }
         if(picker.dragging&&lDown){picker.x=(px-picker.dragX)/W;picker.y=(py-picker.dragY)/H;}
         if(picker.scrolling&&lDown){auto track=picker.scrollTrack(W,H);picker.firstRow=std::clamp(int(std::lround((py-track.y)/track.h*picker.maxRow(picker.matches().size()))),0,picker.maxRow(picker.matches().size()));}
-        if(accept&&!picker.editing&&!picker.dragging&&!picker.scrolling&&input!=SearchAction::Submit){auto list=picker.matches();if(!list.empty())assignPickerCountry(list[size_t(picker.selected)]);}
+        if(accept&&!picker.editing&&!picker.dragging&&!picker.scrolling&&input!=SearchAction::Submit){
+            if(picker.cancelHot){closePicker();return;}
+            auto list=picker.matches();if(!list.empty())assignPickerCountry(list[size_t(picker.selected)]);
+        }
         picker.clamp();
         if(picker.selected!=selectionBefore){picker.previous=selectionBefore;picker.changedAt=state.clock;}
+        if(upPress||downPress||leftPress||rightPress||wheel)state.ui.dock=true;
+        dockPointer(state, entries, W, H, dt);
         return;
     }
     if (state.purchase.active()) {
