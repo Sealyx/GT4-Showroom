@@ -1,0 +1,2 @@
+IDE GT4Showroom/platform/gt4_platform.ide
+COLFILE 0 GT4Showroom/platform/gt4_platform.col

@@ -191,6 +191,8 @@ namespace gt4
         nativePreview::diagnostic = diagnostics.enabled.load(std::memory_order_relaxed) ? log : nullptr;
     }
 
+#include "Platform.inl"
+
     void saveCurrentFavorites()
     {
         const std::filesystem::path file = std::filesystem::path(base) / L"GT4Showroom/favorites.ini";
@@ -1336,6 +1338,7 @@ namespace gt4
             state.status.clear();
             statusUntil = 0;
         }
+        updatePlatformDisplays(dt);
         if (!state.open) updateGalleryMarkers(gate,key(VK_RETURN) || pad.accept,tick,dt);
         else if (arrivalTime >= 0 && focus && !game::menu()) {
             arrivalTime += dt;
@@ -1710,7 +1713,8 @@ namespace gt4
                             dealerSeatPending = false;
                             void* ped = entryNative::function<void*(__cdecl*)(int)>(0x56E210)(-1);
                             const bool seated = seatPlayerAsDriver(ped, v);
-                            if (seated && returnFade.active() && dealershipCameraPending) {
+                            if (seated && dealershipCameraPending &&
+                                (returnFade.active() || gallery == Gallery::AutoBahn)) {
                                 entryNative::function<void(__thiscall*)(void*)>(0x50BAB0)(spawnEntry.camera());
                                 dealershipCameraVehicle=entryNative::function<int(__cdecl*)(void*)>(0x54FFC0)(v);
                                 dealershipCameraWait=0;

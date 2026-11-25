@@ -33,7 +33,7 @@ inline constexpr GalleryProfile galleries[]{
     {L"VerdantBikes","Verdant Bikes","Press ~k~~VEHICLE_ENTER_EXIT~ to view the Verdant Bikes gallery.",{538,2364,30},{538,2353,31},{538,2353,31},3,twoWheels,false,2.51327f},
     {L"GrottiDealership","Grotti Showroom","Press ~k~~VEHICLE_ENTER_EXIT~ to view the Grotti Dealership gallery.",{543,-1292,17},{529,-1321,17},{529,-1321,17},2,0,false,2.51327f},
     {L"OttosAutos","Otto's Autos","Press ~k~~VEHICLE_ENTER_EXIT~ to view Otto's Autos' vehicle gallery.",{-1660,1209,21},{-1648,1223,6},{-1648,1223,6},2,classBit(Rich)|classBit(Executive)|classBit(Motorbikes),false,-2.4279f},
-    {L"AutoBahn","Auto Bahn","Press ~k~~VEHICLE_ENTER_EXIT~ to view Auto Bahn's vehicle gallery.",{2200,1391,10},{2168,1409,10},{2168,1409,10},2,0x7fff,false,-1.06f}
+    {L"AutoBahn","Auto Bahn","Press ~k~~VEHICLE_ENTER_EXIT~ to view Auto Bahn's vehicle gallery.",{2200,1391,10},{2168,1410,10},{2168,1410,10},2,0x7fff,false,0.0f}
 };
 inline int galleryLogoNumber(Gallery gallery) {constexpr int slots[]{0,1,3,6,4,2,5};return slots[int(gallery)];}
 inline bool galleryStoryAllows(Gallery gallery,float cities,bool testDrive) {
