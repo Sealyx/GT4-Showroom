@@ -421,6 +421,7 @@ inline bool saveStudioPreferences(const std::filesystem::path& path,const Studio
         else if(!configured&&key)text<<studioBackgroundNames[size_t(key==favoritesPresentationContext?IndustrialGarageBackground:studioBackgroundForFilters(key & allCountryBits,-1,uint32_t(key>>countryContextBits),-1))];
         else text<<"Recommended";
         text<<"\n";
+        if(!key)text<<"; Music for the keyboard-accessed showroom only: 1, 2 or 3\nMusic="<<std::clamp(int(GetPrivateProfileIntW(L"Main",L"Music",1,path.c_str())),1,3)<<"\n";
         const auto active=reflectionPreset(key?0:preferences.showroomStyle,presentationBackground(preferences,key));
         controls(context.presets[active],active);
         for(size_t i=0;i<context.presets.size();++i){
@@ -505,7 +506,7 @@ inline bool loadStudioPreferences(const std::filesystem::path& path,StudioPrefer
             const auto control=root+(split==std::string::npos?"":"|"+item.first.substr(split+9));
             converted.try_emplace(root);
             for(const auto& value:item.second){
-                if(value.first=="style"&&item.first=="main")continue;
+                if((value.first=="style"||value.first=="music")&&item.first=="main")continue;
                 if(value.first=="floorreflections"||value.first=="reflections"||value.first=="reflectionquality"||value.first=="shadows")
                     presentationControls[control][value.first=="floorreflections"?"reflections":value.first]=value.second;
                 else if(split==std::string::npos)converted[root][value.first]=value.second;
@@ -577,7 +578,7 @@ inline bool loadStudioPreferences(const std::filesystem::path& path,StudioPrefer
             if(token=="motorbikes"||token=="motorcycles")token="motorbike";
             if(token=="mopeds")token="moped";
             if(token=="bicycles"||token=="bikes")token="bicycle";
-            bool found=false;for(size_t i=0;i<std::size(names);++i)if(token==settingFold(names[i])||(std::size(names)==countryCount&&i==1&&token=="usa")){
+            bool found=false;for(size_t i=0;i<std::size(names);++i)if(token==settingFold(names[i])||(std::size(names)==countryCount&&((i==1&&token=="usa")||(i==5&&token=="uk")))){
                 if(result&(uint64_t(1)<<i))return false;result|=uint64_t(1)<<i;found=true;break;
             }
             if(!found)return false;

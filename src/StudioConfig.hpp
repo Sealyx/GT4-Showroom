@@ -22,12 +22,12 @@ namespace gt4
     {
         StudioConfig c;
         wchar_t spawn[16]{};
-        if (GetPrivateProfileStringW(L"GT4Showroom", L"Spawn", L"", spawn, 16, ini.c_str())) {
-            const int mode = GetPrivateProfileIntW(L"GT4Showroom", L"Spawn", 1, ini.c_str());
+        if (GetPrivateProfileStringW(L"Main", L"Spawn", L"", spawn, 16, ini.c_str())) {
+            const int mode = GetPrivateProfileIntW(L"Main", L"Spawn", 1, ini.c_str());
             if (mode >= 1 && mode <= 3) {
                 c.spawn = static_cast<SpawnMode>(mode);
             }
-        } else if (GetPrivateProfileIntW(L"GT4Showroom", L"SpawnInside", 0, ini.c_str()) != 0) {
+        } else if (GetPrivateProfileIntW(L"Main", L"SpawnInside", 0, ini.c_str()) != 0) {
             c.spawn = SpawnMode::AnimatedEntry;
         }
         return c;

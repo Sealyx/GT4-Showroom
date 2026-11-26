@@ -299,7 +299,7 @@ namespace gt4
         state.ui.mainDefaultBackground = galleryBackground(ini.c_str(), Gallery::Main);
         studioConfig = readStudioConfig(ini);
         studioConfig.sort = menuSort(state.ui.sortMode);
-        diagnostics.reload(ini, L"GT4Showroom");
+        diagnostics.reload(ini, L"Main");
         syncCaptureDiagnostics();
         state.secretUnlocks = readSecretUnlocks(ini);
         char secretReport[200];
@@ -1094,7 +1094,7 @@ namespace gt4
         state.ui.mainDefaultBackground = galleryBackground(ini.c_str(), Gallery::Main);
         studioConfig = readStudioConfig(ini);
         studioConfig.sort = menuSort(state.ui.sortMode);
-        diagnostics.reload(ini, L"GT4Showroom");
+        diagnostics.reload(ini, L"Main");
         syncCaptureDiagnostics();
         diagnostics.begin(logFile);
         localization.load(std::filesystem::path(base) / L"GT4Showroom/languages");
@@ -2247,7 +2247,7 @@ namespace gt4
         localization.load(std::filesystem::path(base) / L"GT4Showroom/languages");
         localization.select(state.ui.language);
         state.ui.language = localization.selected;countryLanguage=state.ui.language;
-        diagnostics.reload(ini, L"GT4Showroom");
+        diagnostics.reload(ini, L"Main");
         syncCaptureDiagnostics();
         diagnostics.begin(logFile);
         if (diagnostics.enabled.load(std::memory_order_relaxed)) {

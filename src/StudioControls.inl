@@ -27,7 +27,8 @@ void finishSettings()
         ui.menu.musicChoice = galleryOptions.music;
         audio.chooseMusic(galleryOptions.music,gameWindow(),base + L"GT4Showroom/audio/");
     } else if (ui.menu.closeResult >= 0 && ui.menu.musicChoice != galleryOptions.music) {
-        if (WritePrivateProfileStringW(galleries[int(gallery)].section,L"Music",std::to_wstring(ui.menu.musicChoice).c_str(),ini.c_str())) {
+        const auto musicPath=gallery==Gallery::Main ? (std::filesystem::path(base)/L"GT4Showroom/settings.ini").wstring() : ini;
+        if (WritePrivateProfileStringW(gallery==Gallery::Main?L"Main":galleries[int(gallery)].section,L"Music",std::to_wstring(ui.menu.musicChoice).c_str(),musicPath.c_str())) {
             galleryOptions.music = ui.menu.musicChoice;
         }
     }

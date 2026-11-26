@@ -53,7 +53,7 @@ namespace gt4
     {
         HotkeyConfig result;
         wchar_t text[80]{};
-        GetPrivateProfileStringW(L"GT4Showroom", L"OpenKey", L"F1", text, 80, ini.c_str());
+        GetPrivateProfileStringW(L"Main", L"OpenKey", L"F1", text, 80, ini.c_str());
         const int vk = parseOpenKey(text);
         result.invalid = !vk;
         if (vk) {
