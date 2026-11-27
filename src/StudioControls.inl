@@ -23,14 +23,16 @@ void finishSettings()
                 ui.showroomStyle ? L"Prologue" : nullptr,ini.c_str())) log("Could not save dealership style override");
         ui.showroomStyle = galleryStyle(ini.c_str(),gallery,0);
     }
-    if (ui.menu.closeResult < 0 && ui.menu.musicChoice != galleryOptions.music) {
-        ui.menu.musicChoice = galleryOptions.music;
-        audio.chooseMusic(galleryOptions.music,gameWindow(),base + L"GT4Showroom/audio/");
-    } else if (ui.menu.closeResult >= 0 && ui.menu.musicChoice != galleryOptions.music) {
-        const auto musicPath=gallery==Gallery::Main ? (std::filesystem::path(base)/L"GT4Showroom/settings.ini").wstring() : ini;
-        if (WritePrivateProfileStringW(gallery==Gallery::Main?L"Main":galleries[int(gallery)].section,L"Music",std::to_wstring(ui.menu.musicChoice).c_str(),musicPath.c_str())) {
-            galleryOptions.music = ui.menu.musicChoice;
-        }
+    const auto styleMusicPath=(std::filesystem::path(base)/L"GT4Showroom/settings.ini").wstring();
+    const int prologueTrack=validatedMusicTrack(int(GetPrivateProfileIntW(L"Main",L"PrologueMusic",9,styleMusicPath.c_str())));
+    if(ui.menu.closeResult<0) {
+        ui.menu.musicChoice=ui.menuPreferences.showroomStyle?prologueTrack:galleryOptions.music;
+        audio.chooseMusic(ui.menu.musicChoice,gameWindow(),base+L"GT4Showroom/audio/");
+    } else if(ui.showroomStyle) {
+        WritePrivateProfileStringW(L"Main",L"PrologueMusic",std::to_wstring(ui.menu.musicChoice).c_str(),styleMusicPath.c_str());
+    } else if(ui.menu.musicChoice!=galleryOptions.music) {
+        const auto musicPath=gallery==Gallery::Main?styleMusicPath:ini;
+        if(WritePrivateProfileStringW(gallery==Gallery::Main?L"Main":galleries[int(gallery)].section,L"Music",std::to_wstring(ui.menu.musicChoice).c_str(),musicPath.c_str()))galleryOptions.music=ui.menu.musicChoice;
     }
     if(ui.menu.closeResult<0 && ui.dealershipLogo!=ui.menuDealershipLogo) {
         ui.dealershipLogo=ui.menuDealershipLogo;
@@ -136,7 +138,7 @@ void requestStudioAction(StudioAction action)
         return;
     }
     if (action == StudioAction::Music) {
-        const int choice = std::clamp(state.ui.menu.choice,1,3);
+        const int choice = validatedMusicTrack(state.ui.menu.choice);
         state.ui.menu.musicChoice = choice;
         audio.chooseMusic(choice,gameWindow(),base + L"GT4Showroom/audio/");
         state.ui.menu.open = true;
@@ -189,6 +191,9 @@ void requestStudioAction(StudioAction action)
         } else {
             state.ui.menuStyleEdited=true;
             state.ui.showroomStyle=std::clamp(state.ui.menu.choice,0,studioStyleCount-1);
+            const auto path=(std::filesystem::path(base)/L"GT4Showroom/settings.ini").wstring();
+            state.ui.menu.musicChoice=state.ui.showroomStyle?validatedMusicTrack(int(GetPrivateProfileIntW(L"Main",L"PrologueMusic",9,path.c_str()))):galleryOptions.music;
+            audio.chooseMusic(state.ui.menu.musicChoice,gameWindow(),base+L"GT4Showroom/audio/");
         }
         state.ui.syncMenuPresentation();
         state.ui.menu.open = true;
@@ -583,6 +588,9 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         const float px=state.pointerX*W,py=state.pointerY*H,scale=H/720.f;const auto box=picker.panel(W,H);picker.clamp();
         const auto closePicker=[&]{picker.open=false;keyboard.open=false;state.cue=Cue::Back;blockActions();};
         if(context||(goBack&&pad.back)){closePicker();return;}
+        // Enter/Space on the highlighted Cancel must close the picker even while the
+        // search field is active, where Enter would otherwise only end editing.
+        if(picker.cancelHot&&accept){closePicker();return;}
         if(keyboard.open) {
             keyboard.changeCharacters(pad.previousHotspot,pad.nextHotspot,tick);
             if(leftPress||rightPress)keyboard.move(int(rightPress)-int(leftPress),0);if(upPress||downPress)keyboard.move(0,int(downPress)-int(upPress));

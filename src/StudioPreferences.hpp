@@ -1,4 +1,5 @@
 #pragma once
+#include "TrackCatalog.hpp"
 #include "StudioBackgrounds.hpp"
 #include "AudioLevels.hpp"
 #include "Countries.hpp"
@@ -421,7 +422,8 @@ inline bool saveStudioPreferences(const std::filesystem::path& path,const Studio
         else if(!configured&&key)text<<studioBackgroundNames[size_t(key==favoritesPresentationContext?IndustrialGarageBackground:studioBackgroundForFilters(key & allCountryBits,-1,uint32_t(key>>countryContextBits),-1))];
         else text<<"Recommended";
         text<<"\n";
-        if(!key)text<<"; Music for the keyboard-accessed showroom only: 1, 2 or 3\nMusic="<<std::clamp(int(GetPrivateProfileIntW(L"Main",L"Music",1,path.c_str())),1,3)<<"\n";
+        if(!key)text<<"; Music for the keyboard-accessed showroom only: 1-28; missing files use Track 1\nMusic="<<validatedMusicTrack(int(GetPrivateProfileIntW(L"Main",L"Music",1,path.c_str())))<<"\n";
+        if(!key)text<<"; Music for Prologue style; independent of the Default-style context track\nPrologueMusic="<<validatedMusicTrack(int(GetPrivateProfileIntW(L"Main",L"PrologueMusic",9,path.c_str())))<<"\n";
         const auto active=reflectionPreset(key?0:preferences.showroomStyle,presentationBackground(preferences,key));
         controls(context.presets[active],active);
         for(size_t i=0;i<context.presets.size();++i){
@@ -506,7 +508,7 @@ inline bool loadStudioPreferences(const std::filesystem::path& path,StudioPrefer
             const auto control=root+(split==std::string::npos?"":"|"+item.first.substr(split+9));
             converted.try_emplace(root);
             for(const auto& value:item.second){
-                if((value.first=="style"||value.first=="music")&&item.first=="main")continue;
+                if((value.first=="style"||value.first=="music"||value.first=="prologuemusic")&&item.first=="main")continue;
                 if(value.first=="floorreflections"||value.first=="reflections"||value.first=="reflectionquality"||value.first=="shadows")
                     presentationControls[control][value.first=="floorreflections"?"reflections":value.first]=value.second;
                 else if(split==std::string::npos)converted[root][value.first]=value.second;

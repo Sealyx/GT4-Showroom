@@ -1,4 +1,5 @@
 #pragma once
+#include "TrackCatalog.hpp"
 #include <windows.h>
 #include <array>
 #include <string>
@@ -92,12 +93,13 @@ struct GalleryOptions {
     std::vector<int> models;
 };
 inline GalleryOptions readGallery(const wchar_t* ini, Gallery gallery) {
+    musicTrackFolder=std::filesystem::path(ini).parent_path()/L"GT4Showroom/audio";
     const auto& profile = galleries[int(gallery)];
     GalleryOptions options;
     options.allowed=profile.classes;
     options.music=profile.music;
     const auto musicPath=gallery==Gallery::Main ? (std::filesystem::path(ini).parent_path()/L"GT4Showroom/settings.ini").wstring() : std::wstring(ini);
-    options.music = std::clamp(int(GetPrivateProfileIntW(gallery==Gallery::Main?L"Main":profile.section,L"Music",profile.music,musicPath.c_str())),1,3);
+    options.music = validatedMusicTrack(int(GetPrivateProfileIntW(gallery==Gallery::Main?L"Main":profile.section,L"Music",profile.music,musicPath.c_str())));
     if (gallery == Gallery::Main) return options;
     options.enabled = GetPrivateProfileIntW(profile.section,L"Enable",1,ini) != 0;
     if(gallery==Gallery::AutoBahn) {

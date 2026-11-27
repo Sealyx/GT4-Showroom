@@ -85,3 +85,10 @@ Right mouse opens the sidebar and never substitutes for Backspace. The pointer e
 - `GT4Showroom/vehicles.ini`: optional display metadata and paint names. `favorites.ini` stores personal Favorites and ordering; it is not replaced by a fresh personal Favorites file.
 
 In Cinematic, Space or clicking the car toggles rotation; drag the car to orbit and use the wheel to zoom. Backspace returns. Enter `ENTHUSIA`, `GT4` or `REALBIG` in model search for the alternate preview, normal preview or configured bonus vehicle.
+
+
+## Editable tracks and Prologue navigation assets
+
+Showroom audio uses `GT4Showroom/audio/track-1.wav` through `track-28.wav`. Tracks 1–8 are supplied; slots 9–28 accept custom PCM WAV tracks. Only existing files appear in Music choices, labeled Track N. Missing or out-of-range INI selections fall back to Track 1. Keyboard music stays in settings.ini [Main]; dealerships keep their separate Music entries in GT4Showroom.ini.
+
+The editable `icons.txd` textures `prologue-arrow-left` and `prologue-arrow-right` supply the Prologue thumbnail navigation arrows; `prologue-dot` supplies its gray/orange browsing indicators. The renderer controls tint, flickering and movement. Existing icon textures are preserved; no additional loose PNG folder is needed.

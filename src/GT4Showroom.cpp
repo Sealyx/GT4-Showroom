@@ -295,7 +295,7 @@ namespace gt4
         state.ui.dealershipLogo=readDealershipLogoSetting();
         state.ui.dealerBackground = gallery == Gallery::Main ? -1 : galleryBackground(ini.c_str(), gallery);
         state.ui.showroomStyle = galleryStyle(ini.c_str(), gallery, mainStyleChoice);
-        state.ui.menu.musicChoice = galleryOptions.music;
+        state.ui.menu.musicChoice = state.ui.showroomStyle ? validatedMusicTrack(int(GetPrivateProfileIntW(L"Main",L"PrologueMusic",9,(std::filesystem::path(base)/L"GT4Showroom/settings.ini").c_str()))) : galleryOptions.music;
         state.ui.mainDefaultBackground = galleryBackground(ini.c_str(), Gallery::Main);
         studioConfig = readStudioConfig(ini);
         studioConfig.sort = menuSort(state.ui.sortMode);
@@ -419,7 +419,7 @@ namespace gt4
         state.ui.menu.dealershipContext=gallery!=Gallery::Main;
         state.ui.dealershipLogo=readDealershipLogoSetting();
             state.ui.showroomStyle = galleryStyle(ini.c_str(), gallery, mainStyleChoice);
-        state.ui.menu.musicChoice = galleryOptions.music;
+        state.ui.menu.musicChoice = state.ui.showroomStyle ? validatedMusicTrack(int(GetPrivateProfileIntW(L"Main",L"PrologueMusic",9,(std::filesystem::path(base)/L"GT4Showroom/settings.ini").c_str()))) : galleryOptions.music;
         state.ui.mainDefaultBackground = galleryBackground(ini.c_str(), Gallery::Main);
             rebuildCatalogueView(mainVehicle);
             selectedExtras.clear();
@@ -1090,7 +1090,7 @@ namespace gt4
         state.ui.dealershipLogo=readDealershipLogoSetting();
         state.ui.dealerBackground = gallery == Gallery::Main ? -1 : galleryBackground(ini.c_str(), gallery);
         state.ui.showroomStyle = galleryStyle(ini.c_str(), gallery, mainStyleChoice);
-        state.ui.menu.musicChoice = galleryOptions.music;
+        state.ui.menu.musicChoice = state.ui.showroomStyle ? validatedMusicTrack(int(GetPrivateProfileIntW(L"Main",L"PrologueMusic",9,(std::filesystem::path(base)/L"GT4Showroom/settings.ini").c_str()))) : galleryOptions.music;
         state.ui.mainDefaultBackground = galleryBackground(ini.c_str(), Gallery::Main);
         studioConfig = readStudioConfig(ini);
         studioConfig.sort = menuSort(state.ui.sortMode);
@@ -1424,7 +1424,8 @@ namespace gt4
                 pause.begin();
                 suspended = true;
                 blockActions();
-                audio.chooseMusic(galleryOptions.music, gameWindow(), base + L"GT4Showroom/audio/");
+                state.ui.menu.musicChoice=state.ui.showroomStyle?validatedMusicTrack(int(GetPrivateProfileIntW(L"Main",L"PrologueMusic",9,(std::filesystem::path(base)/L"GT4Showroom/settings.ini").c_str()))):galleryOptions.music;
+                audio.chooseMusic(state.ui.menu.musicChoice, gameWindow(), base + L"GT4Showroom/audio/");
                 audio.setTransitionGain(gallery==Gallery::Main ? 1.f : 0.f);
                 audio.start();
                 logAudioFaults();
@@ -2275,7 +2276,7 @@ namespace gt4
         state.ui.dealershipLogo=readDealershipLogoSetting();
         state.ui.dealerBackground = gallery == Gallery::Main ? -1 : galleryBackground(ini.c_str(), gallery);
         state.ui.showroomStyle = galleryStyle(ini.c_str(), gallery, mainStyleChoice);
-        state.ui.menu.musicChoice = galleryOptions.music;
+        state.ui.menu.musicChoice = state.ui.showroomStyle ? validatedMusicTrack(int(GetPrivateProfileIntW(L"Main",L"PrologueMusic",9,(std::filesystem::path(base)/L"GT4Showroom/settings.ini").c_str()))) : galleryOptions.music;
         state.ui.mainDefaultBackground = galleryBackground(ini.c_str(), Gallery::Main);
         studioConfig = readStudioConfig(ini);
         studioConfig.sort = menuSort(state.ui.sortMode);

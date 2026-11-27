@@ -217,7 +217,7 @@ inline std::string ContextMenu::monitorValue(int level, int index) const
         if (branch == MenuBranch::ShowroomStyle) {
             return styleChoice == 1 ? "Prologue" : "Default";
         }
-        if (branch == MenuBranch::Music) { return "Music " + std::to_string(musicChoice); }
+        if (branch == MenuBranch::Music) { return "Track " + std::to_string(musicChoice); }
         if (branch == MenuBranch::Background) {
             return studioBackgroundNames[size_t(std::clamp(backgroundChoice, 0, studioBackgroundCount - 1))];
         }

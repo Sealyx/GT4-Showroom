@@ -484,7 +484,8 @@ namespace gt4
 
         float scrollTarget() const
         {
-            return float(std::clamp(int(selected) - 4, 0, std::max(0, int(count) - 8)));
+            const int visible=ui.showroomStyle==1?6:8;
+            return float(std::clamp(int(selected)-visible/2,0,std::max(0,int(count)-visible)));
         }
 
         SecretUnlocksConfig secretUnlocks;
@@ -1547,12 +1548,24 @@ namespace gt4
               height(h),
               scale(h / 720.f),
               cell(1.30f * std::max(w / 18.5f, std::min(100 * scale, (w - 140 * scale) / 11.5f))),
-              left((w - 8.38f * cell) * .5f),
+              left((w - (s.ui.showroomStyle==1?6.38f:8.38f) * cell) * .5f),
               y(h * .725f + 30 * scale * s.paintMix),
               first(std::max(0, int(std::floor(s.scroll - left / cell)) - 2)),
               last(std::min(int(n), int(std::ceil(s.scroll + (w - left) / cell)) + 2)),
               model(s)
         {
+            // Anchor the real list ends to the browsing area's edges instead of leaving vacant slots
+            if(n) {
+                const float margin=(s.ui.showroomStyle==1?w*.065f:0.f)+12.f*scale;
+                const auto begin=box(0),end=box(int(n)-1);
+                const float occupied=end.x+end.w-begin.x;
+                if(occupied>=w-2*margin) {
+                    if(begin.x>margin)left+=margin-begin.x;
+                    else if(end.x+end.w<w-margin)left+=w-margin-end.x-end.w;
+                }
+                first=std::max(0,int(std::floor(s.scroll-left/cell))-2);
+                last=std::min(int(n),int(std::ceil(s.scroll+(w-left)/cell))+2);
+            }
             while (first < last && box(first).x + box(first).w <= 0) {
                 ++first;
             }
@@ -1596,6 +1609,10 @@ namespace gt4
             travel = track.w - thumb.w;
             thumb.x = track.x + travel * (count > 1 ? float(s.selected) / float(count - 1) : 0);
             thumb.y = track.y;
+            if(s.ui.showroomStyle==1) {
+                track={w*.085f,h*.8376667f,w*.83f,4*scale};
+                thumb.w=0;thumb.x=track.x;thumb.y=track.y;travel=track.w;
+            }
             hit = {track.x, track.y - 10 * scale, track.w, 24 * scale};
         }
 
@@ -1685,6 +1702,12 @@ namespace gt4
             model.dragging = false;
         }
         if (model.page == Page::Cars) {
+            if(pressed && model.ui.showroomStyle==1) {
+                const Carousel tiles(w,h,model,cars.size());
+                if(y>=tiles.y && y<=tiles.y+50*h/720.f && (x<w*.065f || x>w*.935f)) {
+                    model.move(x<w*.5f?-1:1,cars);return;
+                }
+            }
             const BrowseBar bar(w, h, model, cars.size());
             if (pressed && bar.hit.contains(x, y)) {
                 model.dragging = true;

@@ -1,4 +1,5 @@
 #pragma once
+#include "TrackCatalog.hpp"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -563,9 +564,14 @@ namespace gt4
                     return {{"Default", StudioAction::ShowroomStyle, 0, MenuBranch::None, styleChoice == 0},
                             {"Prologue", StudioAction::ShowroomStyle, 1, MenuBranch::None, styleChoice == 1}};
                 case MenuBranch::Music:
-                    return {{"Music 1",StudioAction::Music,1,MenuBranch::None,musicChoice==1},
-                            {"Music 2",StudioAction::Music,2,MenuBranch::None,musicChoice==2},
-                            {"Music 3",StudioAction::Music,3,MenuBranch::None,musicChoice==3}};
+                    {
+                        std::vector<MenuItem> tracks;
+                        for(int track=1;track<=maximumMusicTrack;++track) {
+                            if(track==1 || musicTrackAvailable(track)) tracks.push_back(
+                                {"Track "+std::to_string(track),StudioAction::Music,track,MenuBranch::None,musicChoice==track});
+                        }
+                        return tracks;
+                    }
                 case MenuBranch::Background:
                     if (styleChoice != 0) { return {}; }
                     {

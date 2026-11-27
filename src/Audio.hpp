@@ -1,4 +1,5 @@
 #pragma once
+#include "TrackCatalog.hpp"
 #include "AssetPaths.hpp"
 #include "AudioLevels.hpp"
 #include "MusicInput.hpp"
@@ -397,7 +398,7 @@ namespace gt4
             if (studio) {
                 if (!bed) {
                     constexpr size_t limit = 64 * 1024 * 1024;
-                    const auto track = folder + L"music-" + std::to_wstring(musicTrack) + L".wav";
+                    const auto track = folder + L"track-" + std::to_wstring(musicTrack) + L".wav";
                     const auto mp3 = folder + L"music.mp3";
                     if (GetFileAttributesW(assetPath(track).c_str()) != INVALID_FILE_ATTRIBUTES) { bed = load(track, limit, true); }
                     if (!bed && musicTrack == 1 && GetFileAttributesW(assetPath(mp3).c_str()) != INVALID_FILE_ATTRIBUTES) {
@@ -475,6 +476,7 @@ namespace gt4
 
         void chooseMusic(int track, HWND window, const std::wstring& folder)
         {
+            track = validatedMusicTrack(track);
             if (musicTrack == track && bed) { return; }
             if (bed) { bed->Stop(); bed->Release(); bed = nullptr; }
             musicTrack = track;

@@ -4094,10 +4094,20 @@ namespace gt4
                         // Keep open utility bodies and longer mini-trucks on the larger envelope
                         const float smallCabin = (1.f-ease((bodyLength-2.45f)/.25f)) *
                             ease((bodyHeight-1.16f)/.08f) * ease((framing->roofBodyLength/bodyLength-.64f)/.10f);
-                        const float compactFit=std::min(W*(.48f-.03f*smallCabin)/bodyScreenWidth,
-                            H*(.46f-.04f*smallCabin)/bodyScreenHeight);
+                        // Lightweight microcars share the compact envelope despite different roof proportions
+                        // A short cab and an open bed need slightly more prominence than an enclosed cabin
+                        const float lightweight = e.kind == 0 && e.handlingMass > 0.f ?
+                            (1.f-ease((e.handlingMass-900.f)/50.f)) * ease((bodyLength-2.05f)/.15f) *
+                            (1.f-ease((bodyLength-3.85f)/.20f)) *
+                            (1.f-ease((bodyWidth-1.80f)/.12f)) *
+                            (1.f-ease((bodyHeight-1.70f)/.15f)) : 0.f;
+                        const float shortCabPickup = lightweight * ease((bodyHeight/bodyLength-.48f)/.06f) *
+                            (1.f-ease((framing->roofBodyLength/bodyLength-.38f)/.10f));
+                        const float compactFit=std::min(W*(.48f-.03f*smallCabin+.06f*shortCabPickup)/bodyScreenWidth,
+                            H*(.46f-.04f*smallCabin+.05f*shortCabPickup)/bodyScreenHeight);
                         float boost=standardFit+(std::max(standardFit,uprightFit)-standardFit)*utilityBody;
                         boost+=(std::min(boost,compactFit)-boost)*compactUtility;
+                        boost+=(std::min(boost,compactFit)-boost)*lightweight*ease((bodyLength-2.45f)/.15f);
                         if (monsterProfile && e.kind != 1) {
                             boost = std::min(W*.69f/bodyScreenWidth,H*.57f/bodyScreenHeight);
                         }
@@ -4466,6 +4476,11 @@ namespace gt4
                         const Carousel layout(W, H, s, entries.size());
                         for (int i = layout.first; i < layout.last; ++i) {
                             const auto box = layout.box(i);
+                            const int edge=int(W*.065f*prologueStyle);
+                            if(prologueStyle>=.999f && (box.x<edge || box.x+box.w>W-edge))continue;
+                            RECT stripClip{edge,0,int(width)-edge,int(height)};
+                            d->SetScissorRect(&stripClip);
+                            d->SetRenderState(D3DRS_SCISSORTESTENABLE,TRUE);
                             if (prologueStyle < 1.f) {
                                 roundedRectangle(d, box.x, box.y, box.w, box.h, 4 * scale,
                                                  color(0x242829, carStrip * (1.f - prologueStyle) * .55f));
@@ -4498,8 +4513,8 @@ namespace gt4
                                           fullY = int(std::floor(box.y + 2 * scale)),
                                           fullW = std::max(1, int(box.w - 4 * scale)),
                                           fullH = std::max(1, int(box.h - 4 * scale));
-                                const int clipX = std::max(0, fullX), clipY = std::max(0, fullY),
-                                          right = std::min(int(width), fullX + fullW),
+                                const int clipX = std::max(edge, fullX), clipY = std::max(0, fullY),
+                                          right = std::min(int(width)-edge, fullX + fullW),
                                           bottom = std::min(int(height), fullY + fullH);
                                 if (right > clipX && bottom > clipY) {
                                     D3DVIEWPORT9 thumbVP{
@@ -4538,6 +4553,7 @@ namespace gt4
                                 }
                             }
                         }
+                        d->SetRenderState(D3DRS_SCISSORTESTENABLE,FALSE);
                         if (carStrip > .01f) {
                             const auto selected = layout.box(int(s.selected));
                             if (s.page == Page::Cars && !entries.empty() && s.selected < entries.size()) {
@@ -4545,19 +4561,40 @@ namespace gt4
                                        selected.x + selected.w * .5f,
                                        selected.y - 13.f * scale,
                                        1.30f * scale,
-                                       carStrip * thumbnailPulse(s.clock - s.changed));
+                                       carStrip * (1.f-prologueStyle) * thumbnailPulse(s.clock - s.changed));
                             }
                             const auto caption = vehicleCaption(e, s.ui);
                             label(d,
                                   caption,
                                   W * .5f,
-                                  H * .82f + 25 * scale * s.paintMix,
+                                  H * (.82f+.0216667f*prologueStyle) + 25 * scale * s.paintMix,
                                   fitted(caption, 22 * scale, W * .86f),
                                   carStrip,
                                   true, 0, false);
                             const BrowseBar bar(W, H, s, entries.size());
-                            rect(d, bar.track.x, bar.track.y, bar.track.w, bar.track.h, color(0x171D1D, carStrip));
-                            rect(d, bar.thumb.x, bar.thumb.y, bar.thumb.w, bar.thumb.h, color(0x737978, carStrip));
+                            if(prologueStyle<1.f) {
+                                rect(d, bar.track.x, bar.track.y, bar.track.w, bar.track.h, color(0x171D1D, carStrip*(1.f-prologueStyle)));
+                                rect(d, bar.thumb.x, bar.thumb.y, bar.thumb.w, bar.thumb.h, color(0x737978, carStrip*(1.f-prologueStyle)));
+                            }
+                            if(prologueStyle>0.f) {
+                                const float alpha=carStrip*prologueStyle;
+                                constexpr int dots=49;
+                                const float start=W*.085f, pitch=W*.83f/(dots-1);
+                                const float position=entries.size()>1?std::clamp((float(s.selected)+s.scroll-s.scrollTarget())/float(entries.size()-1),0.f,1.f)*(dots-1):0.f;
+                                for(int dot=0;dot<dots;++dot) {
+                                    const float active=1.f-ease((std::abs(dot-position)-2.f)/1.2f);
+                                    const float radius=4.2f*scale;
+                                    const UIRect dotBox{start+dot*pitch-radius,H*.8376667f-radius,2*radius,2*radius};
+                                    pngIcon(d,L"prologue-dot.png",dotBox,alpha,0x363636);
+                                    if(active>0.f)pngIcon(d,L"prologue-dot.png",dotBox,alpha*active,0xFFB52C);
+                                }
+                                const float blink=.35f+.65f*(.5f+.5f*std::cos(float(s.clock)*2.f*pi*8.f));
+                                for(int direction:{-1,1}) {
+                                    const float x=direction<0?W*.045f:W*.955f,y=layout.y+28.f*scale;
+                                    pngIcon(d,direction<0?L"prologue-arrow-left.png":L"prologue-arrow-right.png",
+                                        {x-29.f*scale,y-21.f*scale,58.f*scale,42.f*scale},alpha*blink,0xFFB52C);
+                                }
+                            }
                         }
                         if (colorStrip > .01f) {
                             const size_t n = std::max(size_t(1), e.paints.size());
