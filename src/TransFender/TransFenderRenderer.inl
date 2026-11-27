@@ -98,7 +98,7 @@ void shopMirror(IDirect3DDevice9* device, const Mesh& car, const Camera& camera,
     device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
 }
 
-void shopPriceMark(IDirect3DDevice9* device, float x, float y, float scale, bool dealership = false)
+void shopPriceMark(IDirect3DDevice9* device, float x, float y, float scale, bool dealership = false, float alpha = 1)
 {
     d3dShopOverlay(device);
     if (!dealership && !shopStrokeTried) {
@@ -108,13 +108,13 @@ void shopPriceMark(IDirect3DDevice9* device, float x, float y, float scale, bool
     if (!dealership && shopStroke.texture && shopStroke.width) {
         const float width = 105 * scale;
         const float height = width * shopStroke.height / shopStroke.width;
-        rect(device, x - width * .50f, y - height * .52f, width, height, color(0xFFFFFF), shopStroke.texture);
+        rect(device, x - width * .50f, y - height * .52f, width, height, color(0xFFFFFF,alpha), shopStroke.texture);
     }
     d3dShopOverlay(device);
 #ifndef GT4_ICON_EXPORT
     if(iconImage(device,L"currency-dollar.png").texture &&
-       pngIcon(device,dealership?L"price-coin.png":L"price-coin-tilted.png",{x-32*scale+.5f,y-32*scale+.5f,64*scale,64*scale},1)) {
-        pngCurrency(device,x,y-17*scale,31*scale,0xFF9500,dealership?0.f:-.14f);
+       pngIcon(device,dealership?L"price-coin.png":L"price-coin-tilted.png",{x-32*scale+.5f,y-32*scale+.5f,64*scale,64*scale},alpha)) {
+        pngCurrency(device,x,y-17*scale,31*scale,0xFF9500,dealership?0.f:-.14f,alpha);
         return;
     }
 #endif
@@ -132,10 +132,10 @@ void shopPriceMark(IDirect3DDevice9* device, float x, float y, float scale, bool
         }
         device->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, sides, vertices.data(), sizeof(ScreenVertex));
     };
-    disc(1.28f, 2 * scale, color(0, .35f), color(0, 0));
-    disc(1.f, 0, color(0x060606), color(0x060606));
+    disc(1.28f, 2 * scale, color(0, .35f*alpha), color(0, 0));
+    disc(1.f, 0, color(0x060606,alpha), color(0x060606,alpha));
 #ifndef GT4_ICON_EXPORT
-    text(device, "$", x, y - 17 * scale, 31 * scale, color(0xFF9500), true, 0, textStyle(true), tilt);
+    text(device, "$", x, y - 17 * scale, 31 * scale, color(0xFF9500,alpha), true, 0, textStyle(true), tilt);
 #endif
 }
 

@@ -454,6 +454,7 @@ void applyViewTransition()
 
 void favoriteSelection(bool add)
 {
+    if(state.variantSession)return;
     if (!galleries[int(gallery)].fullService || entries.empty() || state.selected >= entries.size() || state.page != Page::Cars || state.busy()) {
         return;
     }
@@ -1125,7 +1126,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         blockActions();
         return;
     }
-    if (context && !state.ui.cinematic.active && (state.page == Page::Paint || state.page == Page::Livery)) {
+    if (context && !state.ui.cinematic.active && (state.page == Page::Paint || state.page == Page::Livery || state.page==Page::Variant)) {
         state.back();
         blockActions();
         return;
@@ -1372,10 +1373,10 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
         const float scale = H / 720.f;
         const float x = state.pointerX * W, y = state.pointerY * H;
         const auto& entry = entries[state.selected];
-        if(click&&!state.ui.footerHidden&&entry.country==Country::Unknown&&UIRect{46*scale,33*scale,34*scale,28*scale}.contains(x,y)){openCountryPicker();return;}
+        if(click&&!state.ui.footerHidden&&entry.country==Country::Unknown&&UIRect{46*scale,(33+renderer.lastIdentityHeaderOffset/scale)*scale,34*scale,28*scale}.contains(x,y)){openCountryPicker();return;}
         if(pad.add&&accept&&entry.country==Country::Unknown){openCountryPicker();return;}
         if (click && !state.ui.footerHidden && entry.country != Country::Unknown &&
-            UIRect{46 * scale, 33 * scale, 34 * scale, 28 * scale}.contains(x, y)) {
+            UIRect{46 * scale, (33+renderer.lastIdentityHeaderOffset/scale) * scale, 34 * scale, 28 * scale}.contains(x, y)) {
             auto& ui = state.ui;
             ui.beginCountryShortcut(entry.country, entry.id);
             studioConfig.sort = menuSort(ui.sortMode);
@@ -1386,7 +1387,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
             return;
         }
         if (click && classIndex(entry.classId) == 5 &&
-            UIRect{104 * scale, 19 * scale, 170 * scale, 34 * scale}.contains(x, y)) {
+            UIRect{104 * scale, (19+renderer.lastIdentityHeaderOffset/scale) * scale, 170 * scale, 34 * scale}.contains(x, y)) {
             if (state.clock - state.classClick <= .35) {
                 state.heavyUntil = state.clock + 10;
                 state.classClick = -10;
@@ -1406,6 +1407,10 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
             return;
         }
     }
+    if(state.page==Page::Variant && click){
+        if(UIRect{W*.065f,H*.42f,64*H/720.f,70*H/720.f}.contains(state.pointerX*W,state.pointerY*H))state.move(-1,entries);
+        if(UIRect{W*.935f-64*H/720.f,H*.42f,64*H/720.f,70*H/720.f}.contains(state.pointerX*W,state.pointerY*H))state.move(1,entries);
+    }
     if (leftPress) {
         state.move(-1, entries);
     }
@@ -1418,7 +1423,7 @@ void interaction(const PadActions& pad, float W, float H, double dt, uint64_t ti
     if (goBack) {
         state.back();
     }
-    if (favoritesPress && galleries[int(gallery)].fullService && state.page != Page::Prize) {
+    if (favoritesPress && !state.variantSession && galleries[int(gallery)].fullService && state.page != Page::Prize) {
         requestStudioAction(state.ui.favoritesOnly ? StudioAction::AllCars : StudioAction::Favorites);
     }
     if (upPress || add) {

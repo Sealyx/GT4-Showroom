@@ -87,13 +87,13 @@ bool pngIcon(IDirect3DDevice9* device,const wchar_t* name,UIRect box,float alpha
     return drawn;
 }
 
-bool pngCurrency(IDirect3DDevice9* device,float x,float y,float height,uint32_t tint,float tilt=0)
+bool pngCurrency(IDirect3DDevice9* device,float x,float y,float height,uint32_t tint,float tilt=0,float alpha=1)
 {
     auto& glyph=iconImage(device,L"currency-dollar.png");
     if(!glyph.texture || glyph.width<2 || !glyph.height) return false;
     const float sy=height/(glyph.height*.75f),sx=sy*1.08f;
     return pngIcon(device,L"currency-dollar.png",
-                   {x-(glyph.width-1)*sx*.5f,y,glyph.width*sx,glyph.height*sy},1,tint,tilt,x,y+height*.5f);
+                   {x-(glyph.width-1)*sx*.5f,y,glyph.width*sx,glyph.height*sy},alpha,tint,tilt,x,y+height*.5f);
 }
 
 bool pngCursor(IDirect3DDevice9* device,float x,float y,float scale,float alpha)

@@ -91,6 +91,7 @@ struct GalleryOptions {
     int music = 1;
     uint64_t countries=0;
     std::vector<int> models;
+    std::vector<std::string> modelTokens;
 };
 inline GalleryOptions readGallery(const wchar_t* ini, Gallery gallery) {
     musicTrackFolder=std::filesystem::path(ini).parent_path()/L"GT4Showroom/audio";
@@ -113,13 +114,14 @@ inline GalleryOptions readGallery(const wchar_t* ini, Gallery gallery) {
         std::wistringstream input(list.data());
         std::wstring token;
         while (std::getline(input,token,L',')) {
-            wchar_t* end=nullptr;
-            errno=0;
-            const long id=wcstol(token.c_str(),&end,10);
-            while (end && iswspace(*end)) ++end;
-            if (errno != ERANGE && end != token.c_str() && end && !*end && id>0 && id<=INT_MAX &&
-                std::find(options.models.begin(),options.models.end(),int(id))==options.models.end())
-                options.models.push_back(int(id));
+            const auto text=trimName(std::string(token.begin(),token.end()));
+            ExclusionConfig parsed;
+            parseModelTokens(text,parsed);
+            if(text.empty() || parsed.invalid || (parsed.ids.empty() && parsed.names.empty()))continue;
+            const auto normalized=lowerName(text);
+            if(std::find(options.modelTokens.begin(),options.modelTokens.end(),normalized)!=options.modelTokens.end())continue;
+            options.modelTokens.push_back(normalized);
+            for(int id:parsed.ids)options.models.push_back(id);
         }
         return options;
     }
@@ -131,9 +133,16 @@ inline GalleryOptions readGallery(const wchar_t* ini, Gallery gallery) {
     }
     return options;
 }
+inline size_t galleryModelRank(const GalleryOptions& options,const Entry& entry) {
+    for(size_t i=0;i<options.modelTokens.size();++i) {
+        int id=-1;
+        if(decimalModelId(options.modelTokens[i],id)?entry.id==id:sameModelName(entry,options.modelTokens[i]))return i;
+    }
+    return options.modelTokens.size();
+}
 inline bool galleryAccepts(Gallery context,const GalleryOptions& options,const Entry& entry) {
     if(context==Gallery::Main)return true;
-    if(context==Gallery::Grotti)return std::find(options.models.begin(),options.models.end(),entry.id)!=options.models.end();
+    if(context==Gallery::Grotti)return galleryModelRank(options,entry)<options.modelTokens.size();
     if(entry.kind==6)return false;
     if(context==Gallery::AutoBahn)return (options.countries&(uint64_t(1)<<unsigned(entry.country)))!=0;
     return (options.allowed&classBit(galleryClass(entry)))!=0;

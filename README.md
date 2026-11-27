@@ -92,3 +92,10 @@ In Cinematic, Space or clicking the car toggles rotation; drag the car to orbit 
 Showroom audio uses `GT4Showroom/audio/track-1.wav` through `track-28.wav`. Tracks 1–8 are supplied; slots 9–28 accept custom PCM WAV tracks. Only existing files appear in Music choices, labeled Track N. Missing or out-of-range INI selections fall back to Track 1. Keyboard music stays in settings.ini [Main]; dealerships keep their separate Music entries in GT4Showroom.ini.
 
 The editable `icons.txd` textures `prologue-arrow-left` and `prologue-arrow-right` supply the Prologue thumbnail navigation arrows; `prologue-dot` supplies its gray/orange browsing indicators. The renderer controls tint, flickering and movement. Existing icon textures are preserved; no additional loose PNG folder is needed.
+
+
+## Vehicle variants
+
+`GT4Showroom/variants.ini` maps a base vehicle section to a comma-separated `Variant=` list. Both the section and each value accept a model ID or model name. Example: `[sabre]` with `Variant=sabretur`. The original model is always the first choice. Configured variant models are hidden from normal browsing and searches; globally excluded models remain unavailable. Missing models are skipped. With no available variants, selection proceeds directly to Colors as before.
+
+Variants precede Colors in both styles. Use left/right, mouse wheel or the side arrows, then RETURN to continue. Backspace from Colors returns to Variants; returning to main browsing restores the base vehicle. Each variant uses its own paints, liveries, extras and purchase price. A variant marked `ignore` in vehicle data inherits its base class. Existing valid classes remain unchanged.

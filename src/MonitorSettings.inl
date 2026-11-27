@@ -331,7 +331,7 @@ inline std::string ContextMenu::help() const
     }
     const auto item = rows[size_t(index)];
     if(item.action==StudioAction::StudioViewType) return "Choose animated or static studio backgrounds";
-    if(item.child==MenuBranch::DealershipLogo||item.action==StudioAction::DealershipLogo)return "Dealership logo replaces the manufacturer regardless of the Manufacturer option; shared by dealerships only";
+    if(item.child==MenuBranch::DealershipLogo||item.action==StudioAction::DealershipLogo)return "With Manufacturer and Name on and both images available, show dealership identity above country/class; shared by dealerships only";
     const auto branch = item.child;
     if (branch == MenuBranch::CinematicAnimation || item.action == StudioAction::CinematicAnimation) {
         return "Pause or resume the studio background and shadow animation";

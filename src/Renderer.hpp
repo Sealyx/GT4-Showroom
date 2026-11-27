@@ -3155,7 +3155,7 @@ namespace gt4
             return saveStudioViewPhoto(d, target, s.photo, folder, saved);
         }
 
-        void drawStudioViewPhoto(IDirect3DDevice9* d, float W, float H, const Model& s)
+        void drawStudioViewPhoto(IDirect3DDevice9* d, float W, float H, const Model& s, bool cropOnly=false)
         {
 #ifdef BODY_REVIEW
             const D3DTEXTURESTAGESTATETYPE types[]{D3DTSS_TEXCOORDINDEX,D3DTSS_TEXTURETRANSFORMFLAGS,D3DTSS_COLORARG1,D3DTSS_COLORARG2,D3DTSS_ALPHAARG1,D3DTSS_ALPHAARG2};
@@ -3182,7 +3182,7 @@ namespace gt4
             rect(d, 0, float(crop.y + crop.height), W, H - crop.y - crop.height, 0xFF000000);
             rect(d, 0, float(crop.y), float(crop.x), float(crop.height), 0xFF000000);
             rect(d, float(crop.x + crop.width), float(crop.y), W - crop.x - crop.width, float(crop.height), 0xFF000000);
-            if (s.interfaceReveal<=0) {
+            if (cropOnly || s.interfaceReveal<=0) {
                 return;
             }
             const float scale = StudioViewPhoto::uiScale(W, H);
@@ -3508,6 +3508,7 @@ namespace gt4
     public:
 
         Rect carHit;
+        float lastIdentityHeaderOffset=0;
         Camera lastCarCamera{1280,720,5};
         bool photoWasActive=false,inspectionWasVisible=false;
         double returnAngleSelection=-1,returnAngleSession=-1;
@@ -3761,6 +3762,7 @@ namespace gt4
             QueryPerformanceCounter(&begin);
             QueryPerformanceFrequency(&frequency);
             lastDraw = false;
+            lastIdentityHeaderOffset=0;
             if (!s.shop.open()) {
                 shopFooter = {};
             }
@@ -4445,6 +4447,8 @@ namespace gt4
                 d->SetRenderState(D3DRS_ZENABLE, FALSE);
                 d->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
                 d->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+                // Crop bars belong to the photo composition and remain in the UI fade backdrop
+                if(s.photo.active && !s.photo.requested)drawStudioViewPhoto(d,W,H,s,true);
                 const bool modalUI = s.ui.menu.open || s.spawnReview!=SpawnReview::None || s.tutorialOpen() || s.informationOpen || s.plateOpen;
                 const float reveal = modalUI ? 1.f : ease(s.interfaceReveal);
                 const bool hideBrowseUI = reveal <= 0;
@@ -4468,7 +4472,7 @@ namespace gt4
                     if (s.pointerVisible) cursor(d,s.pointerX*W,s.pointerY*H,scale*.85f,1);
                 } else if (!s.photo.active && (!hideBrowseUI || s.spawnReview != SpawnReview::None)) {
                     if (!s.ui.cinematic.active) {
-                        const float carStrip = (s.purchase.active() ? 0.f : 1.f) * (1-s.paintMix)*(1-s.ui.cinematic.mix);
+                        const float carStrip = (s.purchase.active() ? 0.f : s.page==Page::Variant ? (s.variantFromCars?1.f-s.variantArrows.alpha(s.clock):0.f) : (s.variantSession && s.page!=Page::Cars?0.f:1.f)) * (1-s.paintMix)*(1-s.ui.cinematic.mix);
                         const float colorStrip = s.selectionPanelAlpha(Page::Paint)*(1-s.ui.cinematic.mix);
                         const float liveryStrip = s.selectionPanelAlpha(Page::Livery)*(1-s.ui.cinematic.mix);
                         const float colorsOffset=s.selectionPanelOffset(Page::Paint,scale);
@@ -4563,14 +4567,16 @@ namespace gt4
                                        1.30f * scale,
                                        carStrip * (1.f-prologueStyle) * thumbnailPulse(s.clock - s.changed));
                             }
+                            if(s.page!=Page::Variant){
                             const auto caption = vehicleCaption(e, s.ui);
                             label(d,
                                   caption,
                                   W * .5f,
                                   H * (.82f+.0216667f*prologueStyle) + 25 * scale * s.paintMix,
                                   fitted(caption, 22 * scale, W * .86f),
-                                  carStrip,
+                                  carStrip*(1.f-s.variantArrows.alpha(s.clock)),
                                   true, 0, false);
+                            }
                             const BrowseBar bar(W, H, s, entries.size());
                             if(prologueStyle<1.f) {
                                 rect(d, bar.track.x, bar.track.y, bar.track.w, bar.track.h, color(0x171D1D, carStrip*(1.f-prologueStyle)));
@@ -4592,7 +4598,7 @@ namespace gt4
                                 for(int direction:{-1,1}) {
                                     const float x=direction<0?W*.045f:W*.955f,y=layout.y+28.f*scale;
                                     pngIcon(d,direction<0?L"prologue-arrow-left.png":L"prologue-arrow-right.png",
-                                        {x-29.f*scale,y-21.f*scale,58.f*scale,42.f*scale},alpha*blink,0xFFB52C);
+                                        {x-29.f*scale,y-21.f*scale,58.f*scale,42.f*scale},alpha*blink*((s.variantArrows.visible && s.variantMorphFromThumb)?0.f:1.f-s.variantArrows.alpha(s.clock)),0xFFB52C);
                                 }
                             }
                         }
@@ -4638,6 +4644,41 @@ namespace gt4
                             const std::string name = s.livery == 0 ? "No Livery" : "Livery " + std::to_string(s.livery);
                             label(d, name, W * .5f, H * .830f + liveriesOffset, 19 * scale, liveryStrip, true);
                         }
+                        const float variantGroupAlpha=s.variantArrows.alpha(s.clock);
+                        const float variantGroupRise=s.variantArrowRise()*scale;
+                        const auto& variantDisplay=s.variantSession?e:s.variantPresentation;
+                        if(variantGroupAlpha>.001f){
+                            label(d,"Select the vehicle's variant",W*.5f,H*(s.showDealerPrices?.1083333f:.17f)+variantGroupRise,24*scale,variantGroupAlpha,true,0,infoStyle(d));
+                            if(s.showDealerPrices && variantDisplay.price>=0){
+                                const auto price=shopMoney(variantDisplay.price);
+                                const float textSize=33.5f*scale,coinSize=32.f*scale;
+                                const float start=(W-textWidth(price,textSize,true)-coinSize)*.5f;
+                                const float y=H*.1938889f+variantGroupRise;
+                                shopPriceMark(d,start+12.f*scale,y,.8f*scale,true,variantGroupAlpha);
+                                text(d,price,start+coinSize,y-17.f*scale,textSize,color(0x21150D,.8f*variantGroupAlpha),false,0,true);
+                                text(d,price,start+coinSize-scale,y-19.f*scale,textSize,color(0xFFFFFF,variantGroupAlpha),false,0,true);
+                            }
+                            label(d,variantDisplay.name,W*.5f,H*.78f+variantGroupRise,24*scale,variantGroupAlpha,true);
+                        }
+                        const float variantArrowAlpha=s.variantArrows.alpha(s.clock);
+                        if(variantArrowAlpha>.001f){
+                            const float blink=.35f+.65f*(.5f+.5f*std::cos(float(s.clock)*2.f*pi*8.f));
+                            const float motion=ease(float((s.clock-s.variantArrowMorphBegan)/.25));
+                            const float rise=s.variantArrowRise()*scale;
+                            for(int direction:{-1,1}){
+                                float x=direction<0?W*.065f+29.f*scale:W*.935f-29.f*scale;
+                                float y=H*.44f+21.f*scale;
+                                if(s.variantMorphFromThumb){
+                                    const float fromX=direction<0?W*.045f:W*.955f;
+                                    const float fromY=H*.725f+28.f*scale;
+                                    x=fromX+(x-fromX)*motion;y=fromY+(y-fromY)*motion;
+                                }
+                                pngIcon(d,direction<0?L"prologue-arrow-left.png":L"prologue-arrow-right.png",
+                                    {x-29.f*scale,y-21.f*scale+rise,58.f*scale,42.f*scale},variantArrowAlpha*blink,0xFFB52C);
+                            }
+                        }
+                        float dealerHeaderOffset=0;
+                        if(s.page!=Page::Variant){
                         auto logo = [&](bool brand, float centerX, float top, float maxW, float maxH, float alpha) {
                             unsigned iw = 0, ih = 0;
                             auto* t = logos.get(d, e.modelKey, brand, iw, ih);
@@ -4695,9 +4736,16 @@ namespace gt4
                                   0,
                                   style);
                         }
+                        unsigned brandWidth=0,brandHeight=0,nameWidth=0,nameHeight=0;
+                        const bool pairAvailable=s.ui.brandLogo && s.ui.carLogo &&
+                            logos.get(d,e.modelKey,true,brandWidth,brandHeight) && brandWidth && brandHeight &&
+                            logos.get(d,e.modelKey,false,nameWidth,nameHeight) && nameWidth && nameHeight;
+                        const bool dealerAtLeft=pairAvailable && !galleryTitle.empty() && s.ui.dealershipLogo;
+                        dealerHeaderOffset=dealerAtLeft?52.f*scale:0.f;
+                        lastIdentityHeaderOffset=dealerHeaderOffset;
                         const bool brandLogo =
-                            !s.ui.favoritesOnly && !(s.ui.dealershipLogo&&!galleryTitle.empty()) && s.ui.brandLogo && logo(true, W * .80f, H * .065f, W * .30f, H * .12f, s.titleMix());
-                        if (!s.ui.favoritesOnly && !brandLogo) {
+                            !s.ui.favoritesOnly && !(s.ui.dealershipLogo&&!galleryTitle.empty()&&!dealerAtLeft) && s.ui.brandLogo && logo(true, W * .80f, H * .065f, W * .30f, H * .12f, s.titleMix());
+                        if (!s.ui.favoritesOnly && (!brandLogo || dealerAtLeft)) {
                             if (!collectionTried) {
                                 collectionTried = true;
                                 collectionLogo = galleryTitle.empty()?iconDictionary.load(d, assetPath(shopAssetRoot/L"icons.txd"), collectionPath.stem().wstring()):VehicleLogos::load(d,collectionPath);
@@ -4706,20 +4754,21 @@ namespace gt4
                                 D3DLOCKED_RECT pixels{};if(SUCCEEDED(collectionLogo.texture->LockRect(0,&pixels,nullptr,D3DLOCK_READONLY))){bool visible=false;for(unsigned y=0;y<collectionLogo.height&&!visible;++y){const auto* row=static_cast<const uint8_t*>(pixels.pBits)+y*pixels.Pitch;for(unsigned x=0;x<collectionLogo.width;++x)if(row[4*x+3]){visible=true;break;}}collectionLogo.texture->UnlockRect(0);if(!visible){collectionLogo.texture->Release();collectionLogo={};}}
                             }
                             if ((galleryTitle.empty()||s.ui.dealershipLogo) && collectionLogo.texture && collectionLogo.width && collectionLogo.height) {
-                                const float fit = std::min(W * .34f / collectionLogo.width,
-                                                           H * .15f / collectionLogo.height);
-                                rect(d, W * .79f - collectionLogo.width * fit * .5f, H * .065f,
+                                const float fit = std::min((dealerAtLeft?W*.32f:W*.34f) / collectionLogo.width,
+                                                           (dealerAtLeft?40.f*scale:H*.15f) / collectionLogo.height);
+                                rect(d, dealerAtLeft?46.f*scale:W * .79f - collectionLogo.width * fit * .5f, dealerAtLeft?19.f*scale:H * .065f,
                                      collectionLogo.width * fit, collectionLogo.height * fit,
-                                     color(0xFFFFFF, s.titleMix()), collectionLogo.texture);
+                                     color(0xFFFFFF, dealerAtLeft?1.f:s.titleMix()), collectionLogo.texture);
                             } else if (!galleryTitle.empty()) {
                                 fontAtlas(d, shopSerifFont, shopSerifWidths, prizeNameAsset, 48, 80, L"Times New Roman");
                                 const auto heading = shopSerifFont ? TextStyle{shopSerifFont, shopSerifWidths, 48, 80, 1.f} : textStyle(true);
-                                label(d, galleryTitle, W * .79f, H * .079f,
-                                      fitted(galleryTitle, 37 * scale, W * .38f, heading), s.titleMix(), true, 0, heading);
+                                label(d, galleryTitle, dealerAtLeft?46.f*scale:W * .79f, dealerAtLeft?19.f*scale:H * .079f,
+                                      fitted(galleryTitle, (dealerAtLeft?30.f:37.f) * scale, W * (dealerAtLeft?.34f:.38f), heading), dealerAtLeft?1.f:s.titleMix(), !dealerAtLeft, 0, heading);
                             } else {
-                                label(d, e.brand, W * .80f, H * .085f, 26 * scale, s.titleMix(), true);
-                                label(d, "motor collection", W * .80f, H * .128f, 13 * scale, s.titleMix(), true);
+                                label(d, e.brand, dealerAtLeft?46.f*scale:W * .80f, dealerAtLeft?19.f*scale:H * .085f, 26 * scale, dealerAtLeft?1.f:s.titleMix(), !dealerAtLeft);
+                                label(d, "motor collection", dealerAtLeft?46.f*scale:W * .80f, dealerAtLeft?44.f*scale:H * .128f, 13 * scale, dealerAtLeft?1.f:s.titleMix(), !dealerAtLeft);
                             }
+                        }
                         }
                         const std::string controls = s.purchase.active() ? (s.ui.controllerUsed ? "CROSS Accept" : "RETURN Accept") :
                             showroomControlHint(s.page, s.ui.controllerUsed, s.liveries.size() > 1,
@@ -4763,10 +4812,10 @@ namespace gt4
                             message = "Heavy. Why are things so heavy in the future? Is there a problem with the Earth's gravitational pull?";
                         }
                         if (s.showDealerPrices && s.interfaceReveal>0 && !entries.empty()) {
-                            drawVehicleAccount(d, W, scale, e, paint, s.dealerBalance);
-                            if (e.price >= 0) {
+                            if(s.page!=Page::Variant)drawVehicleAccount(d, W, scale, e, paint, s.dealerBalance);
+                            if (e.price >= 0 && s.page!=Page::Variant) {
                                 const float x = 63 * scale;
-                                const float y = (s.ui.classFilter >= 0 || s.ui.countryFilter >= 0 ? 112 : 91) * scale;
+                                const float y = (s.ui.classFilter >= 0 || s.ui.countryFilter >= 0 ? 112 : 91) * scale+dealerHeaderOffset;
                                 shopPriceMark(d, x, y, scale, true);
                                 const std::string price = shopMoney(e.price);
                                 text(d, price, 104 * scale, y - 17 * scale, 34.667f * scale,
@@ -4790,7 +4839,8 @@ namespace gt4
                                   W * .94f, footer.countY + footerDrop, footer.countHeight, 1, true);
                             }
                         }
-                        const float cx = 63 * scale, cy = 47 * scale;
+                        if(s.page!=Page::Variant){
+                        const float cx = 63 * scale, cy = 47 * scale+dealerHeaderOffset;
                         if (flags && !emptyFavorites) {
                             const float index = float(e.country);
                             rect(d,
@@ -4806,7 +4856,7 @@ namespace gt4
                                  (std::floor(index/16.f)+1)/float((countryCount+15)/16));
                         }
                         if (!emptyFavorites) {
-                            label(d, e.category, 104 * scale, 19 * scale, 26 * scale);
+                            label(d, e.category, 104 * scale, 19 * scale+dealerHeaderOffset, 26 * scale);
                         } else if (s.hasAvailableFavorites) {
                             if (s.ui.classFilter >= 0) {
                                 label(d, classNames[size_t(s.ui.classFilter)], 104 * scale, 19 * scale, 26 * scale);
@@ -4823,8 +4873,9 @@ namespace gt4
                                       (s.ui.classFilter >= 0 ? (s.ui.countryFilter >= 0 ? " / " : "") + std::string(classNames[size_t(s.ui.classFilter)])
                                                              : ""),
                                   104 * scale,
-                                  56 * scale,
+                                  56 * scale+dealerHeaderOffset,
                                   11 * scale);
+                        }
                         }
                         if (entries.empty()) {
                             label(d,

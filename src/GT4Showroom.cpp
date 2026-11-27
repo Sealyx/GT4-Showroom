@@ -1,5 +1,6 @@
 #include "Game.hpp"
 #include "Dealership.hpp"
+#include "Variants.hpp"
 #include "VehiclePayment.hpp"
 #include "DiagnosticLog.hpp"
 #include "Audio.hpp"
@@ -119,10 +120,14 @@ namespace gt4
     StudioConfig studioConfig;
     Gallery gallery = Gallery::Main;
     GalleryOptions galleryOptions;
+    VariantConfig variantConfig;
     bool dealerShopVisited = false;
     bool allowedHere(const Entry& entry)
     {
-        return !excluded.count(entry.id) && galleryAccepts(gallery,galleryOptions,entry);
+        if(excluded.count(entry.id))return false;
+        if(galleryAccepts(gallery,galleryOptions,entry))return true;
+        for(const auto& root:catalog)if(!excluded.count(root.id) && galleryAccepts(gallery,galleryOptions,root))if(const auto* rule=variantConfig.find(root))for(const auto& choice:rule->choices)if(variantMatches(choice,entry))return true;
+        return false;
     }
     bool canCustomizeSelected()
     {
@@ -196,7 +201,9 @@ namespace gt4
     void saveCurrentFavorites()
     {
         const std::filesystem::path file = std::filesystem::path(base) / L"GT4Showroom/favorites.ini";
-        if (!saveFavorites(file, entries)) { log("Favorites could not be saved"); }
+        auto browsing=entries;
+        if(state.variantSession && state.selected<browsing.size())browsing[state.selected]=state.variantBase;
+        if (!saveFavorites(file, browsing)) { log("Favorites could not be saved"); }
     }
 
     void refreshCountryMenu()
@@ -204,13 +211,13 @@ namespace gt4
         std::array<int, countryCount> counts{};
         std::array<int, classCount> classTotals{};
         for (const auto& e : catalog) {
-            if (allowedHere(e) && (!state.ui.favoritesOnly || e.favorite)) {
+            if (allowedHere(e) && !variantConfig.hidden(e) && (!state.ui.favoritesOnly || e.favorite)) {
                 ++counts[size_t(e.country)];
                 ++classTotals[size_t(classIndex(e.classId))];
             }
         }
         state.hasAvailableFavorites = std::any_of(catalog.begin(), catalog.end(), [&](const Entry& e) {
-            return e.favorite && allowedHere(e);
+            return e.favorite && allowedHere(e) && !variantConfig.hidden(e);
         });
         state.ui.menu.setCountries(counts);
         state.ui.menu.setClasses(classTotals);
@@ -218,7 +225,6 @@ namespace gt4
 
     void rebuildCatalogueView(int preferredModel = -1)
     {
-        const int retainedModel = preferredModel >= 0 ? preferredModel : entries.empty() ? -1 : entries[std::min(state.selected,entries.size()-1)].id;
         localization.protectedNames.clear();
         for (const auto& entry : catalog) {
             localization.protectedNames.insert(entry.name);
@@ -228,20 +234,19 @@ namespace gt4
         buildCatalogueView(
             state, entries, catalog, studioConfig.sort,
             [&](const Entry& e) {
-                return !allowedHere(e);
+                return !allowedHere(e) || variantConfig.hidden(e);
             },
             [](const Entry& e) {
                 return e.favorite;
             },
             preferredModel);
         if (gallery == Gallery::Grotti) {
-            std::stable_sort(entries.begin(),entries.end(),[](const Entry& a,const Entry& b) {
-                return std::find(galleryOptions.models.begin(),galleryOptions.models.end(),a.id) <
-                       std::find(galleryOptions.models.begin(),galleryOptions.models.end(),b.id);
-            });
-            state.selected=0;
-            for (size_t i=0;i<entries.size();++i) if(entries[i].id==retainedModel) state.selected=i;
-            state.scroll=state.scrollTarget();
+            for(const auto& token:galleryOptions.modelTokens) {
+                ExclusionConfig configured;parseModelTokens(token,configured);
+                if(std::none_of(catalog.begin(),catalog.end(),[&](const Entry& e){return configured.hides(e);})) {
+                    log(("Grotti configured model unavailable: "+token).c_str());
+                }
+            }
             for (int id:galleryOptions.models) {
                 if (std::none_of(catalog.begin(),catalog.end(),[id](const Entry& e){return e.id==id;})) {
                     char message[100]{};
@@ -338,6 +343,9 @@ namespace gt4
 
     void close(bool reveal = false)
     {
+        if((state.variantSession || state.variantRestore) && state.selected<entries.size())entries[state.selected]=state.variantBase;
+        state.variantSession=state.variantRestore=state.variantDirty=false;
+        state.variantChoices.clear();
         if (state.ui.countryShortcut) {
             const int model = state.ui.endCountryShortcut();
             studioConfig.sort = menuSort(state.ui.sortMode);
@@ -519,7 +527,7 @@ namespace gt4
             if (exclusionConfig.hides(e)) {
                 excluded.insert(e.id);
             }
-            if (allowedHere(e) && (!state.ui.favoritesOnly || e.favorite) &&
+            if (allowedHere(e) && !variantConfig.hidden(e) && (!state.ui.favoritesOnly || e.favorite) &&
                        state.ui.accepts(e.country, e.classId)) {
                 entries.push_back(std::move(e));
             }
@@ -584,6 +592,7 @@ namespace gt4
             return;
         }
         auto& e = entries[state.selected];
+        if(!state.variantSession)state.variantChoices=variantConfig.choicesFor(e,catalog,excluded);
         state.twoWheelerSelected = twoWheelerPreview(e);
         state.galleryCustomization = galleryCustomizes(gallery,e);
         state.extrasResolved = extrasModel == e.id && nativeExtras::metadataReady && !nativeExtras::selectionPending();
@@ -599,6 +608,7 @@ namespace gt4
             return;
         }
         e.classId = game::field<int8_t>(mi, 0x4D);
+        if(state.variantSession && e.classId<0)e.classId=state.variantBase.classId;
         e.category = classLabel(e.classId);
         e.paints = game::paints(mi);
         const auto h = handling(game::field<uint16_t>(mi, 0x4A));
@@ -611,6 +621,7 @@ namespace gt4
         e.handlingValid = h.valid;
         metadata(e);
         liveryNative::scan(state, e.id);
+        if(state.variantSession)state.variantPresentation=e;
     }
 
     bool selectStudioCustomization(int row, int option)
@@ -1483,6 +1494,7 @@ namespace gt4
                     } else {
                         blockActions();
                     }
+                    if(state.syncVariant(entries))refreshSelected();
                     if (state.page != Page::Prize &&
                         (!prizeNative::heldTxds.empty() || !prizeNative::heldModels.empty())) {
                         prizeNative::release();

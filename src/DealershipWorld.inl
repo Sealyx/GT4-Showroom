@@ -11,6 +11,7 @@ bool dealerSeatPending = false;
 
 void readGalleryAccess()
 {
+    variantConfig.load(std::filesystem::path(base)/L"GT4Showroom/variants.ini");
     for (int i=1;i<int(std::size(galleries));++i) {
         galleryEnabled[i] = readGallery(ini.c_str(), Gallery(i)).enabled;
     }
@@ -128,6 +129,16 @@ bool __fastcall galleryEnterVehicleJustDown(void* pad,void*)
                         galleryCapturesVehicleEntry());
 }
 
+// Native CPed -> CPlayerData -> CWanted fields validated against Plugin-SDK
+bool playerWantedForGallery()
+{
+    const auto ped=reinterpret_cast<uintptr_t>(game::player());
+    uintptr_t data=0,wanted=0;
+    unsigned level=0;
+    return !ped || !gta::read(ped+0x480,data) || !data ||
+        !gta::read(data,wanted) || !wanted || !gta::read(wanted+0x2c,level) || level>0;
+}
+
 void updateGalleryMarkers(const game::OpenState& gate, bool confirm, uint64_t tick, double dt)
 {
     void* nativePad = reinterpret_cast<void*(__cdecl*)(int)>(0x53FB70)(0);
@@ -161,13 +172,17 @@ void updateGalleryMarkers(const game::OpenState& gate, bool confirm, uint64_t ti
             0x47543400u + unsigned(i),1,at,2.f,255,0,0,228,2048,.2f,0);
         if (gate.ready() && !game::mission() && distance <= 10.f) nearest = Gallery(i);
     }
-    if (nearest != approaching) {
+    static bool previouslyWanted=false;
+    const bool wanted=nearest!=Gallery::Main && playerWantedForGallery();
+    if (nearest != approaching || wanted!=previouslyWanted || (wanted && pressed)) {
         approaching = nearest;
         arrivalTime = -1;
         if (nearest != Gallery::Main) reinterpret_cast<void(__cdecl*)(const char*,bool,bool,bool)>(0x588BE0)(
-            galleries[int(nearest)].prompt,true,false,false);
+            wanted?"Lose your wanted level to access this dealership's vehicle gallery.":galleries[int(nearest)].prompt,true,false,false);
     }
+    previouslyWanted=wanted;
     if (nearest == Gallery::Main) return;
+    if(wanted) { arrivalTime=-1;return; }
     if (pressed && arrivalTime < 0) arrivalTime=0;
     if (arrivalTime < 0) return;
     arrivalTime += dt;

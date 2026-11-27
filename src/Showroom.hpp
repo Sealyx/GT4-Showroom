@@ -130,7 +130,8 @@ namespace gt4
         Paint,
         Livery,
         Extras,
-        Prize
+        Prize,
+        Variant
     };
 
     inline const char* showroomControlHint(Page page, bool controller, bool, bool = false, bool = true, bool favorites = true)
@@ -139,10 +140,10 @@ namespace gt4
             ? "CROSS Continue    CIRCLE / SELECT Return    L1+R1 Hide UI"
             : "RETURN Continue    BACKSPACE / RMB Return    H Hide UI";
         if (controller) return favorites
-            ? "CROSS Paint    SQUARE Favorite    TRIANGLE Favorites    SELECT Settings    L3 Search    SQUARE+TRIANGLE Info    L1+R1 Hide UI"
-            : "CROSS Paint    SELECT Settings    L3 Search    SQUARE+TRIANGLE Info    L1+R1 Hide UI";
-        return favorites ? "RETURN Paint    UP Favorite    F Favorites    RMB Settings    ` Search    I Info    H Hide UI"
-                        : "RETURN Paint    RMB Settings    ` Search    I Info    H Hide UI";
+            ? "CROSS Continue    SQUARE Favorite    TRIANGLE Favorites    SELECT Settings    L3 Search    SQUARE+TRIANGLE Info    L1+R1 Hide UI"
+            : "CROSS Continue    SELECT Settings    L3 Search    SQUARE+TRIANGLE Info    L1+R1 Hide UI";
+        return favorites ? "RETURN Continue    UP Favorite    F Favorites    RMB Settings    ` Search    I Info    H Hide UI"
+                        : "RETURN Continue    RMB Settings    ` Search    I Info    H Hide UI";
     }
     enum class Cue
     {
@@ -298,6 +299,7 @@ namespace gt4
         {
             if (postSelectionCinematic) {
                 switch (lastCompletedSelection) {
+                case Page::Variant: return "Back to Variants";
                 case Page::Paint: return "Back to Colors";
                 case Page::Livery: return "Back to Liveries";
                 case Page::Extras: return "Back to Extras";
@@ -308,6 +310,19 @@ namespace gt4
         }
         bool extrasResolved = true, selectionAdvancePending = false, skipSelectionExtras = false;
         bool selectionHasColors = true;
+        std::vector<Entry> variantChoices;
+        Entry variantBase,variantPresentation;
+        size_t variantChoice=0;
+        bool variantSession=false,variantDirty=false,variantRestore=false;
+        int variantArrowSide=1;
+        SelectionPanelMotion variantArrows;
+        bool variantMorphFromThumb=false,variantFromCars=false;
+        double variantArrowMorphBegan=0;
+        float variantArrowRiseFrom=14.f,variantArrowRiseTo=0.f;
+        float variantArrowRise()const {
+            const float t=ease(float((clock-variantArrows.began)/.20));
+            return variantArrowRiseFrom+(variantArrowRiseTo-variantArrowRiseFrom)*t;
+        }
 
         bool appearanceResetPending = false, extrasResetPending = false;
         bool twoWheelerSelected = false;
@@ -376,9 +391,22 @@ namespace gt4
 
         void setSelectionPage(Page next)
         {
+            if(next==Page::Variant && page!=Page::Variant){
+                variantFromCars=page==Page::Cars;
+                if(variantArrows.alpha(clock)<.001f || !variantMorphFromThumb || clock-variantArrowMorphBegan>=.25){
+                    variantMorphFromThumb=variantFromCars && ui.showroomStyle==1;
+                    variantArrowMorphBegan=clock;
+                }
+            }
+            if((next==Page::Variant)!=variantArrows.visible){
+                variantArrowRiseFrom=variantArrows.alpha(clock)<.001f?14.f:variantArrowRise();
+                variantArrowRiseTo=next==Page::Variant?0.f:-14.f;
+            }
+            variantArrows.show(next==Page::Variant,clock);
             if(next==page && (next==Page::Livery || next==Page::Extras))
                 selectionPanels[size_t(selectionPanelIndex(next))]={};
             if (next == Page::Cars) {
+                if(variantSession){variantRestore=true;variantSession=false;}
                 resetVehicleAppearance();
             } else if (next == Page::Paint || (next == Page::Livery && page == Page::Extras)) {
                 if (page == Page::Extras) {
@@ -390,6 +418,7 @@ namespace gt4
                     liveryWhite = false;
                 }
             }
+            if(next==Page::Variant && page!=Page::Cars)resetVehicleAppearance();
             showSelectionPanels(next);
             page = next;
             footerBegan = clock;
@@ -762,7 +791,7 @@ namespace gt4
             if (destination == Page::Paint) { colorsReturned = clock; }
             selectionAdvancePending = skipSelectionExtras = false;
             tutorial = Tutorial::None;
-            paintMix = destination==Page::Cars?0.f:1.f;
+            paintMix = (destination==Page::Cars || destination==Page::Variant)?0.f:1.f;
             dragging = false;
             status.clear();
             stripChanged = clock;
@@ -1110,6 +1139,7 @@ namespace gt4
 
         void begin(size_t total)
         {
+            variantSession=variantDirty=variantRestore=false;variantChoices.clear();variantArrows={};variantMorphFromThumb=variantFromCars=false;variantArrowRiseFrom=14.f;variantArrowRiseTo=0.f;
             countryPicker={};
             plateOpen = plateEditing = false;
             plate.clear();
@@ -1309,6 +1339,7 @@ namespace gt4
             if (!open || busy() || cars.empty() || !dir || page == Page::Prize) {
                 return;
             }
+            if(page==Page::Variant){variantArrowSide=dir<0?-1:1;ui.dock=true;variantChoice=size_t((int64_t(variantChoice)+dir+variantChoices.size())%variantChoices.size());variantDirty=true;cue=Cue::Move;return;}
             size_t* value = page == Page::Cars ? &selected : page == Page::Paint ? &paint : &livery;
             const size_t n = page == Page::Cars    ? cars.size()
                              : page == Page::Paint ? std::max(size_t(1), cars[selected].paints.size())
@@ -1326,6 +1357,19 @@ namespace gt4
                 status.clear();
             }
             cue = page == Page::Cars ? Cue::Slider : Cue::Move;
+        }
+
+        bool syncVariant(std::vector<Entry>& cars)
+        {
+            if((!variantDirty && !variantRestore) || selected>=cars.size())return false;
+            if(!variantRestore && variantChoice>=variantChoices.size())return false;
+            const auto& replacement=variantRestore?variantBase:variantChoices[variantChoice];
+            const bool modelChanged=cars[selected].id!=replacement.id;
+            cars[selected]=replacement;
+            if(!variantRestore)variantPresentation=cars[selected];
+            variantRestore=variantDirty=false;resetVehicleAppearance();
+            if(modelChanged)changed=motionBegan=clock;
+            return true;
         }
 
         void accept(const std::vector<Entry>& cars)
@@ -1348,9 +1392,10 @@ namespace gt4
                 }
                 return;
             }
-            if (selectionAdvancePending) { return; }
+            if (selectionAdvancePending || (page==Page::Variant && variantDirty)) { return; }
             lastCompletedSelection = page;
-            if (page == Page::Cars) {
+            if(page==Page::Cars && variantChoices.size()>1){variantBase=variantPresentation=cars[selected];variantChoice=0;variantSession=true;setSelectionPage(Page::Variant);cue=Cue::Accept;return;}
+            if (page == Page::Cars || page==Page::Variant) {
                 selectionHasColors = !cars[selected].paints.empty();
                 if (selectionHasColors) {
                     setSelectionPage(Page::Paint);
@@ -1433,16 +1478,17 @@ namespace gt4
                 cue = Cue::Back;
                 return;
             }
+            if(page==Page::Variant){setSelectionPage(Page::Cars);cue=Cue::Back;return;}
             if (page == Page::Extras) {
                 setSelectionPage(extrasFrom);
                 if (page == Page::Paint) { colorsReturned = clock; }
                 cue = Cue::Back;
             } else if (page == Page::Livery) {
-                setSelectionPage(selectionHasColors ? Page::Paint : Page::Cars);
+                setSelectionPage(selectionHasColors ? Page::Paint : variantSession?Page::Variant:Page::Cars);
                 colorsReturned = clock;
                 cue = Cue::Back;
             } else if (page == Page::Paint) {
-                setSelectionPage(Page::Cars);
+                setSelectionPage(variantSession?Page::Variant:Page::Cars);
                 cue = Cue::Back;
             } else {
                 exit();
@@ -1451,7 +1497,7 @@ namespace gt4
 
         void favorite(std::vector<Entry>& cars)
         {
-            if (open && !busy() && page != Page::Prize && !cars.empty()) {
+            if (open && !busy() && page != Page::Prize && page!=Page::Variant && !cars.empty()) {
                 cars[selected].favorite = !cars[selected].favorite;
                 cue = cars[selected].favorite ? Cue::Favorite : Cue::Back;
             }
@@ -1646,6 +1692,7 @@ namespace gt4
             return;
         }
         const float x = model.pointerX * w, y = model.pointerY * h;
+        if(model.page==Page::Variant)return;
         if (model.page == Page::Cars) {
             const Carousel layout(w, h, model, cars.size());
             const int hit = layout.hit(x, y);
@@ -1838,6 +1885,8 @@ namespace gt4
                 const auto b = Carousel(w, h, s, cars.size()).box(int(s.selected));
                 x = (b.x + b.w * .68f) / w;
                 y = (b.y + b.h * .68f) / h;
+            } else if(s.page==Page::Variant){
+                x=s.variantArrowSide<0?.09f:.91f;y=.47f;
             } else if (s.page == Page::Paint) {
                 auto b = paintBox(w, h, s.paint, std::max(size_t(1), cars[s.selected].paints.size()), s.prologueMix);
                 b.y+=s.selectionPanelOffset(Page::Paint,h/720.f);
